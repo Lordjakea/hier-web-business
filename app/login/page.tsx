@@ -124,8 +124,7 @@ function LoginPageContent() {
                 Manage applicants with a cleaner, faster Kanban workflow.
               </h1>
               <p className="max-w-xl text-lg leading-8 text-hier-muted">
-                Your new business-only dashboard now connects cleanly to
-                applications, candidate detail, and recruiter workflow updates.
+                Hier Intelligence Applicant tracking, candidate onboarding and Analytics Pro await inside.
               </p>
             </div>
 
@@ -133,12 +132,12 @@ function LoginPageContent() {
               <Feature
                 icon={ShieldCheck}
                 title="Professional feel"
-                text="Fresh spacing, better proportions, responsive panels, and a polished Hier visual language."
+                text="Move candidates smoothly through the Kanban board."
               />
               <Feature
                 icon={LockKeyhole}
-                title="Real backend ready"
-                text="Sign in with your business user credentials and the board will load from your actual business applications pipeline."
+                title="Analytics Pro"
+                text="See how your business is performing."
               />
             </div>
           </div>
@@ -179,7 +178,7 @@ function LoginPageContent() {
               </p>
             </div>
 
-            <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+            
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-hier-text">Email</span>
                 <div className="relative">
@@ -222,7 +221,7 @@ function LoginPageContent() {
                 </label>
 
                 <Link
-                  href="#"
+                  href="/forgot-password"
                   className="text-sm font-medium text-hier-primary hover:underline"
                 >
                   Forgot password?
@@ -243,26 +242,12 @@ function LoginPageContent() {
                 {loading ? "Signing in…" : "Continue to dashboard"}
               </button>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  className="rounded-[22px] border border-hier-border px-4 py-3 text-sm font-medium text-hier-ink transition hover:bg-hier-panel"
-                >
-                  Passkey
-                </button>
-                <button
-                  type="button"
-                  className="rounded-[22px] border border-hier-border px-4 py-3 text-sm font-medium text-hier-ink transition hover:bg-hier-panel"
-                >
-                  Single sign-on
-                </button>
-              </div>
-            </form>
+              
 
             <div className="mt-8 border-t border-hier-border pt-6 text-sm text-hier-muted">
               New business account?{" "}
               <Link
-                href="#"
+                href="/create-account"
                 className="font-medium text-hier-primary hover:underline"
               >
                 Create an account
