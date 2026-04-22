@@ -12,7 +12,7 @@ export default function CreateAccountPage() {
         <div className="mb-8 flex items-center justify-between">
           <HierBrand compact />
           <span className="text-xs uppercase tracking-[0.18em] text-hier-muted">
-            Get started
+           
           </span>
         </div>
 

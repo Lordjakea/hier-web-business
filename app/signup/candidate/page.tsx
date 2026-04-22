@@ -236,7 +236,7 @@ export default function CandidateSignupPage() {
                     type="text"
                     value={form.first_name}
                     onChange={(e) => updateField("first_name", e.target.value)}
-                    placeholder="Jake"
+                    placeholder="John"
                     className="h-14 w-full rounded-[22px] border border-hier-border bg-hier-panel pl-11 pr-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
                   />
                 </div>
@@ -252,7 +252,7 @@ export default function CandidateSignupPage() {
                     type="text"
                     value={form.last_name}
                     onChange={(e) => updateField("last_name", e.target.value)}
-                    placeholder="Allen"
+                    placeholder="Smith"
                     className="h-14 w-full rounded-[22px] border border-hier-border bg-hier-panel pl-11 pr-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
                   />
                 </div>
