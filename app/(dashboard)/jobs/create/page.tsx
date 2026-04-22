@@ -27,7 +27,7 @@ type FormValues = {
   title: string;
   description: string;
   locationText: string;
-  isRemote: boolean;
+  workMode: "office" | "hybrid" | "remote";
   isGig: boolean;
   sector: string;
   employmentType: string;
@@ -48,7 +48,7 @@ const initialValues: FormValues = {
   title: "",
   description: "",
   locationText: "",
-  isRemote: false,
+  workMode: "office",
   isGig: false,
   sector: "",
   employmentType: "Full-time",
@@ -374,7 +374,7 @@ export default function JobsCreatePage() {
           description: values.description.trim(),
           location_text: !isGig ? values.locationText.trim() || null : null,
           location: !isGig ? values.locationText.trim() || null : null,
-          is_remote: values.isRemote,
+          is_remote: values.workMode === "remote",
           sector: !isGig ? values.sector.trim() || null : null,
           employment_type: !isGig ? values.employmentType.trim() || null : null,
           experience: !isGig ? values.experience.trim() || null : null,
@@ -703,17 +703,37 @@ export default function JobsCreatePage() {
                   ) : null}
 
                   {!isGig ? (
-                    <div className="space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Remote</span>
-                      <button
-                        type="button"
-                        onClick={() => onChange("isRemote", !values.isRemote)}
-                        className={`inline-flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-semibold ${
-                          values.isRemote ? "bg-hier-primary text-white" : "border border-hier-border bg-hier-panel text-hier-text"
-                        }`}
-                      >
-                        {values.isRemote ? "Remote role" : "Office / hybrid"}
-                      </button>
+                    <div className="space-y-2 md:col-span-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                        Work mode
+                      </span>
+
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {[
+                          { value: "office", label: "Office" },
+                          { value: "hybrid", label: "Hybrid" },
+                          { value: "remote", label: "Remote" },
+                        ].map((option) => {
+                          const active = values.workMode === option.value;
+
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() =>
+                                onChange("workMode", option.value as "office" | "hybrid" | "remote")
+                              }
+                              className={`inline-flex h-12 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition ${
+                                active
+                                  ? "bg-hier-primary text-white"
+                                  : "border border-hier-border bg-white text-hier-text hover:bg-hier-panel"
+                              }`}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   ) : null}
 
