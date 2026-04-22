@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
 import { LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { HierBrand } from "@/components/ui/brand";
 import { loginBusinessUser } from "@/lib/business-applications";
@@ -49,7 +49,7 @@ function Feature({
   );
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -272,5 +272,13 @@ export default function LoginPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-login-glow" />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
