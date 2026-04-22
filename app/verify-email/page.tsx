@@ -116,7 +116,7 @@ function VerifyEmailPageContent() {
         return;
       }
 
-      window.location.assign("https://hierapp.co.uk");
+      router.replace("/get-the-app");
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -159,78 +159,85 @@ function VerifyEmailPageContent() {
     }
   }
 
-  const backHref = role === "business_user" ? "/signup/business" : "/signup/candidate";
+  const backHref =
+    role === "business_user" ? "/signup/business" : "/signup/candidate";
 
   return (
     <main className="min-h-screen bg-login-glow">
       <div className="mx-auto grid min-h-screen max-w-[1600px] gap-10 px-6 py-8 lg:grid-cols-[1.02fr_0.98fr] lg:px-10">
-        <section className="hidden flex-col justify-between rounded-[36px] border border-hier-border bg-gradient-to-br from-white via-hier-soft to-white p-10 shadow-panel lg:flex">
-          <HierBrand />
+        <section className="hidden rounded-[36px] border border-hier-border bg-gradient-to-br from-white via-hier-soft to-white p-10 shadow-panel lg:flex">
+          <div className="flex h-full flex-col">
+            <HierBrand />
 
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-hier-muted">
-                Verify email
-              </p>
-              <h1 className="max-w-xl text-5xl font-semibold leading-tight tracking-tight text-hier-text">
-                Enter the one-time code we sent to your email.
-              </h1>
-              <p className="max-w-xl text-lg leading-8 text-hier-muted">
-                Once your email is verified, your Hier account can continue to
-                the next stage.
-              </p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-[24px] border border-white/50 bg-white/75 p-5 shadow-card backdrop-blur-sm">
-                <div className="mb-3 inline-flex rounded-2xl bg-hier-primary/15 p-3 text-hier-primary">
-                  <MailCheck className="h-5 w-5" />
-                </div>
-                <h3 className="text-base font-semibold text-hier-text">
-                  Email on file
-                </h3>
-                <p className="mt-2 break-all text-sm leading-6 text-hier-muted">
-                  {email || "No email provided"}
+            <div className="mt-16 space-y-8">
+              <div className="space-y-4">
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-hier-muted">
+                  Verify email
+                </p>
+                <h1 className="max-w-xl text-5xl font-semibold leading-tight tracking-tight text-hier-text">
+                  Enter the one-time code we sent to your email.
+                </h1>
+                <p className="max-w-xl text-lg leading-8 text-hier-muted">
+                  Once your email is verified, your Hier account can continue to
+                  the next stage.
                 </p>
               </div>
 
-              <div className="rounded-[24px] border border-white/50 bg-white/75 p-5 shadow-card backdrop-blur-sm">
-                <div className="mb-3 inline-flex rounded-2xl bg-hier-primary/15 p-3 text-hier-primary">
-                  <ShieldCheck className="h-5 w-5" />
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[24px] border border-white/50 bg-white/75 p-5 shadow-card backdrop-blur-sm">
+                  <div className="mb-3 inline-flex rounded-2xl bg-hier-primary/15 p-3 text-hier-primary">
+                    <MailCheck className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-base font-semibold text-hier-text">
+                    Email on file
+                  </h3>
+                  <p className="mt-2 break-all text-sm leading-6 text-hier-muted">
+                    {email || "No email provided"}
+                  </p>
                 </div>
-                <h3 className="text-base font-semibold text-hier-text">
-                  Next after verification
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-hier-muted">
-                  {role === "business_user"
-                    ? "You’ll go straight into pricing."
-                    : "You’ll continue into the Hier candidate flow."}
-                </p>
+
+                <div className="rounded-[24px] border border-white/50 bg-white/75 p-5 shadow-card backdrop-blur-sm">
+                  <div className="mb-3 inline-flex rounded-2xl bg-hier-primary/15 p-3 text-hier-primary">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-base font-semibold text-hier-text">
+                    Next after verification
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-hier-muted">
+                    {role === "business_user"
+                      ? "You’ll go straight into pricing."
+                      : "You’ll go to the app download page."}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            {(role === "business_user"
-              ? [
-                  ["1", "Account created"],
-                  ["2", "Verify email"],
-                  ["3", "Choose plan"],
-                ]
-              : [
-                  ["1", "Account created"],
-                  ["2", "Verify email"],
-                  ["3", "Continue"],
-                ]
-            ).map(([value, label]) => (
-              <div
-                key={label}
-                className="rounded-[24px] border border-white/60 bg-white/80 p-5 shadow-card"
-              >
-                <p className="text-2xl font-semibold text-hier-text">{value}</p>
-                <p className="mt-2 text-sm text-hier-muted">{label}</p>
+            <div className="mt-auto pt-10">
+              <div className="grid grid-cols-3 gap-4">
+                {(role === "business_user"
+                  ? [
+                      ["1", "Account created"],
+                      ["2", "Verify email"],
+                      ["3", "Choose plan"],
+                    ]
+                  : [
+                      ["1", "Account created"],
+                      ["2", "Verify email"],
+                      ["3", "Download app"],
+                    ]
+                ).map(([value, label]) => (
+                  <div
+                    key={label}
+                    className="rounded-[24px] border border-white/60 bg-white/80 p-5 shadow-card"
+                  >
+                    <p className="text-2xl font-semibold text-hier-text">
+                      {value}
+                    </p>
+                    <p className="mt-2 text-sm text-hier-muted">{label}</p>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </section>
 
@@ -243,7 +250,7 @@ function VerifyEmailPageContent() {
               </span>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <h2 className="text-3xl font-semibold tracking-tight text-hier-text">
                 Verify your email
               </h2>
@@ -300,7 +307,7 @@ function VerifyEmailPageContent() {
                   ? "Verifying…"
                   : role === "business_user"
                   ? "Verify and continue to pricing"
-                  : "Verify email"}
+                  : "Verify and continue"}
               </button>
 
               <button
