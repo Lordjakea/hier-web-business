@@ -1,6 +1,8 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import Cropper from "react-easy-crop";
+import { X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   confirmBusinessAvatarUpload,
@@ -40,6 +42,51 @@ function getInitials(name: string) {
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
+async function createCroppedImageFile(params: {
+  imageSrc: string;
+  cropPixels: { width: number; height: number; x: number; y: number };
+  originalFileName: string;
+}): Promise<File> {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = params.imageSrc;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = params.cropPixels.width;
+  canvas.height = params.cropPixels.height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not prepare image crop.");
+
+  ctx.drawImage(
+    image,
+    params.cropPixels.x,
+    params.cropPixels.y,
+    params.cropPixels.width,
+    params.cropPixels.height,
+    0,
+    0,
+    params.cropPixels.width,
+    params.cropPixels.height
+  );
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.92)
+  );
+
+  if (!blob) {
+    throw new Error("Could not export cropped image.");
+  }
+
+  const outputName =
+    params.originalFileName.replace(/\.[^.]+$/, "") + "-cropped.jpg";
+
+  return new File([blob], outputName, { type: "image/jpeg" });
+}
+
 export default function ProfileSettingsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -50,6 +97,18 @@ export default function ProfileSettingsPage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [cropOpen, setCropOpen] = useState(false);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const [pendingAvatarSrc, setPendingAvatarSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<{
+    width: number;
+    height: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -82,6 +141,14 @@ export default function ProfileSettingsPage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pendingAvatarSrc) {
+        URL.revokeObjectURL(pendingAvatarSrc);
+      }
+    };
+  }, [pendingAvatarSrc]);
 
   const hasChanges = useMemo(() => {
     if (!profile) {
@@ -148,21 +215,56 @@ export default function ProfileSettingsPage() {
 
     if (!file) return;
 
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      return;
+    }
+
+    setSuccess(null);
+    setError(null);
+
+    if (pendingAvatarSrc) {
+      URL.revokeObjectURL(pendingAvatarSrc);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setPendingAvatarFile(file);
+    setPendingAvatarSrc(objectUrl);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+    setCropOpen(true);
+  }
+
+  async function handleConfirmAvatarCrop() {
+    if (!pendingAvatarFile || !pendingAvatarSrc || !croppedAreaPixels) {
+      setError("Could not prepare cropped avatar.");
+      return;
+    }
+
     setUploadingAvatar(true);
     setSuccess(null);
     setError(null);
 
     try {
+      const croppedFile = await createCroppedImageFile({
+        imageSrc: pendingAvatarSrc,
+        cropPixels: croppedAreaPixels,
+        originalFileName: pendingAvatarFile.name,
+      });
+
       const presign = await presignBusinessAvatarUpload({
-        original_filename: file.name,
-        mime_type: file.type || "image/jpeg",
-        size_bytes: file.size,
+        original_filename: croppedFile.name,
+        mime_type: croppedFile.type || "image/jpeg",
+        size_bytes: croppedFile.size,
       });
 
       const uploadResponse = await fetch(presign.upload_url, {
         method: "PUT",
-        headers: file.type ? { "Content-Type": file.type } : undefined,
-        body: file,
+        headers: croppedFile.type
+          ? { "Content-Type": croppedFile.type }
+          : undefined,
+        body: croppedFile,
       });
 
       if (!uploadResponse.ok) {
@@ -173,6 +275,16 @@ export default function ProfileSettingsPage() {
 
       setProfile(confirmed.profile);
       setSuccess("Company logo updated.");
+
+      setCropOpen(false);
+      setPendingAvatarFile(null);
+      if (pendingAvatarSrc) {
+        URL.revokeObjectURL(pendingAvatarSrc);
+      }
+      setPendingAvatarSrc(null);
+      setCroppedAreaPixels(null);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -182,6 +294,18 @@ export default function ProfileSettingsPage() {
     } finally {
       setUploadingAvatar(false);
     }
+  }
+
+  function handleCancelCrop() {
+    setCropOpen(false);
+    setPendingAvatarFile(null);
+    if (pendingAvatarSrc) {
+      URL.revokeObjectURL(pendingAvatarSrc);
+    }
+    setPendingAvatarSrc(null);
+    setCroppedAreaPixels(null);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
   }
 
   const avatarUrl = profile?.avatar_url || null;
@@ -196,6 +320,66 @@ export default function ProfileSettingsPage() {
         title="Business profile settings"
         description="Manage the company details that power your business dashboard, branding, and shared business identity across Hier."
       />
+
+      {cropOpen && pendingAvatarSrc ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl rounded-[28px] bg-white p-4 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-hier-text">
+                  Crop company logo
+                </h3>
+                <p className="text-sm text-hier-muted">
+                  Use a square crop for the best result across the dashboard and app.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCancelCrop}
+                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+              >
+                <X className="h-4 w-4" />
+                Cancel
+              </button>
+            </div>
+
+            <div className="relative h-[55vh] overflow-hidden rounded-[24px] bg-black">
+              <Cropper
+                image={pendingAvatarSrc}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="rect"
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+              />
+            </div>
+
+            <div className="mt-4 flex items-center gap-4">
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.01}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="w-full"
+              />
+
+              <button
+                type="button"
+                onClick={() => void handleConfirmAvatarCrop()}
+                disabled={uploadingAvatar}
+                className="inline-flex h-11 items-center rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {uploadingAvatar ? "Uploading…" : "Use crop"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
@@ -364,8 +548,7 @@ export default function ProfileSettingsPage() {
                   </button>
 
                   <p className="text-sm text-hier-muted">
-                    Recommended: square logo image. This will update the
-                    business identity across the dashboard and app.
+                    Recommended: square logo image. You’ll be able to crop it before upload.
                   </p>
                 </div>
 
