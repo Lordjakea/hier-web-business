@@ -4,15 +4,21 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Archive,
+  CalendarDays,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
+  Eye,
   FilePlus2,
   FileText,
   Loader2,
+  Mail,
   MapPin,
+  PencilLine,
+  Phone,
   RefreshCw,
   RotateCcw,
+  Save,
   Send,
   ShieldCheck,
   Upload,
@@ -21,6 +27,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { apiFetch } from "@/lib/api";
 import {
   createOnboardingContract,
   createOnboardingDocument,
@@ -44,6 +51,29 @@ import type {
 } from "@/lib/types";
 
 type WorkspaceTab = "active" | "inactive" | "employees";
+
+type EmployeeRecordForm = {
+  legal_name: string;
+  preferred_name: string;
+  personal_email: string;
+  work_email: string;
+  phone: string;
+  address_line_1: string;
+  address_line_2: string;
+  city: string;
+  region: string;
+  postcode: string;
+  country_code: string;
+  start_date: string;
+  employee_number: string;
+  job_title: string;
+  department: string;
+  manager_name: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  national_id_last4: string;
+  notes: string;
+};
 
 function formatLabel(value?: string | null) {
   if (!value) return "—";
@@ -140,6 +170,141 @@ function tabButtonClass(active: boolean) {
     : "border-hier-border bg-white text-hier-text hover:bg-hier-panel";
 }
 
+function getPossibleFileUrl(record: any): string | null {
+  if (!record || typeof record !== "object") return null;
+
+  const directKeys = [
+    "file_url",
+    "document_url",
+    "download_url",
+    "signed_url",
+    "public_url",
+    "url",
+    "view_url",
+  ];
+
+  for (const key of directKeys) {
+    const value = record?.[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+
+  const nested = record?.file || record?.document || record?.asset || null;
+  if (nested && typeof nested === "object") {
+    for (const key of directKeys) {
+      const value = nested?.[key];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+  }
+
+  return null;
+}
+
+function openFileUrl(url: string | null | undefined) {
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function getTaskSubmissionValue(task: BusinessOnboardingTask): string | null {
+  const anyTask = task as any;
+
+  const directValues = [
+    anyTask?.submitted_value,
+    anyTask?.submission_value,
+    anyTask?.response_value,
+    anyTask?.answer_value,
+    anyTask?.value,
+    anyTask?.submitted_text,
+  ];
+
+  for (const value of directValues) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+
+  const meta = anyTask?.meta || anyTask?.submission_meta || anyTask?.response_meta;
+  if (meta && typeof meta === "object") {
+    const nestedValues = [
+      meta?.submitted_value,
+      meta?.submission_value,
+      meta?.response_value,
+      meta?.answer_value,
+      meta?.value,
+      meta?.text,
+      meta?.notes,
+    ];
+    for (const value of nestedValues) {
+      if (typeof value === "string" && value.trim()) return value;
+    }
+  }
+
+  return null;
+}
+
+function getTaskSubmissionPairs(task: BusinessOnboardingTask): Array<{ label: string; value: string }> {
+  const anyTask = task as any;
+  const meta = anyTask?.meta || anyTask?.submission_meta || anyTask?.response_meta || {};
+  const candidates = [
+    meta?.fields,
+    meta?.submitted_fields,
+    meta?.answers,
+    meta?.submitted_answers,
+  ];
+
+  for (const group of candidates) {
+    if (group && typeof group === "object" && !Array.isArray(group)) {
+      return Object.entries(group)
+        .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== "")
+        .map(([key, value]) => ({
+          label: formatLabel(key),
+          value: String(value),
+        }));
+    }
+  }
+
+  return [];
+}
+
+function buildEmployeeRecordForm(item: BusinessOnboarding | null): EmployeeRecordForm {
+  const anyItem = item as any;
+  const record = anyItem?.employee_record || anyItem?.employee || {};
+  const candidate = anyItem?.candidate || {};
+  const jobPost = anyItem?.job_post || {};
+
+  return {
+    legal_name: record?.legal_name || candidate?.display_name || "",
+    preferred_name: record?.preferred_name || "",
+    personal_email: record?.personal_email || candidate?.email || "",
+    work_email: record?.work_email || "",
+    phone: record?.phone || candidate?.phone || "",
+    address_line_1: record?.address_line_1 || "",
+    address_line_2: record?.address_line_2 || "",
+    city: record?.city || "",
+    region: record?.region || "",
+    postcode: record?.postcode || "",
+    country_code: record?.country_code || item?.country_code || "",
+    start_date: record?.start_date || "",
+    employee_number: record?.employee_number || "",
+    job_title: record?.job_title || jobPost?.title || "",
+    department: record?.department || "",
+    manager_name: record?.manager_name || "",
+    emergency_contact_name: record?.emergency_contact_name || "",
+    emergency_contact_phone: record?.emergency_contact_phone || "",
+    national_id_last4: record?.national_id_last4 || "",
+    notes: record?.notes || "",
+  };
+}
+
+function formInputClass(disabled = false) {
+  return `h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white ${
+    disabled ? "opacity-60" : ""
+  }`;
+}
+
+function formTextareaClass(disabled = false) {
+  return `min-h-[120px] w-full rounded-2xl border border-hier-border bg-hier-panel px-4 py-3 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white ${
+    disabled ? "opacity-60" : ""
+  }`;
+}
+
 export default function OnboardingPage() {
   const searchParams = useSearchParams();
   const applicationIdFromUrl = Number(searchParams.get("applicationId") || "") || null;
@@ -152,6 +317,7 @@ export default function OnboardingPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>("active");
@@ -162,6 +328,10 @@ export default function OnboardingPage() {
   const [documentType, setDocumentType] = useState("contract");
   const [documentTaskId, setDocumentTaskId] = useState<number | "">("");
   const [removeReason, setRemoveReason] = useState("removed_by_business");
+
+  const [employeeRecordForm, setEmployeeRecordForm] = useState<EmployeeRecordForm>(
+    buildEmployeeRecordForm(null),
+  );
 
   async function loadList() {
     setLoading(true);
@@ -278,6 +448,10 @@ export default function OnboardingPage() {
     void loadDetail(selectedId);
   }, [selectedId]);
 
+  useEffect(() => {
+    setEmployeeRecordForm(buildEmployeeRecordForm(selected));
+  }, [selected]);
+
   const requiredTasks = useMemo(() => {
     return (selected?.tasks || []).filter((task) => task.required);
   }, [selected]);
@@ -294,6 +468,18 @@ export default function OnboardingPage() {
     ).length;
   }, [requiredTasks]);
 
+  const submittedTaskItems = useMemo(() => {
+    return (selected?.tasks || []).filter((task) => {
+      const status = task.status || "";
+      return (
+        ["submitted", "reviewed", "approved", "rejected", "waived"].includes(status) ||
+        !!getTaskSubmissionValue(task) ||
+        getTaskSubmissionPairs(task).length > 0 ||
+        !!getPossibleFileUrl(task as any)
+      );
+    });
+  }, [selected]);
+
   const selectedApplicationStage = selected?.application?.stage || null;
   const selectedAllowsOnboarding = applicationAllowsOnboarding(selectedApplicationStage);
   const selectedIsRemoved = selected?.status === "removed";
@@ -305,6 +491,16 @@ export default function OnboardingPage() {
   const canRestoreSelected =
     !!selected && selectedIsRemoved && selectedAllowsOnboarding;
 
+  function updateEmployeeField<K extends keyof EmployeeRecordForm>(
+    key: K,
+    value: EmployeeRecordForm[K],
+  ) {
+    setEmployeeRecordForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
   async function handleTaskReview(
     taskId: number,
     status: "approved" | "rejected" | "waived" | "reviewed",
@@ -313,10 +509,12 @@ export default function OnboardingPage() {
 
     setBusyKey(`task-review-${taskId}`);
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await reviewOnboardingTask(selectedId, taskId, { status });
       await refreshSelected();
+      setSuccessMessage("Task review updated.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error ? caughtError.message : "Could not update task.",
@@ -331,10 +529,12 @@ export default function OnboardingPage() {
 
     setBusyKey(`task-rerequest-${taskId}`);
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await requestOnboardingTask(selectedId, taskKey);
       await refreshSelected();
+      setSuccessMessage("Task requested again.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
@@ -351,10 +551,12 @@ export default function OnboardingPage() {
 
     setBusyKey(`task-send-${taskId}`);
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await sendOnboardingTask(selectedId, taskId);
       await refreshSelected();
+      setSuccessMessage("Task sent to candidate.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
@@ -371,6 +573,7 @@ export default function OnboardingPage() {
 
     setBusyKey("contract-create");
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await createOnboardingContract(selectedId, {
@@ -382,6 +585,7 @@ export default function OnboardingPage() {
       setContractTitle("");
       setContractTemplateName("");
       await refreshSelected();
+      setSuccessMessage("Contract created.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
@@ -398,6 +602,7 @@ export default function OnboardingPage() {
 
     setBusyKey("contract-upload");
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await uploadAndCreateOnboardingContract(selectedId, file, {
@@ -408,6 +613,7 @@ export default function OnboardingPage() {
       setContractTitle("");
       setContractTemplateName("");
       await refreshSelected();
+      setSuccessMessage("Contract uploaded.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
@@ -424,10 +630,12 @@ export default function OnboardingPage() {
 
     setBusyKey(`contract-send-${contractId}`);
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await sendOnboardingContract(selectedId, contractId);
       await refreshSelected();
+      setSuccessMessage("Contract sent to candidate.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
@@ -444,6 +652,7 @@ export default function OnboardingPage() {
 
     setBusyKey("document-create");
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await createOnboardingDocument(selectedId, {
@@ -458,6 +667,7 @@ export default function OnboardingPage() {
       setDocumentType("contract");
       setDocumentTaskId("");
       await refreshSelected();
+      setSuccessMessage("Document record added.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error ? caughtError.message : "Could not add document.",
@@ -472,6 +682,7 @@ export default function OnboardingPage() {
 
     setBusyKey("document-upload");
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await uploadAndCreateOnboardingDocument(selectedId, file, {
@@ -486,6 +697,7 @@ export default function OnboardingPage() {
       setDocumentType("contract");
       setDocumentTaskId("");
       await refreshSelected();
+      setSuccessMessage("Document uploaded.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
@@ -502,10 +714,12 @@ export default function OnboardingPage() {
 
     setBusyKey(`document-send-${documentId}`);
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await sendOnboardingDocument(selectedId, documentId);
       await refreshSelected();
+      setSuccessMessage("Document sent to candidate.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
@@ -527,6 +741,7 @@ export default function OnboardingPage() {
 
     setBusyKey("onboarding-remove");
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await removeOnboarding(selectedId, {
@@ -534,6 +749,7 @@ export default function OnboardingPage() {
       });
       await refreshSelected();
       setTab("inactive");
+      setSuccessMessage("Candidate removed from onboarding.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
@@ -550,16 +766,44 @@ export default function OnboardingPage() {
 
     setBusyKey("onboarding-restore");
     setActionError(null);
+    setSuccessMessage(null);
 
     try {
       await restoreOnboarding(selectedId);
       await refreshSelected();
       setTab("active");
+      setSuccessMessage("Onboarding re-enabled.");
     } catch (caughtError) {
       setActionError(
         caughtError instanceof Error
           ? caughtError.message
           : "Could not re-enable onboarding.",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleSaveEmployeeRecord() {
+    if (!selectedId || !selectedIsEmployeeLike) return;
+
+    setBusyKey("employee-record-save");
+    setActionError(null);
+    setSuccessMessage(null);
+
+    try {
+      await apiFetch(`/api/business/onboarding/${selectedId}/employee-record`, {
+        method: "PATCH",
+        body: JSON.stringify(employeeRecordForm),
+      });
+
+      await refreshSelected();
+      setSuccessMessage("Employee record saved.");
+    } catch (caughtError) {
+      setActionError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not save employee record.",
       );
     } finally {
       setBusyKey(null);
@@ -590,8 +834,9 @@ export default function OnboardingPage() {
           Onboarding workspace
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-7 text-hier-muted">
-          Manage active onboarding, keep removed journeys out of the live workflow,
-          and separate employee-linked records into their own workspace view.
+          Manage active onboarding, review submitted documents, keep removed journeys
+          out of the live workflow, and separate employee-linked records into their
+          own workspace view.
         </p>
       </div>
 
@@ -648,6 +893,12 @@ export default function OnboardingPage() {
       {actionError ? (
         <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-700">
           {actionError}
+        </div>
+      ) : null}
+
+      {successMessage ? (
+        <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
+          {successMessage}
         </div>
       ) : null}
 
@@ -770,8 +1021,10 @@ export default function OnboardingPage() {
 
                 {selectedIsEmployeeLike ? (
                   <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
-                    This journey is now employee-linked. Keep it in the employee records
-                    workspace for reference and ongoing document history.
+                    This journey is now employee-linked. Use this view to review
+                    submitted onboarding information, keep document history, and edit
+                    the employee record before or after promotion into your dedicated
+                    employee records system.
                   </div>
                 ) : null}
 
@@ -807,7 +1060,9 @@ export default function OnboardingPage() {
                       {selectedIsEmployeeLike ? "Employee-linked" : "Needs attention"}
                     </p>
                     <p className="mt-3 text-3xl font-semibold tracking-tight text-hier-text">
-                      {selectedIsEmployeeLike ? (selected.documents || []).length : pendingRequiredCount}
+                      {selectedIsEmployeeLike
+                        ? (selected.documents || []).length
+                        : pendingRequiredCount}
                     </p>
                     <p className="mt-2 text-sm text-hier-muted">
                       {selectedIsEmployeeLike
@@ -876,7 +1131,21 @@ export default function OnboardingPage() {
                               : "Remove from onboarding"}
                           </button>
                         </>
-                      ) : null}
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveEmployeeRecord()}
+                          disabled={busyKey === "employee-record-save"}
+                          className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:opacity-60"
+                        >
+                          {busyKey === "employee-record-save" ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Save className="h-4 w-4" />
+                          )}
+                          Save employee record
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -960,124 +1229,381 @@ export default function OnboardingPage() {
                             No onboarding tasks available yet.
                           </div>
                         ) : (
-                          (selected.tasks || []).map((task: BusinessOnboardingTask) => (
-                            <div
-                              key={task.id}
-                              className="rounded-[22px] border border-hier-border bg-white p-4"
-                            >
-                              <div className="flex flex-col gap-4">
-                                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                                  <div>
-                                    <p className="text-sm font-semibold text-hier-text">
-                                      {task.title || formatLabel(task.task_key)}
-                                    </p>
-                                    <p className="mt-1 text-sm text-hier-muted">
-                                      {task.description || "No description added yet."}
-                                    </p>
+                          (selected.tasks || []).map((task: BusinessOnboardingTask) => {
+                            const submissionValue = getTaskSubmissionValue(task);
+                            const submissionPairs = getTaskSubmissionPairs(task);
+                            const taskViewUrl = getPossibleFileUrl(task as any);
 
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                      <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-[11px] font-semibold text-hier-text">
-                                        {formatLabel(task.owner_type)}
-                                      </span>
-                                      <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-[11px] font-semibold text-hier-text">
-                                        {task.required ? "Required" : "Optional"}
-                                      </span>
-                                      {task.phase ? (
+                            return (
+                              <div
+                                key={task.id}
+                                className="rounded-[22px] border border-hier-border bg-white p-4"
+                              >
+                                <div className="flex flex-col gap-4">
+                                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                      <p className="text-sm font-semibold text-hier-text">
+                                        {task.title || formatLabel(task.task_key)}
+                                      </p>
+                                      <p className="mt-1 text-sm text-hier-muted">
+                                        {task.description || "No description added yet."}
+                                      </p>
+
+                                      <div className="mt-3 flex flex-wrap gap-2">
                                         <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-[11px] font-semibold text-hier-text">
-                                          {formatLabel(task.phase)}
+                                          {formatLabel(task.owner_type)}
                                         </span>
-                                      ) : null}
+                                        <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-[11px] font-semibold text-hier-text">
+                                          {task.required ? "Required" : "Optional"}
+                                        </span>
+                                        {task.phase ? (
+                                          <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-[11px] font-semibold text-hier-text">
+                                            {formatLabel(task.phase)}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+
+                                    <div className="shrink-0">
+                                      <span
+                                        className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(
+                                          task.status,
+                                        )}`}
+                                      >
+                                        {formatLabel(task.status)}
+                                      </span>
                                     </div>
                                   </div>
 
-                                  <div className="shrink-0">
-                                    <span
-                                      className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(
-                                        task.status,
-                                      )}`}
-                                    >
-                                      {formatLabel(task.status)}
-                                    </span>
-                                  </div>
-                                </div>
+                                  {(submissionValue || submissionPairs.length > 0 || taskViewUrl) ? (
+                                    <div className="rounded-[18px] bg-hier-panel p-4">
+                                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                                        Submitted information
+                                      </p>
 
-                                {!selectedIsEmployeeLike ? (
-                                  <div className="flex flex-wrap gap-2">
-                                    {task.owner_type === "candidate" && task.status === "draft" ? (
+                                      {submissionValue ? (
+                                        <p className="mt-2 text-sm leading-6 text-hier-text">
+                                          {submissionValue}
+                                        </p>
+                                      ) : null}
+
+                                      {submissionPairs.length > 0 ? (
+                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                          {submissionPairs.map((pair) => (
+                                            <div
+                                              key={`${task.id}-${pair.label}`}
+                                              className="rounded-[16px] border border-hier-border bg-white p-3"
+                                            >
+                                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                                                {pair.label}
+                                              </p>
+                                              <p className="mt-2 text-sm text-hier-text">
+                                                {pair.value}
+                                              </p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : null}
+
+                                      {taskViewUrl ? (
+                                        <div className="mt-3">
+                                          <button
+                                            type="button"
+                                            onClick={() => openFileUrl(taskViewUrl)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            View submission
+                                          </button>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+
+                                  {!selectedIsEmployeeLike ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      {task.owner_type === "candidate" && task.status === "draft" ? (
+                                        <button
+                                          type="button"
+                                          disabled={
+                                            !canManageSelected ||
+                                            busyKey === `task-send-${task.id}`
+                                          }
+                                          onClick={() => void handleTaskSend(task.id)}
+                                          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
+                                        >
+                                          {busyKey === `task-send-${task.id}` ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                          ) : (
+                                            <Send className="h-4 w-4" />
+                                          )}
+                                          Send to candidate
+                                        </button>
+                                      ) : null}
+
                                       <button
                                         type="button"
                                         disabled={
                                           !canManageSelected ||
-                                          busyKey === `task-send-${task.id}`
+                                          busyKey === `task-review-${task.id}`
                                         }
-                                        onClick={() => void handleTaskSend(task.id)}
-                                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
+                                        onClick={() =>
+                                          void handleTaskReview(task.id, "approved")
+                                        }
+                                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 disabled:opacity-60"
                                       >
-                                        {busyKey === `task-send-${task.id}` ? (
+                                        {busyKey === `task-review-${task.id}` ? (
                                           <Loader2 className="h-4 w-4 animate-spin" />
                                         ) : (
-                                          <Send className="h-4 w-4" />
+                                          <CheckCircle2 className="h-4 w-4" />
                                         )}
-                                        Send to candidate
+                                        Approve
                                       </button>
-                                    ) : null}
 
-                                    <button
-                                      type="button"
-                                      disabled={
-                                        !canManageSelected ||
-                                        busyKey === `task-review-${task.id}`
-                                      }
-                                      onClick={() =>
-                                        void handleTaskReview(task.id, "approved")
-                                      }
-                                      className="inline-flex h-10 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 disabled:opacity-60"
-                                    >
-                                      {busyKey === `task-review-${task.id}` ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <CheckCircle2 className="h-4 w-4" />
-                                      )}
-                                      Approve
-                                    </button>
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          !canManageSelected ||
+                                          busyKey === `task-review-${task.id}`
+                                        }
+                                        onClick={() =>
+                                          void handleTaskReview(task.id, "rejected")
+                                        }
+                                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-medium text-rose-700 disabled:opacity-60"
+                                      >
+                                        <XCircle className="h-4 w-4" />
+                                        Reject
+                                      </button>
 
-                                    <button
-                                      type="button"
-                                      disabled={
-                                        !canManageSelected ||
-                                        busyKey === `task-review-${task.id}`
-                                      }
-                                      onClick={() =>
-                                        void handleTaskReview(task.id, "rejected")
-                                      }
-                                      className="inline-flex h-10 items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-medium text-rose-700 disabled:opacity-60"
-                                    >
-                                      <XCircle className="h-4 w-4" />
-                                      Reject
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      disabled={
-                                        !canManageSelected ||
-                                        busyKey === `task-rerequest-${task.id}`
-                                      }
-                                      onClick={() =>
-                                        void handleTaskRerequest(task.task_key, task.id)
-                                      }
-                                      className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink disabled:opacity-60"
-                                    >
-                                      <RefreshCw className="h-4 w-4" />
-                                      Re-request
-                                    </button>
-                                  </div>
-                                ) : null}
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          !canManageSelected ||
+                                          busyKey === `task-rerequest-${task.id}`
+                                        }
+                                        onClick={() =>
+                                          void handleTaskRerequest(task.task_key, task.id)
+                                        }
+                                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink disabled:opacity-60"
+                                      >
+                                        <RefreshCw className="h-4 w-4" />
+                                        Re-request
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
                     </section>
+
+                    {selectedIsEmployeeLike ? (
+                      <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+                        <div className="flex items-center gap-3">
+                          <PencilLine className="h-5 w-5 text-hier-primary" />
+                          <h3 className="text-xl font-semibold text-hier-text">
+                            Editable employee record
+                          </h3>
+                        </div>
+
+                        <p className="mt-3 text-sm leading-6 text-hier-muted">
+                          This lets you save core employee details directly from the
+                          onboarding journey before you move everything into a dedicated
+                          employee records workflow.
+                        </p>
+
+                        <div className="mt-5 grid gap-4 md:grid-cols-2">
+                          <input
+                            value={employeeRecordForm.legal_name}
+                            onChange={(event) =>
+                              updateEmployeeField("legal_name", event.target.value)
+                            }
+                            placeholder="Legal name"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.preferred_name}
+                            onChange={(event) =>
+                              updateEmployeeField("preferred_name", event.target.value)
+                            }
+                            placeholder="Preferred name"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.personal_email}
+                            onChange={(event) =>
+                              updateEmployeeField("personal_email", event.target.value)
+                            }
+                            placeholder="Personal email"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.work_email}
+                            onChange={(event) =>
+                              updateEmployeeField("work_email", event.target.value)
+                            }
+                            placeholder="Work email"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.phone}
+                            onChange={(event) =>
+                              updateEmployeeField("phone", event.target.value)
+                            }
+                            placeholder="Phone"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.employee_number}
+                            onChange={(event) =>
+                              updateEmployeeField("employee_number", event.target.value)
+                            }
+                            placeholder="Employee number"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.start_date}
+                            onChange={(event) =>
+                              updateEmployeeField("start_date", event.target.value)
+                            }
+                            placeholder="Start date"
+                            type="date"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.job_title}
+                            onChange={(event) =>
+                              updateEmployeeField("job_title", event.target.value)
+                            }
+                            placeholder="Job title"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.department}
+                            onChange={(event) =>
+                              updateEmployeeField("department", event.target.value)
+                            }
+                            placeholder="Department"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.manager_name}
+                            onChange={(event) =>
+                              updateEmployeeField("manager_name", event.target.value)
+                            }
+                            placeholder="Manager name"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.address_line_1}
+                            onChange={(event) =>
+                              updateEmployeeField("address_line_1", event.target.value)
+                            }
+                            placeholder="Address line 1"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.address_line_2}
+                            onChange={(event) =>
+                              updateEmployeeField("address_line_2", event.target.value)
+                            }
+                            placeholder="Address line 2"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.city}
+                            onChange={(event) =>
+                              updateEmployeeField("city", event.target.value)
+                            }
+                            placeholder="City"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.region}
+                            onChange={(event) =>
+                              updateEmployeeField("region", event.target.value)
+                            }
+                            placeholder="County / region"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.postcode}
+                            onChange={(event) =>
+                              updateEmployeeField("postcode", event.target.value)
+                            }
+                            placeholder="Postcode"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.country_code}
+                            onChange={(event) =>
+                              updateEmployeeField("country_code", event.target.value)
+                            }
+                            placeholder="Country code"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.emergency_contact_name}
+                            onChange={(event) =>
+                              updateEmployeeField(
+                                "emergency_contact_name",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Emergency contact name"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.emergency_contact_phone}
+                            onChange={(event) =>
+                              updateEmployeeField(
+                                "emergency_contact_phone",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Emergency contact phone"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                          <input
+                            value={employeeRecordForm.national_id_last4}
+                            onChange={(event) =>
+                              updateEmployeeField("national_id_last4", event.target.value)
+                            }
+                            placeholder="National ID last 4"
+                            className={formInputClass(busyKey === "employee-record-save")}
+                          />
+                        </div>
+
+                        <div className="mt-4">
+                          <textarea
+                            value={employeeRecordForm.notes}
+                            onChange={(event) =>
+                              updateEmployeeField("notes", event.target.value)
+                            }
+                            placeholder="Internal notes"
+                            className={formTextareaClass(busyKey === "employee-record-save")}
+                          />
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveEmployeeRecord()}
+                            disabled={busyKey === "employee-record-save"}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:opacity-60"
+                          >
+                            {busyKey === "employee-record-save" ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Save className="h-4 w-4" />
+                            )}
+                            Save employee record
+                          </button>
+                        </div>
+                      </section>
+                    ) : null}
                   </div>
 
                   <div className="space-y-6">
@@ -1184,49 +1710,64 @@ export default function OnboardingPage() {
                           {(selected.contracts || []).length > 0 ? (
                             <div className="mt-4 space-y-3">
                               {(selected.contracts || []).map(
-                                (contract: BusinessOnboardingContract) => (
-                                  <div
-                                    key={contract.id}
-                                    className="rounded-[20px] border border-hier-border bg-white p-4"
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-hier-text">
-                                          {contract.title}
-                                        </p>
-                                        <p className="mt-1 text-xs text-hier-muted">
-                                          {contract.template_name || "No template"}
-                                        </p>
-                                      </div>
-                                      <span
-                                        className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                          contract.status,
-                                        )}`}
-                                      >
-                                        {formatLabel(contract.status)}
-                                      </span>
-                                    </div>
+                                (contract: BusinessOnboardingContract) => {
+                                  const contractUrl = getPossibleFileUrl(contract as any);
 
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                      {contract.status === "draft" ? (
-                                        <button
-                                          type="button"
-                                          disabled={
-                                            !canManageSelected ||
-                                            busyKey === `contract-send-${contract.id}`
-                                          }
-                                          onClick={() =>
-                                            void handleContractSend(contract.id)
-                                          }
-                                          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
+                                  return (
+                                    <div
+                                      key={contract.id}
+                                      className="rounded-[20px] border border-hier-border bg-white p-4"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-semibold text-hier-text">
+                                            {contract.title}
+                                          </p>
+                                          <p className="mt-1 text-xs text-hier-muted">
+                                            {contract.template_name || "No template"}
+                                          </p>
+                                        </div>
+                                        <span
+                                          className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                            contract.status,
+                                          )}`}
                                         >
-                                          <Send className="h-4 w-4" />
-                                          Send contract
-                                        </button>
-                                      ) : null}
+                                          {formatLabel(contract.status)}
+                                        </span>
+                                      </div>
+
+                                      <div className="mt-3 flex flex-wrap gap-2">
+                                        {contractUrl ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => openFileUrl(contractUrl)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            View contract
+                                          </button>
+                                        ) : null}
+
+                                        {contract.status === "draft" ? (
+                                          <button
+                                            type="button"
+                                            disabled={
+                                              !canManageSelected ||
+                                              busyKey === `contract-send-${contract.id}`
+                                            }
+                                            onClick={() =>
+                                              void handleContractSend(contract.id)
+                                            }
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
+                                          >
+                                            <Send className="h-4 w-4" />
+                                            Send contract
+                                          </button>
+                                        ) : null}
+                                      </div>
                                     </div>
-                                  </div>
-                                ),
+                                  );
+                                },
                               )}
                             </div>
                           ) : null}
@@ -1326,94 +1867,316 @@ export default function OnboardingPage() {
                           {(selected.documents || []).length > 0 ? (
                             <div className="mt-4 space-y-3">
                               {(selected.documents || []).map(
-                                (doc: BusinessOnboardingDocument) => (
-                                  <div
-                                    key={doc.id}
-                                    className="rounded-[20px] border border-hier-border bg-white p-4"
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-hier-text">
-                                          {doc.title ||
-                                            doc.original_filename ||
-                                            doc.document_type}
-                                        </p>
-                                        <p className="mt-1 text-xs text-hier-muted">
-                                          {formatLabel(doc.document_type)}
-                                        </p>
+                                (doc: BusinessOnboardingDocument) => {
+                                  const docUrl = getPossibleFileUrl(doc as any);
+
+                                  return (
+                                    <div
+                                      key={doc.id}
+                                      className="rounded-[20px] border border-hier-border bg-white p-4"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-semibold text-hier-text">
+                                            {doc.title ||
+                                              doc.original_filename ||
+                                              doc.document_type}
+                                          </p>
+                                          <p className="mt-1 text-xs text-hier-muted">
+                                            {formatLabel(doc.document_type)}
+                                          </p>
+                                        </div>
+
+                                        <div className="flex flex-col items-end gap-2">
+                                          <span
+                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                              doc.delivery_status || "draft",
+                                            )}`}
+                                          >
+                                            {formatLabel(doc.delivery_status || "draft")}
+                                          </span>
+                                          <span
+                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                              doc.review_status || "pending",
+                                            )}`}
+                                          >
+                                            {formatLabel(doc.review_status || "pending")}
+                                          </span>
+                                        </div>
                                       </div>
 
-                                      <div className="flex flex-col items-end gap-2">
-                                        <span
-                                          className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                            doc.delivery_status || "draft",
-                                          )}`}
-                                        >
-                                          {formatLabel(doc.delivery_status || "draft")}
-                                        </span>
-                                        <span
-                                          className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                            doc.review_status || "pending",
-                                          )}`}
-                                        >
-                                          {formatLabel(doc.review_status || "pending")}
-                                        </span>
+                                      <div className="mt-3 flex flex-wrap gap-2">
+                                        {docUrl ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => openFileUrl(docUrl)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            View document
+                                          </button>
+                                        ) : null}
+
+                                        {(doc.delivery_status || "draft") === "draft" ? (
+                                          <button
+                                            type="button"
+                                            disabled={
+                                              !canManageSelected ||
+                                              busyKey === `document-send-${doc.id}`
+                                            }
+                                            onClick={() =>
+                                              void handleDocumentSend(doc.id)
+                                            }
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
+                                          >
+                                            <Send className="h-4 w-4" />
+                                            Send document
+                                          </button>
+                                        ) : null}
                                       </div>
                                     </div>
-
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                      {(doc.delivery_status || "draft") === "draft" ? (
-                                        <button
-                                          type="button"
-                                          disabled={
-                                            !canManageSelected ||
-                                            busyKey === `document-send-${doc.id}`
-                                          }
-                                          onClick={() =>
-                                            void handleDocumentSend(doc.id)
-                                          }
-                                          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
-                                        >
-                                          <Send className="h-4 w-4" />
-                                          Send document
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                ),
+                                  );
+                                },
                               )}
                             </div>
                           ) : null}
                         </section>
                       </>
                     ) : (
-                      <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
-                        <div className="flex items-center gap-3">
-                          <Users className="h-5 w-5 text-hier-primary" />
-                          <h3 className="text-xl font-semibold text-hier-text">
-                            Employee record view
-                          </h3>
-                        </div>
+                      <>
+                        <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+                          <div className="flex items-center gap-3">
+                            <Users className="h-5 w-5 text-hier-primary" />
+                            <h3 className="text-xl font-semibold text-hier-text">
+                              Employee record view
+                            </h3>
+                          </div>
 
-                        <div className="mt-5 rounded-[22px] bg-hier-panel p-4">
-                          <p className="text-sm font-semibold text-hier-text">
-                            This journey is grouped in the employee records workspace.
-                          </p>
-                          <p className="mt-2 text-sm leading-6 text-hier-muted">
-                            Keep using this view for promoted onboarding history and linked
-                            documents until a dedicated employee records API is wired in.
-                          </p>
-                        </div>
+                          <div className="mt-5 rounded-[22px] bg-hier-panel p-4">
+                            <p className="text-sm font-semibold text-hier-text">
+                              This journey is grouped in the employee records workspace.
+                            </p>
+                            <p className="mt-2 text-sm leading-6 text-hier-muted">
+                              Review candidate submissions, view stored documents, and
+                              save editable employee information here until the dedicated
+                              employee records API is fully expanded.
+                            </p>
+                          </div>
 
-                        <div className="mt-5 rounded-[20px] bg-hier-panel p-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                            Linked documents
-                          </p>
-                          <p className="mt-2 text-2xl font-semibold text-hier-text">
-                            {(selected.documents || []).length}
-                          </p>
-                        </div>
-                      </section>
+                          <div className="mt-5 grid gap-4 md:grid-cols-2">
+                            <div className="rounded-[20px] bg-hier-panel p-4">
+                              <div className="flex items-center gap-2 text-hier-muted">
+                                <Mail className="h-4 w-4" />
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                  Personal email
+                                </p>
+                              </div>
+                              <p className="mt-2 text-sm font-semibold text-hier-text">
+                                {employeeRecordForm.personal_email || "Not set"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-[20px] bg-hier-panel p-4">
+                              <div className="flex items-center gap-2 text-hier-muted">
+                                <Phone className="h-4 w-4" />
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                  Phone
+                                </p>
+                              </div>
+                              <p className="mt-2 text-sm font-semibold text-hier-text">
+                                {employeeRecordForm.phone || "Not set"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-[20px] bg-hier-panel p-4">
+                              <div className="flex items-center gap-2 text-hier-muted">
+                                <CalendarDays className="h-4 w-4" />
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                  Start date
+                                </p>
+                              </div>
+                              <p className="mt-2 text-sm font-semibold text-hier-text">
+                                {employeeRecordForm.start_date || "Not set"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-[20px] bg-hier-panel p-4">
+                              <div className="flex items-center gap-2 text-hier-muted">
+                                <FileText className="h-4 w-4" />
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                  Employee number
+                                </p>
+                              </div>
+                              <p className="mt-2 text-sm font-semibold text-hier-text">
+                                {employeeRecordForm.employee_number || "Not set"}
+                              </p>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-5 w-5 text-hier-primary" />
+                            <h3 className="text-xl font-semibold text-hier-text">
+                              Submitted information
+                            </h3>
+                          </div>
+
+                          <div className="mt-5 space-y-3">
+                            {submittedTaskItems.length === 0 ? (
+                              <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">
+                                No submitted task information available yet.
+                              </div>
+                            ) : (
+                              submittedTaskItems.map((task) => {
+                                const submissionValue = getTaskSubmissionValue(task);
+                                const submissionPairs = getTaskSubmissionPairs(task);
+                                const taskViewUrl = getPossibleFileUrl(task as any);
+
+                                return (
+                                  <div
+                                    key={task.id}
+                                    className="rounded-[20px] border border-hier-border bg-white p-4"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-semibold text-hier-text">
+                                          {task.title || formatLabel(task.task_key)}
+                                        </p>
+                                        <p className="mt-1 text-xs text-hier-muted">
+                                          {formatLabel(task.status)}
+                                        </p>
+                                      </div>
+                                      <span
+                                        className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(
+                                          task.status,
+                                        )}`}
+                                      >
+                                        {formatLabel(task.status)}
+                                      </span>
+                                    </div>
+
+                                    {submissionValue ? (
+                                      <p className="mt-3 text-sm leading-6 text-hier-text">
+                                        {submissionValue}
+                                      </p>
+                                    ) : null}
+
+                                    {submissionPairs.length > 0 ? (
+                                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                        {submissionPairs.map((pair) => (
+                                          <div
+                                            key={`${task.id}-${pair.label}`}
+                                            className="rounded-[16px] bg-hier-panel p-3"
+                                          >
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                                              {pair.label}
+                                            </p>
+                                            <p className="mt-2 text-sm text-hier-text">
+                                              {pair.value}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+
+                                    {taskViewUrl ? (
+                                      <div className="mt-3">
+                                        <button
+                                          type="button"
+                                          onClick={() => openFileUrl(taskViewUrl)}
+                                          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                          View submission
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </section>
+
+                        <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-5 w-5 text-hier-primary" />
+                            <h3 className="text-xl font-semibold text-hier-text">
+                              Linked documents
+                            </h3>
+                          </div>
+
+                          <div className="mt-5 rounded-[20px] bg-hier-panel p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                              Linked documents
+                            </p>
+                            <p className="mt-2 text-2xl font-semibold text-hier-text">
+                              {(selected.documents || []).length}
+                            </p>
+                          </div>
+
+                          {(selected.documents || []).length > 0 ? (
+                            <div className="mt-4 space-y-3">
+                              {(selected.documents || []).map(
+                                (doc: BusinessOnboardingDocument) => {
+                                  const docUrl = getPossibleFileUrl(doc as any);
+
+                                  return (
+                                    <div
+                                      key={doc.id}
+                                      className="rounded-[20px] border border-hier-border bg-white p-4"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-semibold text-hier-text">
+                                            {doc.title ||
+                                              doc.original_filename ||
+                                              doc.document_type}
+                                          </p>
+                                          <p className="mt-1 text-xs text-hier-muted">
+                                            {formatLabel(doc.document_type)}
+                                          </p>
+                                        </div>
+
+                                        <div className="flex flex-col items-end gap-2">
+                                          <span
+                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                              doc.delivery_status || "draft",
+                                            )}`}
+                                          >
+                                            {formatLabel(doc.delivery_status || "draft")}
+                                          </span>
+                                          <span
+                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                              doc.review_status || "pending",
+                                            )}`}
+                                          >
+                                            {formatLabel(doc.review_status || "pending")}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {docUrl ? (
+                                        <div className="mt-3">
+                                          <button
+                                            type="button"
+                                            onClick={() => openFileUrl(docUrl)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            View document
+                                          </button>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                },
+                              )}
+                            </div>
+                          ) : null}
+                        </section>
+                      </>
                     )}
 
                     <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
