@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -98,6 +98,7 @@ function formatLabel(value?: string | null) {
 
 function formatDateLike(value?: string | null) {
   if (!value) return "—";
+
   const raw = String(value).trim();
   if (!raw) return "—";
 
@@ -114,14 +115,13 @@ function formatDateLike(value?: string | null) {
 function statusTone(status?: string | null) {
   switch (status) {
     case "compliant_pending_start":
+    case "started":
+    case "completed":
       return "bg-emerald-50 text-emerald-700 border-emerald-200";
     case "awaiting_candidate":
       return "bg-amber-50 text-amber-700 border-amber-200";
     case "awaiting_employer":
       return "bg-sky-50 text-sky-700 border-sky-200";
-    case "started":
-    case "completed":
-      return "bg-emerald-50 text-emerald-700 border-emerald-200";
     case "archived":
       return "bg-zinc-100 text-zinc-600 border-zinc-200";
     case "removed":
@@ -143,7 +143,6 @@ function taskTone(status?: string | null) {
     case "viewed":
     case "rejected":
       return "bg-amber-50 text-amber-700 border-amber-200";
-    case "draft":
     default:
       return "bg-zinc-100 text-zinc-600 border-zinc-200";
   }
@@ -161,7 +160,6 @@ function documentTone(status?: string | null) {
       return "bg-sky-50 text-sky-700 border-sky-200";
     case "rejected":
       return "bg-rose-50 text-rose-700 border-rose-200";
-    case "draft":
     default:
       return "bg-zinc-100 text-zinc-600 border-zinc-200";
   }
@@ -233,7 +231,14 @@ function openFileUrl(url: string | null | undefined) {
 
 function getTaskMeta(task: BusinessOnboardingTask): Record<string, any> {
   const anyTask = task as any;
-  const meta = anyTask?.meta || anyTask?.metadata || anyTask?.metadata_json || anyTask?.submission_meta || anyTask?.response_meta || {};
+  const meta =
+    anyTask?.meta ||
+    anyTask?.metadata ||
+    anyTask?.metadata_json ||
+    anyTask?.submission_meta ||
+    anyTask?.response_meta ||
+    {};
+
   return meta && typeof meta === "object" && !Array.isArray(meta) ? meta : {};
 }
 
@@ -254,6 +259,7 @@ function getTaskSubmissionValue(task: BusinessOnboardingTask): string | null {
   }
 
   const meta = getTaskMeta(task);
+
   const nestedValues = [
     meta?.submitted_value,
     meta?.submission_value,
@@ -309,62 +315,6 @@ function getTaskSubmissionPairs(task: BusinessOnboardingTask): SubmissionPair[] 
   return [];
 }
 
-function groupSubmissionPairs(task: BusinessOnboardingTask): SubmissionSection[] {
-  const meta = getTaskMeta(task);
-  const type = String(meta?.type || task.task_key || "").toLowerCase();
-  const pairs = getTaskSubmissionPairs(task);
-
-  const take = (keys: string[]) => {
-    const wanted = new Set(keys.map((key) => formatLabel(key)));
-    return pairs.filter((pair) => wanted.has(pair.label));
-  };
-
-  const remaining = (used: SubmissionPair[]) => {
-    const usedLabels = new Set(used.map((pair) => pair.label));
-    return pairs.filter((pair) => !usedLabels.has(pair.label));
-  };
-
-  if (type.includes("personal")) {
-    const identity = take(["full_name", "date_of_birth"]);
-    const contact = take(["email", "phone_number", "phone"]);
-    const address = take(["address", "address_line_1", "address_line_2", "city", "region", "postcode"]);
-    const used = [...identity, ...contact, ...address];
-
-    return [
-      identity.length ? { title: "Identity", icon: "user", items: identity } : null,
-      contact.length ? { title: "Contact", icon: "mail", items: contact } : null,
-      address.length ? { title: "Address", icon: "file", items: address } : null,
-      remaining(used).length ? { title: "Other details", icon: "file", items: remaining(used) } : null,
-    ].filter(Boolean) as SubmissionSection[];
-  }
-
-  if (type.includes("emergency")) {
-    const contact = take(["full_name", "phone_number", "phone", "email"]);
-    const address = take(["address"]);
-    const used = [...contact, ...address];
-
-    return [
-      contact.length ? { title: "Emergency contact", icon: "phone", items: contact } : null,
-      address.length ? { title: "Address", icon: "file", items: address } : null,
-      remaining(used).length ? { title: "Other details", icon: "file", items: remaining(used) } : null,
-    ].filter(Boolean) as SubmissionSection[];
-  }
-
-  if (type.includes("bank")) {
-    return [{ title: "Bank details", icon: "file", items: pairs }];
-  }
-
-  return pairs.length ? [{ title: "Submitted details", icon: "file", items: pairs }] : [];
-}
-
-function SubmissionIcon({ icon }: { icon: SubmissionSection["icon"] }) {
-  if (icon === "user") return <UserRound className="h-4 w-4" />;
-  if (icon === "phone") return <Phone className="h-4 w-4" />;
-  if (icon === "mail") return <Mail className="h-4 w-4" />;
-  if (icon === "calendar") return <CalendarDays className="h-4 w-4" />;
-  return <FileText className="h-4 w-4" />;
-}
-
 function SubmissionDetailsModal({
   task,
   onClose,
@@ -372,7 +322,7 @@ function SubmissionDetailsModal({
   task: BusinessOnboardingTask;
   onClose: () => void;
 }) {
-  const sections = groupSubmissionPairs(task);
+  const pairs = getTaskSubmissionPairs(task);
   const summary = getTaskSubmissionValue(task);
 
   return (
@@ -387,16 +337,6 @@ function SubmissionDetailsModal({
               <h3 className="mt-2 text-2xl font-semibold tracking-tight text-hier-text">
                 {task.title || formatLabel(task.task_key)}
               </h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(task.status)}`}>
-                  {formatLabel(task.status)}
-                </span>
-                {task.submitted_at ? (
-                  <span className="inline-flex rounded-full border border-hier-border bg-white px-3 py-1 text-[11px] font-semibold text-hier-text">
-                    Submitted {formatDateLike(task.submitted_at)}
-                  </span>
-                ) : null}
-              </div>
             </div>
 
             <button
@@ -419,39 +359,24 @@ function SubmissionDetailsModal({
             </div>
           ) : null}
 
-          {sections.length === 0 ? (
+          {pairs.length === 0 ? (
             <div className="rounded-[24px] border border-dashed border-hier-border bg-hier-panel p-6 text-sm text-hier-muted">
               No structured submitted fields were found for this task.
             </div>
           ) : (
-            <div className="space-y-5">
-              {sections.map((section) => (
-                <section key={section.title} className="rounded-[26px] border border-hier-border bg-white p-5 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-hier-soft text-hier-primary">
-                      <SubmissionIcon icon={section.icon} />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-semibold text-hier-text">{section.title}</h4>
-                      <p className="text-xs text-hier-muted">
-                        {section.items.length} field{section.items.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {section.items.map((pair) => (
-                      <div key={`${section.title}-${pair.label}`} className="rounded-[18px] bg-hier-panel p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
-                          {pair.label}
-                        </p>
-                        <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-6 text-hier-text">
-                          {pair.value}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
+            <div className="grid gap-3 md:grid-cols-2">
+              {pairs.map((pair) => (
+                <div
+                  key={pair.label}
+                  className="rounded-[18px] bg-hier-panel p-4"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                    {pair.label}
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-6 text-hier-text">
+                    {pair.value}
+                  </p>
+                </div>
               ))}
             </div>
           )}
@@ -468,9 +393,7 @@ function SubmittedDetailsButton({
   task: BusinessOnboardingTask;
   onClick: () => void;
 }) {
-  const pairCount = getTaskSubmissionPairs(task).length;
-
-  if (!pairCount) return null;
+  if (!getTaskSubmissionPairs(task).length) return null;
 
   return (
     <button
@@ -549,13 +472,14 @@ export default function OnboardingPage() {
   const [documentType, setDocumentType] = useState("contract");
   const [documentTaskId, setDocumentTaskId] = useState<number | "">("");
   const [removeReason, setRemoveReason] = useState("removed_by_business");
-  const [viewingSubmissionTask, setViewingSubmissionTask] = useState<BusinessOnboardingTask | null>(null);
+  const [viewingSubmissionTask, setViewingSubmissionTask] =
+    useState<BusinessOnboardingTask | null>(null);
 
   const [employeeRecordForm, setEmployeeRecordForm] = useState<EmployeeRecordForm>(
     buildEmployeeRecordForm(null),
   );
 
-  async function loadList() {
+  const loadList = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -564,8 +488,7 @@ export default function OnboardingPage() {
         applicationId: applicationIdFromUrl,
       });
 
-      const list: BusinessOnboarding[] = res.items || [];
-      setItems(list);
+      setItems(res.items || []);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -575,9 +498,9 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [applicationIdFromUrl]);
 
-  async function loadDetail(onboardingId: number) {
+  const loadDetail = useCallback(async (onboardingId: number) => {
     setDetailLoading(true);
     setActionError(null);
 
@@ -593,35 +516,30 @@ export default function OnboardingPage() {
     } finally {
       setDetailLoading(false);
     }
-  }
+  }, []);
 
-  async function refreshSelected() {
+  const refreshSelected = useCallback(async () => {
     if (!selectedId) {
       await loadList();
       return;
     }
+
     await Promise.all([loadList(), loadDetail(selectedId)]);
-  }
+  }, [loadDetail, loadList, selectedId]);
 
   useEffect(() => {
     void loadList();
-  }, [applicationIdFromUrl]);
+  }, [loadList]);
 
   const activeItems = useMemo(() => items.filter(isActiveItem), [items]);
   const inactiveItems = useMemo(() => items.filter(isInactiveItem), [items]);
   const employeeItems = useMemo(() => items.filter(isEmployeeLike), [items]);
 
   const visibleItems = useMemo(() => {
-    switch (tab) {
-      case "inactive":
-        return inactiveItems;
-      case "employees":
-        return employeeItems;
-      case "active":
-      default:
-        return activeItems;
-    }
-  }, [tab, activeItems, inactiveItems, employeeItems]);
+    if (tab === "inactive") return inactiveItems;
+    if (tab === "employees") return employeeItems;
+    return activeItems;
+  }, [activeItems, employeeItems, inactiveItems, tab]);
 
   useEffect(() => {
     const allGroups = {
@@ -637,14 +555,17 @@ export default function OnboardingPage() {
         setTab("active");
         return;
       }
+
       if (tab !== "inactive" && inactiveItems.length) {
         setTab("inactive");
         return;
       }
+
       if (tab !== "employees" && employeeItems.length) {
         setTab("employees");
         return;
       }
+
       setSelectedId(null);
       setSelected(null);
       return;
@@ -660,35 +581,48 @@ export default function OnboardingPage() {
         : null) || currentGroup[0];
 
     setSelectedId(matched.id);
-  }, [tab, activeItems, inactiveItems, employeeItems, selectedId, applicationIdFromUrl]);
+  }, [
+    activeItems,
+    applicationIdFromUrl,
+    employeeItems,
+    inactiveItems,
+    selectedId,
+    tab,
+  ]);
 
   useEffect(() => {
     if (!selectedId) {
       setSelected(null);
       return;
     }
+
     void loadDetail(selectedId);
-  }, [selectedId]);
+  }, [loadDetail, selectedId]);
 
   useEffect(() => {
     setEmployeeRecordForm(buildEmployeeRecordForm(selected));
   }, [selected]);
 
-  const requiredTasks = useMemo(() => {
-    return (selected?.tasks || []).filter((task) => task.required);
-  }, [selected]);
+  const requiredTasks = useMemo(
+    () => (selected?.tasks || []).filter((task) => task.required),
+    [selected],
+  );
 
-  const completedRequiredCount = useMemo(() => {
-    return requiredTasks.filter((task) =>
-      ["approved", "waived"].includes(task.status || ""),
-    ).length;
-  }, [requiredTasks]);
+  const completedRequiredCount = useMemo(
+    () =>
+      requiredTasks.filter((task) =>
+        ["approved", "waived"].includes(task.status || ""),
+      ).length,
+    [requiredTasks],
+  );
 
-  const pendingRequiredCount = useMemo(() => {
-    return requiredTasks.filter(
-      (task) => !["approved", "waived"].includes(task.status || ""),
-    ).length;
-  }, [requiredTasks]);
+  const pendingRequiredCount = useMemo(
+    () =>
+      requiredTasks.filter(
+        (task) => !["approved", "waived"].includes(task.status || ""),
+      ).length,
+    [requiredTasks],
+  );
 
   const submittedTaskItems = useMemo(() => {
     return (selected?.tasks || []).filter((task) => {
@@ -710,8 +644,7 @@ export default function OnboardingPage() {
   const selectedIsEmployeeLike = !!selected && isEmployeeLike(selected);
   const canManageSelected =
     !!selected && selectedAllowsOnboarding && !selectedIsInactive && !selectedIsEmployeeLike;
-  const canRestoreSelected =
-    !!selected && selectedIsRemoved && selectedAllowsOnboarding;
+  const canRestoreSelected = !!selected && selectedIsRemoved && selectedAllowsOnboarding;
 
   function updateEmployeeField<K extends keyof EmployeeRecordForm>(
     key: K,
@@ -810,9 +743,7 @@ export default function OnboardingPage() {
       setSuccessMessage("Contract created.");
     } catch (caughtError) {
       setActionError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Could not create contract.",
+        caughtError instanceof Error ? caughtError.message : "Could not create contract.",
       );
     } finally {
       setBusyKey(null);
@@ -838,9 +769,7 @@ export default function OnboardingPage() {
       setSuccessMessage("Contract uploaded.");
     } catch (caughtError) {
       setActionError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Could not upload contract.",
+        caughtError instanceof Error ? caughtError.message : "Could not upload contract.",
       );
     } finally {
       setBusyKey(null);
@@ -860,9 +789,7 @@ export default function OnboardingPage() {
       setSuccessMessage("Contract sent to candidate.");
     } catch (caughtError) {
       setActionError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Could not send contract.",
+        caughtError instanceof Error ? caughtError.message : "Could not send contract.",
       );
     } finally {
       setBusyKey(null);
@@ -922,9 +849,7 @@ export default function OnboardingPage() {
       setSuccessMessage("Document uploaded.");
     } catch (caughtError) {
       setActionError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Could not upload document.",
+        caughtError instanceof Error ? caughtError.message : "Could not upload document.",
       );
     } finally {
       setBusyKey(null);
@@ -944,9 +869,7 @@ export default function OnboardingPage() {
       setSuccessMessage("Document sent to candidate.");
     } catch (caughtError) {
       setActionError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Could not send document.",
+        caughtError instanceof Error ? caughtError.message : "Could not send document.",
       );
     } finally {
       setBusyKey(null);
@@ -966,9 +889,7 @@ export default function OnboardingPage() {
     setSuccessMessage(null);
 
     try {
-      await removeOnboarding(selectedId, {
-        reason: removeReason,
-      });
+      await removeOnboarding(selectedId, { reason: removeReason });
       await refreshSelected();
       setTab("inactive");
       setSuccessMessage("Candidate removed from onboarding.");
@@ -1091,11 +1012,9 @@ export default function OnboardingPage() {
           </span>
         </button>
 
-        import Link from "next/link"; // make sure this is at the top
-
         <Link
           href="/employee-records"
-          className={`inline-flex h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition`}
+          className="inline-flex h-11 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-panel"
         >
           <Users className="h-4 w-4" />
           Employee records
@@ -1244,8 +1163,7 @@ export default function OnboardingPage() {
                   <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
                     This journey is now employee-linked. Use this view to review
                     submitted onboarding information, keep document history, and edit
-                    the employee record before or after promotion into your dedicated
-                    employee records system.
+                    the employee record.
                   </div>
                 ) : null}
 
@@ -1369,15 +1287,6 @@ export default function OnboardingPage() {
                       )}
                     </div>
                   </div>
-
-                  {selected.removed_at ? (
-                    <p className="mt-3 text-xs text-hier-muted">
-                      Removed at {selected.removed_at}
-                      {selected.removal_reason
-                        ? ` • Reason: ${formatLabel(selected.removal_reason)}`
-                        : ""}
-                    </p>
-                  ) : null}
                 </div>
 
                 <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
@@ -1393,44 +1302,6 @@ export default function OnboardingPage() {
                           </h2>
                           <p className="mt-1 text-sm text-hier-muted">
                             {selected.job_post?.title || "Role not available"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 grid gap-4 md:grid-cols-2">
-                        <div className="rounded-[20px] bg-hier-panel p-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                            Employment country
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-hier-text">
-                            {selected.country_code || "—"}
-                          </p>
-                        </div>
-
-                        <div className="rounded-[20px] bg-hier-panel p-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                            Worker type
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-hier-text">
-                            {formatLabel(selected.worker_type)}
-                          </p>
-                        </div>
-
-                        <div className="rounded-[20px] bg-hier-panel p-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                            Employing entity
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-hier-text">
-                            {selected.employing_entity_name || "Not set"}
-                          </p>
-                        </div>
-
-                        <div className="rounded-[20px] bg-hier-panel p-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                            Job location
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-hier-text">
-                            {selected.job_post?.location || "Not set"}
                           </p>
                         </div>
                       </div>
@@ -1469,49 +1340,28 @@ export default function OnboardingPage() {
                                       <p className="mt-1 text-sm text-hier-muted">
                                         {task.description || "No description added yet."}
                                       </p>
-
-                                      <div className="mt-3 flex flex-wrap gap-2">
-                                        <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-[11px] font-semibold text-hier-text">
-                                          {formatLabel(task.owner_type)}
-                                        </span>
-                                        <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-[11px] font-semibold text-hier-text">
-                                          {task.required ? "Required" : "Optional"}
-                                        </span>
-                                        {task.phase ? (
-                                          <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-[11px] font-semibold text-hier-text">
-                                            {formatLabel(task.phase)}
-                                          </span>
-                                        ) : null}
-                                      </div>
                                     </div>
 
-                                    <div className="shrink-0">
-                                      <span
-                                        className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(
-                                          task.status,
-                                        )}`}
-                                      >
-                                        {formatLabel(task.status)}
-                                      </span>
-                                    </div>
+                                    <span
+                                      className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(
+                                        task.status,
+                                      )}`}
+                                    >
+                                      {formatLabel(task.status)}
+                                    </span>
                                   </div>
 
-                                  {(submissionValue || submissionPairs.length > 0 || taskViewUrl) ? (
+                                  {submissionValue || submissionPairs.length > 0 || taskViewUrl ? (
                                     <div className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
                                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                         <div>
                                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
                                             Submitted information
                                           </p>
-                                          {submissionValue ? (
-                                            <p className="mt-2 text-sm leading-6 text-hier-text">
-                                              {submissionValue}
-                                            </p>
-                                          ) : (
-                                            <p className="mt-2 text-sm leading-6 text-hier-muted">
-                                              Candidate submitted structured onboarding details.
-                                            </p>
-                                          )}
+                                          <p className="mt-2 text-sm leading-6 text-hier-muted">
+                                            {submissionValue ||
+                                              "Candidate submitted structured onboarding details."}
+                                          </p>
                                         </div>
 
                                         <div className="flex flex-wrap gap-2">
@@ -1540,50 +1390,29 @@ export default function OnboardingPage() {
                                       {task.owner_type === "candidate" && task.status === "draft" ? (
                                         <button
                                           type="button"
-                                          disabled={
-                                            !canManageSelected ||
-                                            busyKey === `task-send-${task.id}`
-                                          }
+                                          disabled={!canManageSelected || busyKey === `task-send-${task.id}`}
                                           onClick={() => void handleTaskSend(task.id)}
                                           className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
                                         >
-                                          {busyKey === `task-send-${task.id}` ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                          ) : (
-                                            <Send className="h-4 w-4" />
-                                          )}
+                                          <Send className="h-4 w-4" />
                                           Send to candidate
                                         </button>
                                       ) : null}
 
                                       <button
                                         type="button"
-                                        disabled={
-                                          !canManageSelected ||
-                                          busyKey === `task-review-${task.id}`
-                                        }
-                                        onClick={() =>
-                                          void handleTaskReview(task.id, "approved")
-                                        }
+                                        disabled={!canManageSelected || busyKey === `task-review-${task.id}`}
+                                        onClick={() => void handleTaskReview(task.id, "approved")}
                                         className="inline-flex h-10 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 disabled:opacity-60"
                                       >
-                                        {busyKey === `task-review-${task.id}` ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                          <CheckCircle2 className="h-4 w-4" />
-                                        )}
+                                        <CheckCircle2 className="h-4 w-4" />
                                         Approve
                                       </button>
 
                                       <button
                                         type="button"
-                                        disabled={
-                                          !canManageSelected ||
-                                          busyKey === `task-review-${task.id}`
-                                        }
-                                        onClick={() =>
-                                          void handleTaskReview(task.id, "rejected")
-                                        }
+                                        disabled={!canManageSelected || busyKey === `task-review-${task.id}`}
+                                        onClick={() => void handleTaskReview(task.id, "rejected")}
                                         className="inline-flex h-10 items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-medium text-rose-700 disabled:opacity-60"
                                       >
                                         <XCircle className="h-4 w-4" />
@@ -1592,13 +1421,8 @@ export default function OnboardingPage() {
 
                                       <button
                                         type="button"
-                                        disabled={
-                                          !canManageSelected ||
-                                          busyKey === `task-rerequest-${task.id}`
-                                        }
-                                        onClick={() =>
-                                          void handleTaskRerequest(task.task_key, task.id)
-                                        }
+                                        disabled={!canManageSelected || busyKey === `task-rerequest-${task.id}`}
+                                        onClick={() => void handleTaskRerequest(task.task_key, task.id)}
                                         className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink disabled:opacity-60"
                                       >
                                         <RefreshCw className="h-4 w-4" />
@@ -1623,12 +1447,6 @@ export default function OnboardingPage() {
                           </h3>
                         </div>
 
-                        <p className="mt-3 text-sm leading-6 text-hier-muted">
-                          This lets you save core employee details directly from the
-                          onboarding journey before you move everything into a dedicated
-                          employee records workflow.
-                        </p>
-
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
                           <input value={employeeRecordForm.legal_name} onChange={(event) => updateEmployeeField("legal_name", event.target.value)} placeholder="Legal name" className={formInputClass(busyKey === "employee-record-save")} />
                           <input value={employeeRecordForm.preferred_name} onChange={(event) => updateEmployeeField("preferred_name", event.target.value)} placeholder="Preferred name" className={formInputClass(busyKey === "employee-record-save")} />
@@ -1636,7 +1454,7 @@ export default function OnboardingPage() {
                           <input value={employeeRecordForm.work_email} onChange={(event) => updateEmployeeField("work_email", event.target.value)} placeholder="Work email" className={formInputClass(busyKey === "employee-record-save")} />
                           <input value={employeeRecordForm.phone} onChange={(event) => updateEmployeeField("phone", event.target.value)} placeholder="Phone" className={formInputClass(busyKey === "employee-record-save")} />
                           <input value={employeeRecordForm.employee_number} onChange={(event) => updateEmployeeField("employee_number", event.target.value)} placeholder="Employee number" className={formInputClass(busyKey === "employee-record-save")} />
-                          <input value={employeeRecordForm.start_date} onChange={(event) => updateEmployeeField("start_date", event.target.value)} placeholder="Start date" type="date" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.start_date} onChange={(event) => updateEmployeeField("start_date", event.target.value)} type="date" className={formInputClass(busyKey === "employee-record-save")} />
                           <input value={employeeRecordForm.job_title} onChange={(event) => updateEmployeeField("job_title", event.target.value)} placeholder="Job title" className={formInputClass(busyKey === "employee-record-save")} />
                           <input value={employeeRecordForm.department} onChange={(event) => updateEmployeeField("department", event.target.value)} placeholder="Department" className={formInputClass(busyKey === "employee-record-save")} />
                           <input value={employeeRecordForm.manager_name} onChange={(event) => updateEmployeeField("manager_name", event.target.value)} placeholder="Manager name" className={formInputClass(busyKey === "employee-record-save")} />
@@ -1654,28 +1472,10 @@ export default function OnboardingPage() {
                         <div className="mt-4">
                           <textarea
                             value={employeeRecordForm.notes}
-                            onChange={(event) =>
-                              updateEmployeeField("notes", event.target.value)
-                            }
+                            onChange={(event) => updateEmployeeField("notes", event.target.value)}
                             placeholder="Internal notes"
                             className={formTextareaClass(busyKey === "employee-record-save")}
                           />
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void handleSaveEmployeeRecord()}
-                            disabled={busyKey === "employee-record-save"}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:opacity-60"
-                          >
-                            {busyKey === "employee-record-save" ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Save className="h-4 w-4" />
-                            )}
-                            Save employee record
-                          </button>
                         </div>
                       </section>
                     ) : null}
@@ -1713,47 +1513,114 @@ export default function OnboardingPage() {
                           </div>
 
                           <div className="mt-5 space-y-3">
-                            <input value={contractTitle} onChange={(event) => setContractTitle(event.target.value)} placeholder="Employment contract" className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white" disabled={!canManageSelected} />
-                            <input value={contractTemplateName} onChange={(event) => setContractTemplateName(event.target.value)} placeholder="Template name (optional)" className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white" disabled={!canManageSelected} />
+                            <input
+                              value={contractTitle}
+                              onChange={(event) => setContractTitle(event.target.value)}
+                              placeholder="Employment contract"
+                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                              disabled={!canManageSelected}
+                            />
+
+                            <input
+                              value={contractTemplateName}
+                              onChange={(event) => setContractTemplateName(event.target.value)}
+                              placeholder="Template name optional"
+                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                              disabled={!canManageSelected}
+                            />
 
                             <div className="flex flex-wrap gap-2">
-                              <button type="button" onClick={() => void handleCreateContract()} disabled={!canManageSelected || busyKey === "contract-create" || !contractTitle.trim()} className="inline-flex h-11 items-center justify-center rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:opacity-60">
+                              <button
+                                type="button"
+                                onClick={() => void handleCreateContract()}
+                                disabled={!canManageSelected || busyKey === "contract-create" || !contractTitle.trim()}
+                                className="inline-flex h-11 items-center justify-center rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:opacity-60"
+                              >
                                 {busyKey === "contract-create" ? "Creating…" : "Create contract"}
                               </button>
 
-                              <label className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${canManageSelected ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
+                              <label
+                                className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${
+                                  canManageSelected
+                                    ? "cursor-pointer"
+                                    : "cursor-not-allowed opacity-60"
+                                }`}
+                              >
                                 <Upload className="h-4 w-4" />
                                 {busyKey === "contract-upload" ? "Uploading…" : "Upload contract"}
-                                <input type="file" accept=".pdf,.doc,.docx" className="hidden" disabled={!canManageSelected} onChange={(event) => { const file = event.target.files?.[0]; if (!file || !canManageSelected) return; void handleContractUpload(file); event.currentTarget.value = ""; }} />
+                                <input
+                                  type="file"
+                                  accept=".pdf,.doc,.docx"
+                                  className="hidden"
+                                  disabled={!canManageSelected}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (!file || !canManageSelected) return;
+                                    void handleContractUpload(file);
+                                    event.currentTarget.value = "";
+                                  }}
+                                />
                               </label>
                             </div>
                           </div>
 
-                          <div className="mt-5 rounded-[20px] bg-hier-panel p-4">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">Contracts</p>
-                            <p className="mt-2 text-2xl font-semibold text-hier-text">{(selected.contracts || []).length}</p>
-                          </div>
-
                           {(selected.contracts || []).length > 0 ? (
                             <div className="mt-4 space-y-3">
-                              {(selected.contracts || []).map((contract: BusinessOnboardingContract) => {
-                                const contractUrl = getPossibleFileUrl(contract as any);
-                                return (
-                                  <div key={contract.id} className="rounded-[20px] border border-hier-border bg-white p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-hier-text">{contract.title}</p>
-                                        <p className="mt-1 text-xs text-hier-muted">{contract.template_name || "No template"}</p>
+                              {(selected.contracts || []).map(
+                                (contract: BusinessOnboardingContract) => {
+                                  const contractUrl = getPossibleFileUrl(contract as any);
+
+                                  return (
+                                    <div
+                                      key={contract.id}
+                                      className="rounded-[20px] border border-hier-border bg-white p-4"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-semibold text-hier-text">
+                                            {contract.title}
+                                          </p>
+                                          <p className="mt-1 text-xs text-hier-muted">
+                                            {contract.template_name || "No template"}
+                                          </p>
+                                        </div>
+                                        <span
+                                          className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                            contract.status,
+                                          )}`}
+                                        >
+                                          {formatLabel(contract.status)}
+                                        </span>
                                       </div>
-                                      <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(contract.status)}`}>{formatLabel(contract.status)}</span>
+
+                                      <div className="mt-3 flex flex-wrap gap-2">
+                                        {contractUrl ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => openFileUrl(contractUrl)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            View contract
+                                          </button>
+                                        ) : null}
+
+                                        {contract.status === "draft" ? (
+                                          <button
+                                            type="button"
+                                            disabled={!canManageSelected || busyKey === `contract-send-${contract.id}`}
+                                            onClick={() => void handleContractSend(contract.id)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
+                                          >
+                                            <Send className="h-4 w-4" />
+                                            Send contract
+                                          </button>
+                                        ) : null}
+                                      </div>
                                     </div>
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                      {contractUrl ? <button type="button" onClick={() => openFileUrl(contractUrl)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"><Eye className="h-4 w-4" />View contract</button> : null}
-                                      {contract.status === "draft" ? <button type="button" disabled={!canManageSelected || busyKey === `contract-send-${contract.id}`} onClick={() => void handleContractSend(contract.id)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"><Send className="h-4 w-4" />Send contract</button> : null}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                },
+                              )}
                             </div>
                           ) : null}
                         </section>
@@ -1761,59 +1628,148 @@ export default function OnboardingPage() {
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                           <div className="flex items-center gap-3">
                             <FileText className="h-5 w-5 text-hier-primary" />
-                            <h3 className="text-xl font-semibold text-hier-text">Add document record</h3>
+                            <h3 className="text-xl font-semibold text-hier-text">
+                              Add document record
+                            </h3>
                           </div>
 
                           <div className="mt-5 space-y-3">
-                            <input value={documentTitle} onChange={(event) => setDocumentTitle(event.target.value)} placeholder="Passport copy / Signed contract / ID" className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white" disabled={!canManageSelected} />
-                            <input value={documentType} onChange={(event) => setDocumentType(event.target.value)} placeholder="document type" className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white" disabled={!canManageSelected} />
+                            <input
+                              value={documentTitle}
+                              onChange={(event) => setDocumentTitle(event.target.value)}
+                              placeholder="Passport copy / Signed contract / ID"
+                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                              disabled={!canManageSelected}
+                            />
 
-                            <select value={documentTaskId} onChange={(event) => setDocumentTaskId(event.target.value ? Number(event.target.value) : "")} disabled={!canManageSelected} className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white">
+                            <input
+                              value={documentType}
+                              onChange={(event) => setDocumentType(event.target.value)}
+                              placeholder="document type"
+                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                              disabled={!canManageSelected}
+                            />
+
+                            <select
+                              value={documentTaskId}
+                              onChange={(event) =>
+                                setDocumentTaskId(
+                                  event.target.value ? Number(event.target.value) : "",
+                                )
+                              }
+                              disabled={!canManageSelected}
+                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                            >
                               <option value="">No linked task</option>
                               {(selected.tasks || []).map((task) => (
-                                <option key={task.id} value={task.id}>{task.title || formatLabel(task.task_key)}</option>
+                                <option key={task.id} value={task.id}>
+                                  {task.title || formatLabel(task.task_key)}
+                                </option>
                               ))}
                             </select>
 
                             <div className="flex flex-wrap gap-2">
-                              <button type="button" onClick={() => void handleCreateDocument()} disabled={!canManageSelected || busyKey === "document-create" || !documentType.trim()} className="inline-flex h-11 items-center justify-center rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink disabled:opacity-60">{busyKey === "document-create" ? "Adding…" : "Add document"}</button>
+                              <button
+                                type="button"
+                                onClick={() => void handleCreateDocument()}
+                                disabled={!canManageSelected || busyKey === "document-create" || !documentType.trim()}
+                                className="inline-flex h-11 items-center justify-center rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink disabled:opacity-60"
+                              >
+                                {busyKey === "document-create" ? "Adding…" : "Add document"}
+                              </button>
 
-                              <label className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${canManageSelected ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
+                              <label
+                                className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${
+                                  canManageSelected
+                                    ? "cursor-pointer"
+                                    : "cursor-not-allowed opacity-60"
+                                }`}
+                              >
                                 <Upload className="h-4 w-4" />
                                 {busyKey === "document-upload" ? "Uploading…" : "Upload file"}
-                                <input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" className="hidden" disabled={!canManageSelected} onChange={(event) => { const file = event.target.files?.[0]; if (!file || !canManageSelected) return; void handleDocumentUpload(file); event.currentTarget.value = ""; }} />
+                                <input
+                                  type="file"
+                                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+                                  className="hidden"
+                                  disabled={!canManageSelected}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (!file || !canManageSelected) return;
+                                    void handleDocumentUpload(file);
+                                    event.currentTarget.value = "";
+                                  }}
+                                />
                               </label>
                             </div>
                           </div>
 
-                          <div className="mt-5 rounded-[20px] bg-hier-panel p-4">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">Documents</p>
-                            <p className="mt-2 text-2xl font-semibold text-hier-text">{(selected.documents || []).length}</p>
-                          </div>
-
                           {(selected.documents || []).length > 0 ? (
                             <div className="mt-4 space-y-3">
-                              {(selected.documents || []).map((doc: BusinessOnboardingDocument) => {
-                                const docUrl = getPossibleFileUrl(doc as any);
-                                return (
-                                  <div key={doc.id} className="rounded-[20px] border border-hier-border bg-white p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-hier-text">{doc.title || doc.original_filename || doc.document_type}</p>
-                                        <p className="mt-1 text-xs text-hier-muted">{formatLabel(doc.document_type)}</p>
+                              {(selected.documents || []).map(
+                                (doc: BusinessOnboardingDocument) => {
+                                  const docUrl = getPossibleFileUrl(doc as any);
+
+                                  return (
+                                    <div
+                                      key={doc.id}
+                                      className="rounded-[20px] border border-hier-border bg-white p-4"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-semibold text-hier-text">
+                                            {doc.title || doc.original_filename || doc.document_type}
+                                          </p>
+                                          <p className="mt-1 text-xs text-hier-muted">
+                                            {formatLabel(doc.document_type)}
+                                          </p>
+                                        </div>
+
+                                        <div className="flex flex-col items-end gap-2">
+                                          <span
+                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                              doc.delivery_status || "draft",
+                                            )}`}
+                                          >
+                                            {formatLabel(doc.delivery_status || "draft")}
+                                          </span>
+                                          <span
+                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                              doc.review_status || "pending",
+                                            )}`}
+                                          >
+                                            {formatLabel(doc.review_status || "pending")}
+                                          </span>
+                                        </div>
                                       </div>
-                                      <div className="flex flex-col items-end gap-2">
-                                        <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(doc.delivery_status || "draft")}`}>{formatLabel(doc.delivery_status || "draft")}</span>
-                                        <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(doc.review_status || "pending")}`}>{formatLabel(doc.review_status || "pending")}</span>
+
+                                      <div className="mt-3 flex flex-wrap gap-2">
+                                        {docUrl ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => openFileUrl(docUrl)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            View document
+                                          </button>
+                                        ) : null}
+
+                                        {(doc.delivery_status || "draft") === "draft" ? (
+                                          <button
+                                            type="button"
+                                            disabled={!canManageSelected || busyKey === `document-send-${doc.id}`}
+                                            onClick={() => void handleDocumentSend(doc.id)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
+                                          >
+                                            <Send className="h-4 w-4" />
+                                            Send document
+                                          </button>
+                                        ) : null}
                                       </div>
                                     </div>
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                      {docUrl ? <button type="button" onClick={() => openFileUrl(docUrl)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"><Eye className="h-4 w-4" />View document</button> : null}
-                                      {(doc.delivery_status || "draft") === "draft" ? <button type="button" disabled={!canManageSelected || busyKey === `document-send-${doc.id}`} onClick={() => void handleDocumentSend(doc.id)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"><Send className="h-4 w-4" />Send document</button> : null}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                },
+                              )}
                             </div>
                           ) : null}
                         </section>
@@ -1823,46 +1779,111 @@ export default function OnboardingPage() {
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                           <div className="flex items-center gap-3">
                             <Users className="h-5 w-5 text-hier-primary" />
-                            <h3 className="text-xl font-semibold text-hier-text">Employee record view</h3>
+                            <h3 className="text-xl font-semibold text-hier-text">
+                              Employee record view
+                            </h3>
                           </div>
 
                           <div className="mt-5 rounded-[22px] bg-hier-panel p-4">
-                            <p className="text-sm font-semibold text-hier-text">This journey is grouped in the employee records workspace.</p>
-                            <p className="mt-2 text-sm leading-6 text-hier-muted">Review candidate submissions, view stored documents, and save editable employee information here until the dedicated employee records API is fully expanded.</p>
+                            <p className="text-sm font-semibold text-hier-text">
+                              This journey is grouped in the employee records workspace.
+                            </p>
+                            <p className="mt-2 text-sm leading-6 text-hier-muted">
+                              Review candidate submissions, view stored documents, and save
+                              editable employee information here.
+                            </p>
                           </div>
 
                           <div className="mt-5 grid gap-4 md:grid-cols-2">
-                            <div className="rounded-[20px] bg-hier-panel p-4"><div className="flex items-center gap-2 text-hier-muted"><Mail className="h-4 w-4" /><p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Personal email</p></div><p className="mt-2 text-sm font-semibold text-hier-text">{employeeRecordForm.personal_email || "Not set"}</p></div>
-                            <div className="rounded-[20px] bg-hier-panel p-4"><div className="flex items-center gap-2 text-hier-muted"><Phone className="h-4 w-4" /><p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Phone</p></div><p className="mt-2 text-sm font-semibold text-hier-text">{employeeRecordForm.phone || "Not set"}</p></div>
-                            <div className="rounded-[20px] bg-hier-panel p-4"><div className="flex items-center gap-2 text-hier-muted"><CalendarDays className="h-4 w-4" /><p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Start date</p></div><p className="mt-2 text-sm font-semibold text-hier-text">{employeeRecordForm.start_date || "Not set"}</p></div>
-                            <div className="rounded-[20px] bg-hier-panel p-4"><div className="flex items-center gap-2 text-hier-muted"><FileText className="h-4 w-4" /><p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Employee number</p></div><p className="mt-2 text-sm font-semibold text-hier-text">{employeeRecordForm.employee_number || "Not set"}</p></div>
+                            <div className="rounded-[20px] bg-hier-panel p-4">
+                              <div className="flex items-center gap-2 text-hier-muted">
+                                <Mail className="h-4 w-4" />
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                  Personal email
+                                </p>
+                              </div>
+                              <p className="mt-2 text-sm font-semibold text-hier-text">
+                                {employeeRecordForm.personal_email || "Not set"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-[20px] bg-hier-panel p-4">
+                              <div className="flex items-center gap-2 text-hier-muted">
+                                <Phone className="h-4 w-4" />
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                  Phone
+                                </p>
+                              </div>
+                              <p className="mt-2 text-sm font-semibold text-hier-text">
+                                {employeeRecordForm.phone || "Not set"}
+                              </p>
+                            </div>
                           </div>
                         </section>
 
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                           <div className="flex items-center gap-3">
                             <FileText className="h-5 w-5 text-hier-primary" />
-                            <h3 className="text-xl font-semibold text-hier-text">Submitted information</h3>
+                            <h3 className="text-xl font-semibold text-hier-text">
+                              Submitted information
+                            </h3>
                           </div>
 
                           <div className="mt-5 space-y-3">
                             {submittedTaskItems.length === 0 ? (
-                              <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">No submitted task information available yet.</div>
+                              <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">
+                                No submitted task information available yet.
+                              </div>
                             ) : (
                               submittedTaskItems.map((task) => {
                                 const submissionValue = getTaskSubmissionValue(task);
-                                const submissionPairs = getTaskSubmissionPairs(task);
                                 const taskViewUrl = getPossibleFileUrl(task as any);
+
                                 return (
-                                  <div key={task.id} className="rounded-[20px] border border-hier-border bg-white p-4">
+                                  <div
+                                    key={task.id}
+                                    className="rounded-[20px] border border-hier-border bg-white p-4"
+                                  >
                                     <div className="flex items-start justify-between gap-3">
-                                      <div><p className="text-sm font-semibold text-hier-text">{task.title || formatLabel(task.task_key)}</p><p className="mt-1 text-xs text-hier-muted">{formatLabel(task.status)}</p></div>
-                                      <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(task.status)}`}>{formatLabel(task.status)}</span>
+                                      <div>
+                                        <p className="text-sm font-semibold text-hier-text">
+                                          {task.title || formatLabel(task.task_key)}
+                                        </p>
+                                        <p className="mt-1 text-xs text-hier-muted">
+                                          {formatLabel(task.status)}
+                                        </p>
+                                      </div>
+                                      <span
+                                        className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(
+                                          task.status,
+                                        )}`}
+                                      >
+                                        {formatLabel(task.status)}
+                                      </span>
                                     </div>
-                                    {submissionValue ? <p className="mt-3 text-sm leading-6 text-hier-text">{submissionValue}</p> : null}
+
+                                    {submissionValue ? (
+                                      <p className="mt-3 text-sm leading-6 text-hier-text">
+                                        {submissionValue}
+                                      </p>
+                                    ) : null}
+
                                     <div className="mt-3 flex flex-wrap gap-2">
-                                      <SubmittedDetailsButton task={task} onClick={() => setViewingSubmissionTask(task)} />
-                                      {taskViewUrl ? <button type="button" onClick={() => openFileUrl(taskViewUrl)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"><Eye className="h-4 w-4" />View submission</button> : null}
+                                      <SubmittedDetailsButton
+                                        task={task}
+                                        onClick={() => setViewingSubmissionTask(task)}
+                                      />
+
+                                      {taskViewUrl ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openFileUrl(taskViewUrl)}
+                                          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                          View submission
+                                        </button>
+                                      ) : null}
                                     </div>
                                   </div>
                                 );
@@ -1872,24 +1893,74 @@ export default function OnboardingPage() {
                         </section>
 
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
-                          <div className="flex items-center gap-3"><FileText className="h-5 w-5 text-hier-primary" /><h3 className="text-xl font-semibold text-hier-text">Linked documents</h3></div>
-                          <div className="mt-5 rounded-[20px] bg-hier-panel p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">Linked documents</p><p className="mt-2 text-2xl font-semibold text-hier-text">{(selected.documents || []).length}</p></div>
-                          {(selected.documents || []).length > 0 ? (
-                            <div className="mt-4 space-y-3">
-                              {(selected.documents || []).map((doc: BusinessOnboardingDocument) => {
-                                const docUrl = getPossibleFileUrl(doc as any);
-                                return (
-                                  <div key={doc.id} className="rounded-[20px] border border-hier-border bg-white p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div><p className="text-sm font-semibold text-hier-text">{doc.title || doc.original_filename || doc.document_type}</p><p className="mt-1 text-xs text-hier-muted">{formatLabel(doc.document_type)}</p></div>
-                                      <div className="flex flex-col items-end gap-2"><span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(doc.delivery_status || "draft")}`}>{formatLabel(doc.delivery_status || "draft")}</span><span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(doc.review_status || "pending")}`}>{formatLabel(doc.review_status || "pending")}</span></div>
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-5 w-5 text-hier-primary" />
+                            <h3 className="text-xl font-semibold text-hier-text">
+                              Linked documents
+                            </h3>
+                          </div>
+
+                          <div className="mt-5 space-y-3">
+                            {(selected.documents || []).length === 0 ? (
+                              <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">
+                                No linked documents yet.
+                              </div>
+                            ) : (
+                              (selected.documents || []).map(
+                                (doc: BusinessOnboardingDocument) => {
+                                  const docUrl = getPossibleFileUrl(doc as any);
+
+                                  return (
+                                    <div
+                                      key={doc.id}
+                                      className="rounded-[20px] border border-hier-border bg-white p-4"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-semibold text-hier-text">
+                                            {doc.title || doc.original_filename || doc.document_type}
+                                          </p>
+                                          <p className="mt-1 text-xs text-hier-muted">
+                                            {formatLabel(doc.document_type)}
+                                          </p>
+                                        </div>
+
+                                        <div className="flex flex-col items-end gap-2">
+                                          <span
+                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                              doc.delivery_status || "draft",
+                                            )}`}
+                                          >
+                                            {formatLabel(doc.delivery_status || "draft")}
+                                          </span>
+                                          <span
+                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                              doc.review_status || "pending",
+                                            )}`}
+                                          >
+                                            {formatLabel(doc.review_status || "pending")}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {docUrl ? (
+                                        <div className="mt-3">
+                                          <button
+                                            type="button"
+                                            onClick={() => openFileUrl(docUrl)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            View document
+                                          </button>
+                                        </div>
+                                      ) : null}
                                     </div>
-                                    {docUrl ? <div className="mt-3"><button type="button" onClick={() => openFileUrl(docUrl)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"><Eye className="h-4 w-4" />View document</button></div> : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : null}
+                                  );
+                                },
+                              )
+                            )}
+                          </div>
                         </section>
                       </>
                     )}
@@ -1897,17 +1968,28 @@ export default function OnboardingPage() {
                     <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                       <div className="flex items-center gap-3">
                         <MapPin className="h-5 w-5 text-hier-primary" />
-                        <h3 className="text-xl font-semibold text-hier-text">Audit timeline</h3>
+                        <h3 className="text-xl font-semibold text-hier-text">
+                          Audit timeline
+                        </h3>
                       </div>
 
                       <div className="mt-5 space-y-3">
                         {(selected.audit_events || []).length === 0 ? (
-                          <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">No audit events yet.</div>
+                          <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">
+                            No audit events yet.
+                          </div>
                         ) : (
                           (selected.audit_events || []).slice(0, 8).map((event) => (
-                            <div key={event.id} className="rounded-[20px] bg-hier-panel px-4 py-4">
-                              <p className="text-sm font-semibold text-hier-text">{formatLabel(event.event_type)}</p>
-                              <p className="mt-1 text-xs text-hier-muted">{formatLabel(event.actor_type)}</p>
+                            <div
+                              key={event.id}
+                              className="rounded-[20px] bg-hier-panel px-4 py-4"
+                            >
+                              <p className="text-sm font-semibold text-hier-text">
+                                {formatLabel(event.event_type)}
+                              </p>
+                              <p className="mt-1 text-xs text-hier-muted">
+                                {formatLabel(event.actor_type)}
+                              </p>
                             </div>
                           ))
                         )}
