@@ -473,31 +473,120 @@ function SubmittedDetailsButton({
 
 function buildEmployeeRecordForm(item: BusinessOnboarding | null): EmployeeRecordForm {
   const anyItem = item as any;
-  const record = anyItem?.employee_record || anyItem?.employee || {};
+  const record = anyItem?.employee_record || {};
   const candidate = anyItem?.candidate || {};
   const jobPost = anyItem?.job_post || {};
 
+  // 👇 NEW: pull submitted values from tasks
+  const submitted: Record<string, string> = {};
+
+  (item?.tasks || []).forEach((task) => {
+    const pairs = getTaskSubmissionPairs(task);
+    pairs.forEach(({ label, value }) => {
+      const key = label.toLowerCase().replace(/\s+/g, "_");
+      submitted[key] = value;
+    });
+  });
+
   return {
-    legal_name: record?.legal_name || candidate?.display_name || "",
-    preferred_name: record?.preferred_name || "",
-    personal_email: record?.personal_email || candidate?.email || "",
-    work_email: record?.work_email || "",
-    phone: record?.phone || candidate?.phone || "",
-    address_line_1: record?.address_line_1 || "",
-    address_line_2: record?.address_line_2 || "",
-    city: record?.city || "",
-    region: record?.region || "",
-    postcode: record?.postcode || "",
-    country_code: record?.country_code || item?.country_code || "",
-    start_date: record?.start_date || "",
-    employee_number: record?.employee_number || "",
-    job_title: record?.job_title || jobPost?.title || "",
-    department: record?.department || "",
-    manager_name: record?.manager_name || "",
-    emergency_contact_name: record?.emergency_contact_name || "",
-    emergency_contact_phone: record?.emergency_contact_phone || "",
-    national_id_last4: record?.national_id_last4 || "",
-    notes: record?.notes || "",
+    legal_name:
+      record?.legal_name ||
+      submitted?.legal_name ||
+      submitted?.full_name ||
+      candidate?.display_name ||
+      "",
+
+    preferred_name:
+      record?.preferred_name ||
+      submitted?.preferred_name ||
+      "",
+
+    personal_email:
+      record?.personal_email ||
+      submitted?.personal_email ||
+      submitted?.email ||
+      "", // 🚨 NO fallback to candidate.email anymore
+
+    work_email:
+      record?.work_email ||
+      submitted?.work_email ||
+      "",
+
+    phone:
+      record?.phone ||
+      submitted?.phone ||
+      candidate?.phone ||
+      "",
+
+    address_line_1:
+      record?.address_line_1 ||
+      submitted?.address_line_1 ||
+      "",
+
+    address_line_2:
+      record?.address_line_2 ||
+      submitted?.address_line_2 ||
+      "",
+
+    city:
+      record?.city ||
+      submitted?.city ||
+      "",
+
+    region:
+      record?.region ||
+      submitted?.region ||
+      "",
+
+    postcode:
+      record?.postcode ||
+      submitted?.postcode ||
+      "",
+
+    country_code:
+      record?.country_code ||
+      submitted?.country_code ||
+      item?.country_code ||
+      "",
+
+    start_date:
+      record?.start_date ||
+      submitted?.start_date ||
+      "",
+
+    employee_number:
+      record?.employee_number || "",
+
+    job_title:
+      record?.job_title ||
+      jobPost?.title ||
+      "",
+
+    department:
+      record?.department || "",
+
+    manager_name:
+      record?.manager_name ||
+      submitted?.manager_name ||
+      "",
+
+    emergency_contact_name:
+      record?.emergency_contact_name ||
+      submitted?.emergency_contact_name ||
+      "",
+
+    emergency_contact_phone:
+      record?.emergency_contact_phone ||
+      submitted?.emergency_contact_phone ||
+      "",
+
+    national_id_last4:
+      record?.national_id_last4 ||
+      submitted?.national_id_last4 ||
+      "",
+
+    notes:
+      record?.notes || "",
   };
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Archive,
@@ -1090,19 +1091,18 @@ export default function OnboardingPage() {
           </span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setTab("employees")}
-          className={`inline-flex h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition ${tabButtonClass(
-            tab === "employees",
-          )}`}
+        import Link from "next/link"; // make sure this is at the top
+
+        <Link
+          href="/employee-records"
+          className={`inline-flex h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition`}
         >
           <Users className="h-4 w-4" />
           Employee records
           <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs">
             {employeeItems.length}
           </span>
-        </button>
+        </Link>
       </div>
 
       {error ? (
