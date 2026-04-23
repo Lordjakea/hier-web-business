@@ -75,6 +75,17 @@ type EmployeeRecordForm = {
   notes: string;
 };
 
+type SubmissionPair = {
+  label: string;
+  value: string;
+};
+
+type SubmissionSection = {
+  title: string;
+  icon: "user" | "phone" | "mail" | "file" | "calendar";
+  items: SubmissionPair[];
+};
+
 function formatLabel(value?: string | null) {
   if (!value) return "—";
   return value
@@ -82,6 +93,21 @@ function formatLabel(value?: string | null) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatDateLike(value?: string | null) {
+  if (!value) return "—";
+  const raw = String(value).trim();
+  if (!raw) return "—";
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+
+  return parsed.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function statusTone(status?: string | null) {
@@ -204,6 +230,12 @@ function openFileUrl(url: string | null | undefined) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function getTaskMeta(task: BusinessOnboardingTask): Record<string, any> {
+  const anyTask = task as any;
+  const meta = anyTask?.meta || anyTask?.metadata || anyTask?.metadata_json || anyTask?.submission_meta || anyTask?.response_meta || {};
+  return meta && typeof meta === "object" && !Array.isArray(meta) ? meta : {};
+}
+
 function getTaskSubmissionValue(task: BusinessOnboardingTask): string | null {
   const anyTask = task as any;
 
@@ -220,28 +252,37 @@ function getTaskSubmissionValue(task: BusinessOnboardingTask): string | null {
     if (typeof value === "string" && value.trim()) return value;
   }
 
-  const meta = anyTask?.meta || anyTask?.submission_meta || anyTask?.response_meta;
-  if (meta && typeof meta === "object") {
-    const nestedValues = [
-      meta?.submitted_value,
-      meta?.submission_value,
-      meta?.response_value,
-      meta?.answer_value,
-      meta?.value,
-      meta?.text,
-      meta?.notes,
-    ];
-    for (const value of nestedValues) {
-      if (typeof value === "string" && value.trim()) return value;
-    }
+  const meta = getTaskMeta(task);
+  const nestedValues = [
+    meta?.submitted_value,
+    meta?.submission_value,
+    meta?.response_value,
+    meta?.answer_value,
+    meta?.value,
+    meta?.text,
+    meta?.notes,
+    meta?.candidate_note,
+  ];
+
+  for (const value of nestedValues) {
+    if (typeof value === "string" && value.trim()) return value;
   }
 
   return null;
 }
 
-function getTaskSubmissionPairs(task: BusinessOnboardingTask): Array<{ label: string; value: string }> {
-  const anyTask = task as any;
-  const meta = anyTask?.meta || anyTask?.metadata || anyTask?.metadata_json || {};
+function stringifySubmissionValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function getTaskSubmissionPairs(task: BusinessOnboardingTask): SubmissionPair[] {
+  const meta = getTaskMeta(task);
 
   const candidates = [
     meta?.submitted_fields,
@@ -256,15 +297,190 @@ function getTaskSubmissionPairs(task: BusinessOnboardingTask): Array<{ label: st
   for (const group of candidates) {
     if (group && typeof group === "object" && !Array.isArray(group)) {
       return Object.entries(group)
-        .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== "")
         .map(([key, value]) => ({
           label: formatLabel(key),
-          value: String(value),
-        }));
+          value: stringifySubmissionValue(value),
+        }))
+        .filter((pair) => pair.value.trim() !== "");
     }
   }
 
   return [];
+}
+
+function groupSubmissionPairs(task: BusinessOnboardingTask): SubmissionSection[] {
+  const meta = getTaskMeta(task);
+  const type = String(meta?.type || task.task_key || "").toLowerCase();
+  const pairs = getTaskSubmissionPairs(task);
+
+  const take = (keys: string[]) => {
+    const wanted = new Set(keys.map((key) => formatLabel(key)));
+    return pairs.filter((pair) => wanted.has(pair.label));
+  };
+
+  const remaining = (used: SubmissionPair[]) => {
+    const usedLabels = new Set(used.map((pair) => pair.label));
+    return pairs.filter((pair) => !usedLabels.has(pair.label));
+  };
+
+  if (type.includes("personal")) {
+    const identity = take(["full_name", "date_of_birth"]);
+    const contact = take(["email", "phone_number", "phone"]);
+    const address = take(["address", "address_line_1", "address_line_2", "city", "region", "postcode"]);
+    const used = [...identity, ...contact, ...address];
+
+    return [
+      identity.length ? { title: "Identity", icon: "user", items: identity } : null,
+      contact.length ? { title: "Contact", icon: "mail", items: contact } : null,
+      address.length ? { title: "Address", icon: "file", items: address } : null,
+      remaining(used).length ? { title: "Other details", icon: "file", items: remaining(used) } : null,
+    ].filter(Boolean) as SubmissionSection[];
+  }
+
+  if (type.includes("emergency")) {
+    const contact = take(["full_name", "phone_number", "phone", "email"]);
+    const address = take(["address"]);
+    const used = [...contact, ...address];
+
+    return [
+      contact.length ? { title: "Emergency contact", icon: "phone", items: contact } : null,
+      address.length ? { title: "Address", icon: "file", items: address } : null,
+      remaining(used).length ? { title: "Other details", icon: "file", items: remaining(used) } : null,
+    ].filter(Boolean) as SubmissionSection[];
+  }
+
+  if (type.includes("bank")) {
+    return [{ title: "Bank details", icon: "file", items: pairs }];
+  }
+
+  return pairs.length ? [{ title: "Submitted details", icon: "file", items: pairs }] : [];
+}
+
+function SubmissionIcon({ icon }: { icon: SubmissionSection["icon"] }) {
+  if (icon === "user") return <UserRound className="h-4 w-4" />;
+  if (icon === "phone") return <Phone className="h-4 w-4" />;
+  if (icon === "mail") return <Mail className="h-4 w-4" />;
+  if (icon === "calendar") return <CalendarDays className="h-4 w-4" />;
+  return <FileText className="h-4 w-4" />;
+}
+
+function SubmissionDetailsModal({
+  task,
+  onClose,
+}: {
+  task: BusinessOnboardingTask;
+  onClose: () => void;
+}) {
+  const sections = groupSubmissionPairs(task);
+  const summary = getTaskSubmissionValue(task);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-8">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-[32px] border border-hier-border bg-white shadow-card">
+        <div className="border-b border-hier-border bg-hier-panel px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+                Submitted information
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-tight text-hier-text">
+                {task.title || formatLabel(task.task_key)}
+              </h3>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(task.status)}`}>
+                  {formatLabel(task.status)}
+                </span>
+                {task.submitted_at ? (
+                  <span className="inline-flex rounded-full border border-hier-border bg-white px-3 py-1 text-[11px] font-semibold text-hier-text">
+                    Submitted {formatDateLike(task.submitted_at)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-2xl border border-hier-border bg-white px-4 py-2 text-sm font-semibold text-hier-text transition hover:bg-hier-soft"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[calc(90vh-150px)] overflow-y-auto px-6 py-6">
+          {summary ? (
+            <div className="mb-5 rounded-[24px] border border-hier-border bg-hier-soft p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                Candidate note
+              </p>
+              <p className="mt-2 text-sm leading-6 text-hier-text">{summary}</p>
+            </div>
+          ) : null}
+
+          {sections.length === 0 ? (
+            <div className="rounded-[24px] border border-dashed border-hier-border bg-hier-panel p-6 text-sm text-hier-muted">
+              No structured submitted fields were found for this task.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {sections.map((section) => (
+                <section key={section.title} className="rounded-[26px] border border-hier-border bg-white p-5 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-hier-soft text-hier-primary">
+                      <SubmissionIcon icon={section.icon} />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-semibold text-hier-text">{section.title}</h4>
+                      <p className="text-xs text-hier-muted">
+                        {section.items.length} field{section.items.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {section.items.map((pair) => (
+                      <div key={`${section.title}-${pair.label}`} className="rounded-[18px] bg-hier-panel p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                          {pair.label}
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-6 text-hier-text">
+                          {pair.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SubmittedDetailsButton({
+  task,
+  onClick,
+}: {
+  task: BusinessOnboardingTask;
+  onClick: () => void;
+}) {
+  const pairCount = getTaskSubmissionPairs(task).length;
+
+  if (!pairCount) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink transition hover:bg-hier-soft"
+    >
+      <Eye className="h-4 w-4" />
+      View details
+    </button>
+  );
 }
 
 function buildEmployeeRecordForm(item: BusinessOnboarding | null): EmployeeRecordForm {
@@ -332,9 +548,7 @@ export default function OnboardingPage() {
   const [documentType, setDocumentType] = useState("contract");
   const [documentTaskId, setDocumentTaskId] = useState<number | "">("");
   const [removeReason, setRemoveReason] = useState("removed_by_business");
-
-  const [viewingSubmissionTask, setViewingSubmissionTask] =
-  useState<BusinessOnboardingTask | null>(null);
+  const [viewingSubmissionTask, setViewingSubmissionTask] = useState<BusinessOnboardingTask | null>(null);
 
   const [employeeRecordForm, setEmployeeRecordForm] = useState<EmployeeRecordForm>(
     buildEmployeeRecordForm(null),
@@ -1283,60 +1497,41 @@ export default function OnboardingPage() {
                                   </div>
 
                                   {(submissionValue || submissionPairs.length > 0 || taskViewUrl) ? (
-                                    <div className="rounded-[18px] bg-hier-panel p-4">
-                                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                                        Submitted information
-                                      </p>
+                                    <div className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
+                                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                                            Submitted information
+                                          </p>
+                                          {submissionValue ? (
+                                            <p className="mt-2 text-sm leading-6 text-hier-text">
+                                              {submissionValue}
+                                            </p>
+                                          ) : (
+                                            <p className="mt-2 text-sm leading-6 text-hier-muted">
+                                              Candidate submitted structured onboarding details.
+                                            </p>
+                                          )}
+                                        </div>
 
-                                      {submissionValue ? (
-                                        <p className="mt-2 text-sm leading-6 text-hier-text">
-                                          {submissionValue}
-                                        </p>
-                                      ) : null}
-
-                                      {submissionPairs.length > 0 ? (
-                                        <div className="mt-3">
-                                          <button
-                                            type="button"
+                                        <div className="flex flex-wrap gap-2">
+                                          <SubmittedDetailsButton
+                                            task={task}
                                             onClick={() => setViewingSubmissionTask(task)}
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
-                                          >
-                                            <Eye className="h-4 w-4" />
-                                            View details
-                                          </button>
-                                        </div>
-                                      ) : null}
+                                          />
 
-                                      {submissionPairs.length > 0 ? (
-                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                          {submissionPairs.map((pair) => (
-                                            <div
-                                              key={`${task.id}-${pair.label}`}
-                                              className="rounded-[16px] border border-hier-border bg-white p-3"
+                                          {taskViewUrl ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => openFileUrl(taskViewUrl)}
+                                              className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink transition hover:bg-hier-soft"
                                             >
-                                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
-                                                {pair.label}
-                                              </p>
-                                              <p className="mt-2 text-sm text-hier-text">
-                                                {pair.value}
-                                              </p>
-                                            </div>
-                                          ))}
+                                              <Eye className="h-4 w-4" />
+                                              View submission
+                                            </button>
+                                          ) : null}
                                         </div>
-                                      ) : null}
-
-                                      {taskViewUrl ? (
-                                        <div className="mt-3">
-                                          <button
-                                            type="button"
-                                            onClick={() => openFileUrl(taskViewUrl)}
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
-                                          >
-                                            <Eye className="h-4 w-4" />
-                                            View submission
-                                          </button>
-                                        </div>
-                                      ) : null}
+                                      </div>
                                     </div>
                                   ) : null}
 
@@ -1435,165 +1630,25 @@ export default function OnboardingPage() {
                         </p>
 
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
-                          <input
-                            value={employeeRecordForm.legal_name}
-                            onChange={(event) =>
-                              updateEmployeeField("legal_name", event.target.value)
-                            }
-                            placeholder="Legal name"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.preferred_name}
-                            onChange={(event) =>
-                              updateEmployeeField("preferred_name", event.target.value)
-                            }
-                            placeholder="Preferred name"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.personal_email}
-                            onChange={(event) =>
-                              updateEmployeeField("personal_email", event.target.value)
-                            }
-                            placeholder="Personal email"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.work_email}
-                            onChange={(event) =>
-                              updateEmployeeField("work_email", event.target.value)
-                            }
-                            placeholder="Work email"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.phone}
-                            onChange={(event) =>
-                              updateEmployeeField("phone", event.target.value)
-                            }
-                            placeholder="Phone"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.employee_number}
-                            onChange={(event) =>
-                              updateEmployeeField("employee_number", event.target.value)
-                            }
-                            placeholder="Employee number"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.start_date}
-                            onChange={(event) =>
-                              updateEmployeeField("start_date", event.target.value)
-                            }
-                            placeholder="Start date"
-                            type="date"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.job_title}
-                            onChange={(event) =>
-                              updateEmployeeField("job_title", event.target.value)
-                            }
-                            placeholder="Job title"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.department}
-                            onChange={(event) =>
-                              updateEmployeeField("department", event.target.value)
-                            }
-                            placeholder="Department"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.manager_name}
-                            onChange={(event) =>
-                              updateEmployeeField("manager_name", event.target.value)
-                            }
-                            placeholder="Manager name"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.address_line_1}
-                            onChange={(event) =>
-                              updateEmployeeField("address_line_1", event.target.value)
-                            }
-                            placeholder="Address line 1"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.address_line_2}
-                            onChange={(event) =>
-                              updateEmployeeField("address_line_2", event.target.value)
-                            }
-                            placeholder="Address line 2"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.city}
-                            onChange={(event) =>
-                              updateEmployeeField("city", event.target.value)
-                            }
-                            placeholder="City"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.region}
-                            onChange={(event) =>
-                              updateEmployeeField("region", event.target.value)
-                            }
-                            placeholder="County / region"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.postcode}
-                            onChange={(event) =>
-                              updateEmployeeField("postcode", event.target.value)
-                            }
-                            placeholder="Postcode"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.country_code}
-                            onChange={(event) =>
-                              updateEmployeeField("country_code", event.target.value)
-                            }
-                            placeholder="Country code"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.emergency_contact_name}
-                            onChange={(event) =>
-                              updateEmployeeField(
-                                "emergency_contact_name",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Emergency contact name"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.emergency_contact_phone}
-                            onChange={(event) =>
-                              updateEmployeeField(
-                                "emergency_contact_phone",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Emergency contact phone"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
-                          <input
-                            value={employeeRecordForm.national_id_last4}
-                            onChange={(event) =>
-                              updateEmployeeField("national_id_last4", event.target.value)
-                            }
-                            placeholder="National ID last 4"
-                            className={formInputClass(busyKey === "employee-record-save")}
-                          />
+                          <input value={employeeRecordForm.legal_name} onChange={(event) => updateEmployeeField("legal_name", event.target.value)} placeholder="Legal name" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.preferred_name} onChange={(event) => updateEmployeeField("preferred_name", event.target.value)} placeholder="Preferred name" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.personal_email} onChange={(event) => updateEmployeeField("personal_email", event.target.value)} placeholder="Personal email" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.work_email} onChange={(event) => updateEmployeeField("work_email", event.target.value)} placeholder="Work email" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.phone} onChange={(event) => updateEmployeeField("phone", event.target.value)} placeholder="Phone" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.employee_number} onChange={(event) => updateEmployeeField("employee_number", event.target.value)} placeholder="Employee number" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.start_date} onChange={(event) => updateEmployeeField("start_date", event.target.value)} placeholder="Start date" type="date" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.job_title} onChange={(event) => updateEmployeeField("job_title", event.target.value)} placeholder="Job title" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.department} onChange={(event) => updateEmployeeField("department", event.target.value)} placeholder="Department" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.manager_name} onChange={(event) => updateEmployeeField("manager_name", event.target.value)} placeholder="Manager name" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.address_line_1} onChange={(event) => updateEmployeeField("address_line_1", event.target.value)} placeholder="Address line 1" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.address_line_2} onChange={(event) => updateEmployeeField("address_line_2", event.target.value)} placeholder="Address line 2" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.city} onChange={(event) => updateEmployeeField("city", event.target.value)} placeholder="City" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.region} onChange={(event) => updateEmployeeField("region", event.target.value)} placeholder="County / region" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.postcode} onChange={(event) => updateEmployeeField("postcode", event.target.value)} placeholder="Postcode" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.country_code} onChange={(event) => updateEmployeeField("country_code", event.target.value)} placeholder="Country code" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.emergency_contact_name} onChange={(event) => updateEmployeeField("emergency_contact_name", event.target.value)} placeholder="Emergency contact name" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.emergency_contact_phone} onChange={(event) => updateEmployeeField("emergency_contact_phone", event.target.value)} placeholder="Emergency contact phone" className={formInputClass(busyKey === "employee-record-save")} />
+                          <input value={employeeRecordForm.national_id_last4} onChange={(event) => updateEmployeeField("national_id_last4", event.target.value)} placeholder="National ID last 4" className={formInputClass(busyKey === "employee-record-save")} />
                         </div>
 
                         <div className="mt-4">
@@ -1658,137 +1713,47 @@ export default function OnboardingPage() {
                           </div>
 
                           <div className="mt-5 space-y-3">
-                            <input
-                              value={contractTitle}
-                              onChange={(event) => setContractTitle(event.target.value)}
-                              placeholder="Employment contract"
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                              disabled={!canManageSelected}
-                            />
-                            <input
-                              value={contractTemplateName}
-                              onChange={(event) =>
-                                setContractTemplateName(event.target.value)
-                              }
-                              placeholder="Template name (optional)"
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                              disabled={!canManageSelected}
-                            />
+                            <input value={contractTitle} onChange={(event) => setContractTitle(event.target.value)} placeholder="Employment contract" className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white" disabled={!canManageSelected} />
+                            <input value={contractTemplateName} onChange={(event) => setContractTemplateName(event.target.value)} placeholder="Template name (optional)" className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white" disabled={!canManageSelected} />
 
                             <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => void handleCreateContract()}
-                                disabled={
-                                  !canManageSelected ||
-                                  busyKey === "contract-create" ||
-                                  !contractTitle.trim()
-                                }
-                                className="inline-flex h-11 items-center justify-center rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:opacity-60"
-                              >
-                                {busyKey === "contract-create"
-                                  ? "Creating…"
-                                  : "Create contract"}
+                              <button type="button" onClick={() => void handleCreateContract()} disabled={!canManageSelected || busyKey === "contract-create" || !contractTitle.trim()} className="inline-flex h-11 items-center justify-center rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:opacity-60">
+                                {busyKey === "contract-create" ? "Creating…" : "Create contract"}
                               </button>
 
-                              <label
-                                className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${
-                                  canManageSelected
-                                    ? "cursor-pointer"
-                                    : "cursor-not-allowed opacity-60"
-                                }`}
-                              >
+                              <label className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${canManageSelected ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
                                 <Upload className="h-4 w-4" />
-                                {busyKey === "contract-upload"
-                                  ? "Uploading…"
-                                  : "Upload contract"}
-                                <input
-                                  type="file"
-                                  accept=".pdf,.doc,.docx"
-                                  className="hidden"
-                                  disabled={!canManageSelected}
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    if (!file || !canManageSelected) return;
-                                    void handleContractUpload(file);
-                                    event.currentTarget.value = "";
-                                  }}
-                                />
+                                {busyKey === "contract-upload" ? "Uploading…" : "Upload contract"}
+                                <input type="file" accept=".pdf,.doc,.docx" className="hidden" disabled={!canManageSelected} onChange={(event) => { const file = event.target.files?.[0]; if (!file || !canManageSelected) return; void handleContractUpload(file); event.currentTarget.value = ""; }} />
                               </label>
                             </div>
                           </div>
 
                           <div className="mt-5 rounded-[20px] bg-hier-panel p-4">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                              Contracts
-                            </p>
-                            <p className="mt-2 text-2xl font-semibold text-hier-text">
-                              {(selected.contracts || []).length}
-                            </p>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">Contracts</p>
+                            <p className="mt-2 text-2xl font-semibold text-hier-text">{(selected.contracts || []).length}</p>
                           </div>
 
                           {(selected.contracts || []).length > 0 ? (
                             <div className="mt-4 space-y-3">
-                              {(selected.contracts || []).map(
-                                (contract: BusinessOnboardingContract) => {
-                                  const contractUrl = getPossibleFileUrl(contract as any);
-
-                                  return (
-                                    <div
-                                      key={contract.id}
-                                      className="rounded-[20px] border border-hier-border bg-white p-4"
-                                    >
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                          <p className="text-sm font-semibold text-hier-text">
-                                            {contract.title}
-                                          </p>
-                                          <p className="mt-1 text-xs text-hier-muted">
-                                            {contract.template_name || "No template"}
-                                          </p>
-                                        </div>
-                                        <span
-                                          className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                            contract.status,
-                                          )}`}
-                                        >
-                                          {formatLabel(contract.status)}
-                                        </span>
+                              {(selected.contracts || []).map((contract: BusinessOnboardingContract) => {
+                                const contractUrl = getPossibleFileUrl(contract as any);
+                                return (
+                                  <div key={contract.id} className="rounded-[20px] border border-hier-border bg-white p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-semibold text-hier-text">{contract.title}</p>
+                                        <p className="mt-1 text-xs text-hier-muted">{contract.template_name || "No template"}</p>
                                       </div>
-
-                                      <div className="mt-3 flex flex-wrap gap-2">
-                                        {contractUrl ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => openFileUrl(contractUrl)}
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
-                                          >
-                                            <Eye className="h-4 w-4" />
-                                            View contract
-                                          </button>
-                                        ) : null}
-
-                                        {contract.status === "draft" ? (
-                                          <button
-                                            type="button"
-                                            disabled={
-                                              !canManageSelected ||
-                                              busyKey === `contract-send-${contract.id}`
-                                            }
-                                            onClick={() =>
-                                              void handleContractSend(contract.id)
-                                            }
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
-                                          >
-                                            <Send className="h-4 w-4" />
-                                            Send contract
-                                          </button>
-                                        ) : null}
-                                      </div>
+                                      <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(contract.status)}`}>{formatLabel(contract.status)}</span>
                                     </div>
-                                  );
-                                },
-                              )}
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {contractUrl ? <button type="button" onClick={() => openFileUrl(contractUrl)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"><Eye className="h-4 w-4" />View contract</button> : null}
+                                      {contract.status === "draft" ? <button type="button" disabled={!canManageSelected || busyKey === `contract-send-${contract.id}`} onClick={() => void handleContractSend(contract.id)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"><Send className="h-4 w-4" />Send contract</button> : null}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : null}
                         </section>
@@ -1796,168 +1761,59 @@ export default function OnboardingPage() {
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                           <div className="flex items-center gap-3">
                             <FileText className="h-5 w-5 text-hier-primary" />
-                            <h3 className="text-xl font-semibold text-hier-text">
-                              Add document record
-                            </h3>
+                            <h3 className="text-xl font-semibold text-hier-text">Add document record</h3>
                           </div>
 
                           <div className="mt-5 space-y-3">
-                            <input
-                              value={documentTitle}
-                              onChange={(event) => setDocumentTitle(event.target.value)}
-                              placeholder="Passport copy / Signed contract / ID"
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                              disabled={!canManageSelected}
-                            />
+                            <input value={documentTitle} onChange={(event) => setDocumentTitle(event.target.value)} placeholder="Passport copy / Signed contract / ID" className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white" disabled={!canManageSelected} />
+                            <input value={documentType} onChange={(event) => setDocumentType(event.target.value)} placeholder="document type" className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white" disabled={!canManageSelected} />
 
-                            <input
-                              value={documentType}
-                              onChange={(event) => setDocumentType(event.target.value)}
-                              placeholder="document type"
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                              disabled={!canManageSelected}
-                            />
-
-                            <select
-                              value={documentTaskId}
-                              onChange={(event) =>
-                                setDocumentTaskId(
-                                  event.target.value ? Number(event.target.value) : "",
-                                )
-                              }
-                              disabled={!canManageSelected}
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                            >
+                            <select value={documentTaskId} onChange={(event) => setDocumentTaskId(event.target.value ? Number(event.target.value) : "")} disabled={!canManageSelected} className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white">
                               <option value="">No linked task</option>
                               {(selected.tasks || []).map((task) => (
-                                <option key={task.id} value={task.id}>
-                                  {task.title || formatLabel(task.task_key)}
-                                </option>
+                                <option key={task.id} value={task.id}>{task.title || formatLabel(task.task_key)}</option>
                               ))}
                             </select>
 
                             <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => void handleCreateDocument()}
-                                disabled={
-                                  !canManageSelected ||
-                                  busyKey === "document-create" ||
-                                  !documentType.trim()
-                                }
-                                className="inline-flex h-11 items-center justify-center rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink disabled:opacity-60"
-                              >
-                                {busyKey === "document-create" ? "Adding…" : "Add document"}
-                              </button>
+                              <button type="button" onClick={() => void handleCreateDocument()} disabled={!canManageSelected || busyKey === "document-create" || !documentType.trim()} className="inline-flex h-11 items-center justify-center rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink disabled:opacity-60">{busyKey === "document-create" ? "Adding…" : "Add document"}</button>
 
-                              <label
-                                className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${
-                                  canManageSelected
-                                    ? "cursor-pointer"
-                                    : "cursor-not-allowed opacity-60"
-                                }`}
-                              >
+                              <label className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${canManageSelected ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
                                 <Upload className="h-4 w-4" />
                                 {busyKey === "document-upload" ? "Uploading…" : "Upload file"}
-                                <input
-                                  type="file"
-                                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
-                                  className="hidden"
-                                  disabled={!canManageSelected}
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    if (!file || !canManageSelected) return;
-                                    void handleDocumentUpload(file);
-                                    event.currentTarget.value = "";
-                                  }}
-                                />
+                                <input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" className="hidden" disabled={!canManageSelected} onChange={(event) => { const file = event.target.files?.[0]; if (!file || !canManageSelected) return; void handleDocumentUpload(file); event.currentTarget.value = ""; }} />
                               </label>
                             </div>
                           </div>
 
                           <div className="mt-5 rounded-[20px] bg-hier-panel p-4">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                              Documents
-                            </p>
-                            <p className="mt-2 text-2xl font-semibold text-hier-text">
-                              {(selected.documents || []).length}
-                            </p>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">Documents</p>
+                            <p className="mt-2 text-2xl font-semibold text-hier-text">{(selected.documents || []).length}</p>
                           </div>
 
                           {(selected.documents || []).length > 0 ? (
                             <div className="mt-4 space-y-3">
-                              {(selected.documents || []).map(
-                                (doc: BusinessOnboardingDocument) => {
-                                  const docUrl = getPossibleFileUrl(doc as any);
-
-                                  return (
-                                    <div
-                                      key={doc.id}
-                                      className="rounded-[20px] border border-hier-border bg-white p-4"
-                                    >
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                          <p className="text-sm font-semibold text-hier-text">
-                                            {doc.title ||
-                                              doc.original_filename ||
-                                              doc.document_type}
-                                          </p>
-                                          <p className="mt-1 text-xs text-hier-muted">
-                                            {formatLabel(doc.document_type)}
-                                          </p>
-                                        </div>
-
-                                        <div className="flex flex-col items-end gap-2">
-                                          <span
-                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                              doc.delivery_status || "draft",
-                                            )}`}
-                                          >
-                                            {formatLabel(doc.delivery_status || "draft")}
-                                          </span>
-                                          <span
-                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                              doc.review_status || "pending",
-                                            )}`}
-                                          >
-                                            {formatLabel(doc.review_status || "pending")}
-                                          </span>
-                                        </div>
+                              {(selected.documents || []).map((doc: BusinessOnboardingDocument) => {
+                                const docUrl = getPossibleFileUrl(doc as any);
+                                return (
+                                  <div key={doc.id} className="rounded-[20px] border border-hier-border bg-white p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-semibold text-hier-text">{doc.title || doc.original_filename || doc.document_type}</p>
+                                        <p className="mt-1 text-xs text-hier-muted">{formatLabel(doc.document_type)}</p>
                                       </div>
-
-                                      <div className="mt-3 flex flex-wrap gap-2">
-                                        {docUrl ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => openFileUrl(docUrl)}
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
-                                          >
-                                            <Eye className="h-4 w-4" />
-                                            View document
-                                          </button>
-                                        ) : null}
-
-                                        {(doc.delivery_status || "draft") === "draft" ? (
-                                          <button
-                                            type="button"
-                                            disabled={
-                                              !canManageSelected ||
-                                              busyKey === `document-send-${doc.id}`
-                                            }
-                                            onClick={() =>
-                                              void handleDocumentSend(doc.id)
-                                            }
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
-                                          >
-                                            <Send className="h-4 w-4" />
-                                            Send document
-                                          </button>
-                                        ) : null}
+                                      <div className="flex flex-col items-end gap-2">
+                                        <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(doc.delivery_status || "draft")}`}>{formatLabel(doc.delivery_status || "draft")}</span>
+                                        <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(doc.review_status || "pending")}`}>{formatLabel(doc.review_status || "pending")}</span>
                                       </div>
                                     </div>
-                                  );
-                                },
-                              )}
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {docUrl ? <button type="button" onClick={() => openFileUrl(docUrl)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"><Eye className="h-4 w-4" />View document</button> : null}
+                                      {(doc.delivery_status || "draft") === "draft" ? <button type="button" disabled={!canManageSelected || busyKey === `document-send-${doc.id}`} onClick={() => void handleDocumentSend(doc.id)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"><Send className="h-4 w-4" />Send document</button> : null}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : null}
                         </section>
@@ -1967,151 +1823,47 @@ export default function OnboardingPage() {
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                           <div className="flex items-center gap-3">
                             <Users className="h-5 w-5 text-hier-primary" />
-                            <h3 className="text-xl font-semibold text-hier-text">
-                              Employee record view
-                            </h3>
+                            <h3 className="text-xl font-semibold text-hier-text">Employee record view</h3>
                           </div>
 
                           <div className="mt-5 rounded-[22px] bg-hier-panel p-4">
-                            <p className="text-sm font-semibold text-hier-text">
-                              This journey is grouped in the employee records workspace.
-                            </p>
-                            <p className="mt-2 text-sm leading-6 text-hier-muted">
-                              Review candidate submissions, view stored documents, and
-                              save editable employee information here until the dedicated
-                              employee records API is fully expanded.
-                            </p>
+                            <p className="text-sm font-semibold text-hier-text">This journey is grouped in the employee records workspace.</p>
+                            <p className="mt-2 text-sm leading-6 text-hier-muted">Review candidate submissions, view stored documents, and save editable employee information here until the dedicated employee records API is fully expanded.</p>
                           </div>
 
                           <div className="mt-5 grid gap-4 md:grid-cols-2">
-                            <div className="rounded-[20px] bg-hier-panel p-4">
-                              <div className="flex items-center gap-2 text-hier-muted">
-                                <Mail className="h-4 w-4" />
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
-                                  Personal email
-                                </p>
-                              </div>
-                              <p className="mt-2 text-sm font-semibold text-hier-text">
-                                {employeeRecordForm.personal_email || "Not set"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-[20px] bg-hier-panel p-4">
-                              <div className="flex items-center gap-2 text-hier-muted">
-                                <Phone className="h-4 w-4" />
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
-                                  Phone
-                                </p>
-                              </div>
-                              <p className="mt-2 text-sm font-semibold text-hier-text">
-                                {employeeRecordForm.phone || "Not set"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-[20px] bg-hier-panel p-4">
-                              <div className="flex items-center gap-2 text-hier-muted">
-                                <CalendarDays className="h-4 w-4" />
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
-                                  Start date
-                                </p>
-                              </div>
-                              <p className="mt-2 text-sm font-semibold text-hier-text">
-                                {employeeRecordForm.start_date || "Not set"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-[20px] bg-hier-panel p-4">
-                              <div className="flex items-center gap-2 text-hier-muted">
-                                <FileText className="h-4 w-4" />
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
-                                  Employee number
-                                </p>
-                              </div>
-                              <p className="mt-2 text-sm font-semibold text-hier-text">
-                                {employeeRecordForm.employee_number || "Not set"}
-                              </p>
-                            </div>
+                            <div className="rounded-[20px] bg-hier-panel p-4"><div className="flex items-center gap-2 text-hier-muted"><Mail className="h-4 w-4" /><p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Personal email</p></div><p className="mt-2 text-sm font-semibold text-hier-text">{employeeRecordForm.personal_email || "Not set"}</p></div>
+                            <div className="rounded-[20px] bg-hier-panel p-4"><div className="flex items-center gap-2 text-hier-muted"><Phone className="h-4 w-4" /><p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Phone</p></div><p className="mt-2 text-sm font-semibold text-hier-text">{employeeRecordForm.phone || "Not set"}</p></div>
+                            <div className="rounded-[20px] bg-hier-panel p-4"><div className="flex items-center gap-2 text-hier-muted"><CalendarDays className="h-4 w-4" /><p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Start date</p></div><p className="mt-2 text-sm font-semibold text-hier-text">{employeeRecordForm.start_date || "Not set"}</p></div>
+                            <div className="rounded-[20px] bg-hier-panel p-4"><div className="flex items-center gap-2 text-hier-muted"><FileText className="h-4 w-4" /><p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Employee number</p></div><p className="mt-2 text-sm font-semibold text-hier-text">{employeeRecordForm.employee_number || "Not set"}</p></div>
                           </div>
                         </section>
 
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                           <div className="flex items-center gap-3">
                             <FileText className="h-5 w-5 text-hier-primary" />
-                            <h3 className="text-xl font-semibold text-hier-text">
-                              Submitted information
-                            </h3>
+                            <h3 className="text-xl font-semibold text-hier-text">Submitted information</h3>
                           </div>
 
                           <div className="mt-5 space-y-3">
                             {submittedTaskItems.length === 0 ? (
-                              <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">
-                                No submitted task information available yet.
-                              </div>
+                              <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">No submitted task information available yet.</div>
                             ) : (
                               submittedTaskItems.map((task) => {
                                 const submissionValue = getTaskSubmissionValue(task);
                                 const submissionPairs = getTaskSubmissionPairs(task);
                                 const taskViewUrl = getPossibleFileUrl(task as any);
-
                                 return (
-                                  <div
-                                    key={task.id}
-                                    className="rounded-[20px] border border-hier-border bg-white p-4"
-                                  >
+                                  <div key={task.id} className="rounded-[20px] border border-hier-border bg-white p-4">
                                     <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-hier-text">
-                                          {task.title || formatLabel(task.task_key)}
-                                        </p>
-                                        <p className="mt-1 text-xs text-hier-muted">
-                                          {formatLabel(task.status)}
-                                        </p>
-                                      </div>
-                                      <span
-                                        className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(
-                                          task.status,
-                                        )}`}
-                                      >
-                                        {formatLabel(task.status)}
-                                      </span>
+                                      <div><p className="text-sm font-semibold text-hier-text">{task.title || formatLabel(task.task_key)}</p><p className="mt-1 text-xs text-hier-muted">{formatLabel(task.status)}</p></div>
+                                      <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${taskTone(task.status)}`}>{formatLabel(task.status)}</span>
                                     </div>
-
-                                    {submissionValue ? (
-                                      <p className="mt-3 text-sm leading-6 text-hier-text">
-                                        {submissionValue}
-                                      </p>
-                                    ) : null}
-
-                                    {submissionPairs.length > 0 ? (
-                                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                        {submissionPairs.map((pair) => (
-                                          <div
-                                            key={`${task.id}-${pair.label}`}
-                                            className="rounded-[16px] bg-hier-panel p-3"
-                                          >
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
-                                              {pair.label}
-                                            </p>
-                                            <p className="mt-2 text-sm text-hier-text">
-                                              {pair.value}
-                                            </p>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : null}
-
-                                    {taskViewUrl ? (
-                                      <div className="mt-3">
-                                        <button
-                                          type="button"
-                                          onClick={() => openFileUrl(taskViewUrl)}
-                                          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
-                                        >
-                                          <Eye className="h-4 w-4" />
-                                          View submission
-                                        </button>
-                                      </div>
-                                    ) : null}
+                                    {submissionValue ? <p className="mt-3 text-sm leading-6 text-hier-text">{submissionValue}</p> : null}
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      <SubmittedDetailsButton task={task} onClick={() => setViewingSubmissionTask(task)} />
+                                      {taskViewUrl ? <button type="button" onClick={() => openFileUrl(taskViewUrl)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"><Eye className="h-4 w-4" />View submission</button> : null}
+                                    </div>
                                   </div>
                                 );
                               })
@@ -2120,79 +1872,22 @@ export default function OnboardingPage() {
                         </section>
 
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
-                          <div className="flex items-center gap-3">
-                            <FileText className="h-5 w-5 text-hier-primary" />
-                            <h3 className="text-xl font-semibold text-hier-text">
-                              Linked documents
-                            </h3>
-                          </div>
-
-                          <div className="mt-5 rounded-[20px] bg-hier-panel p-4">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                              Linked documents
-                            </p>
-                            <p className="mt-2 text-2xl font-semibold text-hier-text">
-                              {(selected.documents || []).length}
-                            </p>
-                          </div>
-
+                          <div className="flex items-center gap-3"><FileText className="h-5 w-5 text-hier-primary" /><h3 className="text-xl font-semibold text-hier-text">Linked documents</h3></div>
+                          <div className="mt-5 rounded-[20px] bg-hier-panel p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">Linked documents</p><p className="mt-2 text-2xl font-semibold text-hier-text">{(selected.documents || []).length}</p></div>
                           {(selected.documents || []).length > 0 ? (
                             <div className="mt-4 space-y-3">
-                              {(selected.documents || []).map(
-                                (doc: BusinessOnboardingDocument) => {
-                                  const docUrl = getPossibleFileUrl(doc as any);
-
-                                  return (
-                                    <div
-                                      key={doc.id}
-                                      className="rounded-[20px] border border-hier-border bg-white p-4"
-                                    >
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                          <p className="text-sm font-semibold text-hier-text">
-                                            {doc.title ||
-                                              doc.original_filename ||
-                                              doc.document_type}
-                                          </p>
-                                          <p className="mt-1 text-xs text-hier-muted">
-                                            {formatLabel(doc.document_type)}
-                                          </p>
-                                        </div>
-
-                                        <div className="flex flex-col items-end gap-2">
-                                          <span
-                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                              doc.delivery_status || "draft",
-                                            )}`}
-                                          >
-                                            {formatLabel(doc.delivery_status || "draft")}
-                                          </span>
-                                          <span
-                                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                              doc.review_status || "pending",
-                                            )}`}
-                                          >
-                                            {formatLabel(doc.review_status || "pending")}
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      {docUrl ? (
-                                        <div className="mt-3">
-                                          <button
-                                            type="button"
-                                            onClick={() => openFileUrl(docUrl)}
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
-                                          >
-                                            <Eye className="h-4 w-4" />
-                                            View document
-                                          </button>
-                                        </div>
-                                      ) : null}
+                              {(selected.documents || []).map((doc: BusinessOnboardingDocument) => {
+                                const docUrl = getPossibleFileUrl(doc as any);
+                                return (
+                                  <div key={doc.id} className="rounded-[20px] border border-hier-border bg-white p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div><p className="text-sm font-semibold text-hier-text">{doc.title || doc.original_filename || doc.document_type}</p><p className="mt-1 text-xs text-hier-muted">{formatLabel(doc.document_type)}</p></div>
+                                      <div className="flex flex-col items-end gap-2"><span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(doc.delivery_status || "draft")}`}>{formatLabel(doc.delivery_status || "draft")}</span><span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(doc.review_status || "pending")}`}>{formatLabel(doc.review_status || "pending")}</span></div>
                                     </div>
-                                  );
-                                },
-                              )}
+                                    {docUrl ? <div className="mt-3"><button type="button" onClick={() => openFileUrl(docUrl)} className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"><Eye className="h-4 w-4" />View document</button></div> : null}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : null}
                         </section>
@@ -2202,28 +1897,17 @@ export default function OnboardingPage() {
                     <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                       <div className="flex items-center gap-3">
                         <MapPin className="h-5 w-5 text-hier-primary" />
-                        <h3 className="text-xl font-semibold text-hier-text">
-                          Audit timeline
-                        </h3>
+                        <h3 className="text-xl font-semibold text-hier-text">Audit timeline</h3>
                       </div>
 
                       <div className="mt-5 space-y-3">
                         {(selected.audit_events || []).length === 0 ? (
-                          <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">
-                            No audit events yet.
-                          </div>
+                          <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">No audit events yet.</div>
                         ) : (
                           (selected.audit_events || []).slice(0, 8).map((event) => (
-                            <div
-                              key={event.id}
-                              className="rounded-[20px] bg-hier-panel px-4 py-4"
-                            >
-                              <p className="text-sm font-semibold text-hier-text">
-                                {formatLabel(event.event_type)}
-                              </p>
-                              <p className="mt-1 text-xs text-hier-muted">
-                                {formatLabel(event.actor_type)}
-                              </p>
+                            <div key={event.id} className="rounded-[20px] bg-hier-panel px-4 py-4">
+                              <p className="text-sm font-semibold text-hier-text">{formatLabel(event.event_type)}</p>
+                              <p className="mt-1 text-xs text-hier-muted">{formatLabel(event.actor_type)}</p>
                             </div>
                           ))
                         )}
@@ -2248,46 +1932,12 @@ export default function OnboardingPage() {
         </div>
       )}
 
-    {viewingSubmissionTask ? (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-        <div className="w-full max-w-2xl rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-hier-muted">
-                Submitted information
-              </p>
-              <h3 className="mt-1 text-xl font-semibold text-hier-text">
-                {viewingSubmissionTask.title || formatLabel(viewingSubmissionTask.task_key)}
-              </h3>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setViewingSubmissionTask(null)}
-              className="rounded-2xl border border-hier-border bg-white px-4 py-2 text-sm font-semibold text-hier-text"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {getTaskSubmissionPairs(viewingSubmissionTask).map((pair) => (
-              <div
-                key={pair.label}
-                className="rounded-[18px] border border-hier-border bg-hier-panel p-4"
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
-                  {pair.label}
-                </p>
-                <p className="mt-2 text-sm text-hier-text">
-                  {pair.value}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    ) : null}
+      {viewingSubmissionTask ? (
+        <SubmissionDetailsModal
+          task={viewingSubmissionTask}
+          onClose={() => setViewingSubmissionTask(null)}
+        />
+      ) : null}
     </div>
   );
 }
