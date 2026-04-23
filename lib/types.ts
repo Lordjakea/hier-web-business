@@ -20,6 +20,18 @@ export type BusinessApplicationUser = {
   address_text?: string | null;
 };
 
+export type RawApplicationQuestion =
+  | string
+  | {
+      id?: string | number | null;
+      key?: string | null;
+      question?: string | null;
+      label?: string | null;
+      prompt?: string | null;
+      text?: string | null;
+      required?: boolean | null;
+    };
+
 export type BusinessJobPost = {
   id: number;
   title?: string | null;
@@ -30,6 +42,8 @@ export type BusinessJobPost = {
   sector?: string | null;
   is_active?: boolean;
   archived_at?: string | null;
+  application_questions?: RawApplicationQuestion[] | null;
+  has_application_questions?: boolean | null;
 };
 
 export type ApplicationAttachment = {
@@ -67,6 +81,9 @@ export type BusinessApplication = {
   ai_score?: number | null;
   hi_score?: number | null;
   reasons?: string[] | null;
+
+  cover_letter?: string | null;
+  application_answers?: unknown;
 
   user?: BusinessApplicationUser | null;
   candidate_email?: string | null;

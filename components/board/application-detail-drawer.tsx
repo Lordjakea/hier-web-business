@@ -12,18 +12,165 @@ import {
 } from "lucide-react";
 
 import { CVViewerModal } from "@/components/board/cv-viewer-modal";
-import { fetchOnboardingEligibility, startOnboarding } from "@/lib/business-onboarding";
+import {
+  fetchOnboardingEligibility,
+  startOnboarding,
+} from "@/lib/business-onboarding";
 import { boardColumns } from "@/lib/theme";
 import type {
   ApplicationStage,
   BusinessApplication,
   BusinessCandidate,
+  RawApplicationQuestion,
 } from "@/lib/types";
 
 const stageOptions = boardColumns.map((column) => ({
   value: column.id,
   label: column.title,
 }));
+
+type QuestionAnswerRow = {
+  id: string;
+  question: string;
+  answer: string;
+  required?: boolean;
+};
+
+function safeString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function answerToText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => answerToText(item))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+
+    const direct =
+      safeString(obj.answer) ||
+      safeString(obj.value) ||
+      safeString(obj.response) ||
+      safeString(obj.text) ||
+      safeString(obj.label);
+
+    if (direct) return direct;
+
+    try {
+      return JSON.stringify(obj);
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
+function normalizeQuestion(
+  item: RawApplicationQuestion,
+  index: number
+): { id: string; question: string; required: boolean } | null {
+  if (typeof item === "string") {
+    const label = item.trim();
+    if (!label) return null;
+
+    return {
+      id: `q_${index}`,
+      question: label,
+      required: false,
+    };
+  }
+
+  if (!item || typeof item !== "object") return null;
+
+  const question =
+    safeString(item.question) ||
+    safeString(item.label) ||
+    safeString(item.prompt) ||
+    safeString(item.text);
+
+  if (!question) return null;
+
+  return {
+    id:
+      item.id != null
+        ? String(item.id)
+        : safeString(item.key) || `q_${index}`,
+    question,
+    required: !!item.required,
+  };
+}
+
+function buildQuestionAnswerRows(
+  questionsRaw: unknown,
+  answersRaw: unknown
+): QuestionAnswerRow[] {
+  const questions = Array.isArray(questionsRaw)
+    ? questionsRaw
+        .map((item, index) =>
+          normalizeQuestion(item as RawApplicationQuestion, index)
+        )
+        .filter((item): item is NonNullable<typeof item> => !!item)
+    : [];
+
+  const answerMap: Record<string, string> = {};
+
+  if (answersRaw && typeof answersRaw === "object" && !Array.isArray(answersRaw)) {
+    Object.entries(answersRaw as Record<string, unknown>).forEach(([key, value]) => {
+      const text = answerToText(value);
+      if (text) answerMap[key] = text;
+    });
+  }
+
+  if (Array.isArray(answersRaw)) {
+    answersRaw.forEach((item, index) => {
+      if (!item || typeof item !== "object") return;
+
+      const obj = item as Record<string, unknown>;
+
+      const key =
+        safeString(obj.question_id) ||
+        safeString(obj.id) ||
+        safeString(obj.key) ||
+        safeString(obj.question) ||
+        `q_${index}`;
+
+      const text = answerToText(
+        obj.answer ?? obj.value ?? obj.response ?? obj.text
+      );
+
+      if (key && text) answerMap[key] = text;
+    });
+  }
+
+  if (questions.length) {
+    return questions.map((q, index) => ({
+      id: q.id,
+      question: q.question,
+      answer:
+        answerMap[q.id] ||
+        answerMap[q.question] ||
+        answerMap[`q_${index}`] ||
+        "No answer provided",
+      required: q.required,
+    }));
+  }
+
+  return Object.entries(answerMap).map(([key, value]) => ({
+    id: key,
+    question: key,
+    answer: value || "No answer provided",
+    required: false,
+  }));
+}
 
 export function ApplicationDetailDrawer({
   open,
@@ -96,6 +243,15 @@ export function ApplicationDetailDrawer({
         .filter(Boolean)
         .slice(0, 20),
     [tagText]
+  );
+
+  const questionAnswerRows = useMemo(
+    () =>
+      buildQuestionAnswerRows(
+        application?.job_post?.application_questions,
+        application?.application_answers
+      ),
+    [application?.job_post?.application_questions, application?.application_answers]
   );
 
   const displayName =
@@ -390,6 +546,50 @@ export function ApplicationDetailDrawer({
                 ) : null}
               </div>
             </section>
+
+            <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+              <h3 className="text-lg font-semibold text-hier-text">Application questions</h3>
+
+              {questionAnswerRows.length ? (
+                <div className="mt-4 space-y-3">
+                  {questionAnswerRows.map((row, index) => (
+                    <div
+                      key={`${row.id}-${index}`}
+                      className="rounded-[20px] bg-hier-panel px-4 py-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold text-hier-text">
+                          {row.question}
+                        </p>
+
+                        {row.required ? (
+                          <span className="rounded-full bg-hier-soft px-2.5 py-1 text-[11px] font-semibold text-hier-primary">
+                            Required
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <p className="mt-2 text-sm leading-6 text-hier-muted">
+                        {row.answer || "No answer provided"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-hier-muted">
+                  No application questions or answers were saved for this application.
+                </p>
+              )}
+            </section>
+
+            {application?.cover_letter ? (
+              <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+                <h3 className="text-lg font-semibold text-hier-text">Cover letter</h3>
+                <p className="mt-4 rounded-[20px] bg-hier-panel px-4 py-4 text-sm leading-7 text-hier-muted">
+                  {application.cover_letter}
+                </p>
+              </section>
+            ) : null}
 
             {candidate?.experience && candidate.experience.length > 0 ? (
               <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
