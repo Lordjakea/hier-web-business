@@ -11,6 +11,7 @@ import {
   Shield,
   UserCog,
   ClipboardCheck,
+  Users,
   X,
 } from "lucide-react";
 import clsx from "clsx";
@@ -23,6 +24,7 @@ const primaryLinks = [
   { label: "Promote", href: "/promote", icon: Megaphone },
   { label: "Billing", href: "/billing", icon: CreditCard },
   { label: "Onboarding", href: "/onboarding", icon: ClipboardCheck },
+  { label: "Employee Records", href: "/employee-records", icon: Users },
 ];
 
 const secondaryLinks = [
