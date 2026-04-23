@@ -1,9 +1,11 @@
 "use client";
 
+// full replacement file is long — paste this into:
+// app/(dashboard)/employee-records/page.tsx
+
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
-  CheckCircle2,
   ClipboardCheck,
   Eye,
   FileText,
@@ -30,7 +32,12 @@ import type {
   BusinessOnboardingTask,
 } from "@/lib/types";
 
-type EmployeeRecordFilter = "all" | "recently_started" | "awaiting_review" | "ready" | "started";
+type EmployeeRecordFilter =
+  | "all"
+  | "recently_started"
+  | "awaiting_review"
+  | "ready"
+  | "started";
 
 type EmployeeRecordForm = {
   legal_name: string;
@@ -38,6 +45,7 @@ type EmployeeRecordForm = {
   personal_email: string;
   work_email: string;
   phone: string;
+  date_of_birth: string;
   address_line_1: string;
   address_line_2: string;
   city: string;
@@ -73,6 +81,39 @@ function formatLabel(value?: string | null) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function normalizeKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizeDateInput(value?: string | null) {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyy) {
+    const [, day, month, year] = ddmmyyyy;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function formatDateLike(value?: string | null) {
@@ -196,11 +237,13 @@ function getTaskMeta(task: BusinessOnboardingTask): Record<string, any> {
     anyTask?.submission_meta ||
     anyTask?.response_meta ||
     {};
+
   return meta && typeof meta === "object" && !Array.isArray(meta) ? meta : {};
 }
 
 function getTaskSubmissionValue(task: BusinessOnboardingTask): string | null {
   const anyTask = task as any;
+
   const directValues = [
     anyTask?.submitted_value,
     anyTask?.submission_value,
@@ -215,6 +258,7 @@ function getTaskSubmissionValue(task: BusinessOnboardingTask): string | null {
   }
 
   const meta = getTaskMeta(task);
+
   const nestedValues = [
     meta?.submitted_value,
     meta?.submission_value,
@@ -246,9 +290,11 @@ function stringifySubmissionValue(value: unknown) {
 function getTaskSubmissionPairs(task: BusinessOnboardingTask): SubmissionPair[] {
   const meta = getTaskMeta(task);
 
-  const candidates = [
+  const groups = [
     meta?.submitted_fields,
     meta?.personal_details,
+    meta?.personal_information,
+    meta?.personal_info,
     meta?.emergency_contact,
     meta?.bank_details,
     meta?.fields,
@@ -256,7 +302,7 @@ function getTaskSubmissionPairs(task: BusinessOnboardingTask): SubmissionPair[] 
     meta?.submitted_answers,
   ];
 
-  for (const group of candidates) {
+  for (const group of groups) {
     if (group && typeof group === "object" && !Array.isArray(group)) {
       return Object.entries(group)
         .map(([key, value]) => ({
@@ -268,6 +314,41 @@ function getTaskSubmissionPairs(task: BusinessOnboardingTask): SubmissionPair[] 
   }
 
   return [];
+}
+
+function collectSubmittedValues(item: BusinessOnboarding | null): Record<string, string> {
+  const submitted: Record<string, string> = {};
+
+  for (const task of item?.tasks || []) {
+    const meta = getTaskMeta(task);
+
+    const groups = [
+      meta?.submitted_fields,
+      meta?.personal_details,
+      meta?.personal_information,
+      meta?.personal_info,
+      meta?.emergency_contact,
+      meta?.bank_details,
+      meta?.fields,
+      meta?.answers,
+      meta?.submitted_answers,
+    ];
+
+    for (const group of groups) {
+      if (!group || typeof group !== "object" || Array.isArray(group)) continue;
+
+      Object.entries(group).forEach(([key, value]) => {
+        const normalized = normalizeKey(key);
+        const stringValue = stringifySubmissionValue(value);
+
+        if (normalized && stringValue) {
+          submitted[normalized] = stringValue;
+        }
+      });
+    }
+  }
+
+  return submitted;
 }
 
 function groupSubmissionPairs(task: BusinessOnboardingTask): SubmissionSection[] {
@@ -286,8 +367,8 @@ function groupSubmissionPairs(task: BusinessOnboardingTask): SubmissionSection[]
   };
 
   if (type.includes("personal")) {
-    const identity = take(["full_name", "date_of_birth"]);
-    const contact = take(["email", "phone_number", "phone"]);
+    const identity = take(["full_name", "legal_name", "date_of_birth", "dob"]);
+    const contact = take(["email", "personal_email", "phone_number", "phone"]);
     const address = take([
       "address",
       "address_line_1",
@@ -309,7 +390,7 @@ function groupSubmissionPairs(task: BusinessOnboardingTask): SubmissionSection[]
   }
 
   if (type.includes("emergency")) {
-    const contact = take(["full_name", "phone_number", "phone", "email"]);
+    const contact = take(["full_name", "name", "phone_number", "phone", "email"]);
     const address = take(["address"]);
     const used = [...contact, ...address];
 
@@ -328,7 +409,9 @@ function groupSubmissionPairs(task: BusinessOnboardingTask): SubmissionSection[]
     return [{ title: "Bank details", icon: "file", items: pairs }];
   }
 
-  return pairs.length ? [{ title: "Submitted details", icon: "file", items: pairs }] : [];
+  return pairs.length
+    ? [{ title: "Submitted details", icon: "file", items: pairs }]
+    : [];
 }
 
 function SubmissionIcon({ icon }: { icon: SubmissionSection["icon"] }) {
@@ -474,85 +557,82 @@ function SubmittedDetailsButton({
 function buildEmployeeRecordForm(item: BusinessOnboarding | null): EmployeeRecordForm {
   const anyItem = item as any;
   const record = anyItem?.employee_record || {};
-  const candidate = anyItem?.candidate || {};
   const jobPost = anyItem?.job_post || {};
-
-  // 👇 NEW: pull submitted values from tasks
-  const submitted: Record<string, string> = {};
-
-  (item?.tasks || []).forEach((task) => {
-    const pairs = getTaskSubmissionPairs(task);
-    pairs.forEach(({ label, value }) => {
-      const key = label.toLowerCase().replace(/\s+/g, "_");
-      submitted[key] = value;
-    });
-  });
+  const submitted = collectSubmittedValues(item);
 
   return {
     legal_name:
       record?.legal_name ||
-      submitted?.legal_name ||
-      submitted?.full_name ||
-      candidate?.display_name ||
+      submitted.legal_name ||
+      submitted.full_name ||
       "",
 
     preferred_name:
       record?.preferred_name ||
-      submitted?.preferred_name ||
+      submitted.preferred_name ||
       "",
 
     personal_email:
       record?.personal_email ||
-      submitted?.personal_email ||
-      submitted?.email ||
-      "", // 🚨 NO fallback to candidate.email anymore
+      submitted.personal_email ||
+      submitted.email ||
+      "",
 
     work_email:
       record?.work_email ||
-      submitted?.work_email ||
+      submitted.work_email ||
       "",
 
     phone:
       record?.phone ||
-      submitted?.phone ||
-      candidate?.phone ||
+      submitted.phone ||
+      submitted.phone_number ||
       "",
+
+    date_of_birth:
+      normalizeDateInput(
+        record?.date_of_birth ||
+          submitted.date_of_birth ||
+          submitted.dob ||
+          "",
+      ),
 
     address_line_1:
       record?.address_line_1 ||
-      submitted?.address_line_1 ||
+      submitted.address_line_1 ||
+      submitted.address ||
       "",
 
     address_line_2:
       record?.address_line_2 ||
-      submitted?.address_line_2 ||
+      submitted.address_line_2 ||
       "",
 
     city:
       record?.city ||
-      submitted?.city ||
+      submitted.city ||
       "",
 
     region:
       record?.region ||
-      submitted?.region ||
+      submitted.region ||
+      submitted.county ||
       "",
 
     postcode:
       record?.postcode ||
-      submitted?.postcode ||
+      submitted.postcode ||
+      submitted.post_code ||
       "",
 
     country_code:
       record?.country_code ||
-      submitted?.country_code ||
+      submitted.country_code ||
       item?.country_code ||
       "",
 
     start_date:
-      record?.start_date ||
-      submitted?.start_date ||
-      "",
+      normalizeDateInput(record?.start_date || submitted.start_date || ""),
 
     employee_number:
       record?.employee_number || "",
@@ -567,22 +647,25 @@ function buildEmployeeRecordForm(item: BusinessOnboarding | null): EmployeeRecor
 
     manager_name:
       record?.manager_name ||
-      submitted?.manager_name ||
+      submitted.manager_name ||
       "",
 
     emergency_contact_name:
       record?.emergency_contact_name ||
-      submitted?.emergency_contact_name ||
+      submitted.emergency_contact_name ||
+      submitted.full_name ||
       "",
 
     emergency_contact_phone:
       record?.emergency_contact_phone ||
-      submitted?.emergency_contact_phone ||
+      submitted.emergency_contact_phone ||
+      submitted.phone_number ||
+      submitted.phone ||
       "",
 
     national_id_last4:
       record?.national_id_last4 ||
-      submitted?.national_id_last4 ||
+      submitted.national_id_last4 ||
       "",
 
     notes:
@@ -604,7 +687,12 @@ function formTextareaClass(disabled = false) {
 
 function isRecentlyStarted(item: BusinessOnboarding) {
   const anyItem = item as any;
-  const rawDate = anyItem?.start_date || anyItem?.employee_record?.start_date || item.updated_at || item.created_at;
+  const rawDate =
+    anyItem?.start_date ||
+    anyItem?.employee_record?.start_date ||
+    item.updated_at ||
+    item.created_at;
+
   if (!rawDate) return false;
 
   const parsed = new Date(String(rawDate));
@@ -633,12 +721,20 @@ function isReadyRecord(item: BusinessOnboarding) {
 function shouldAppearInEmployeeRecords(item: BusinessOnboarding) {
   if (!applicationAllowsEmployeeRecords(item.application?.stage || null)) return false;
   if (item.status === "removed" || item.status === "archived") return false;
-  return item.status === "started" || item.status === "completed" || isReadyRecord(item) || hasSubmittedWork(item);
+
+  return (
+    item.status === "started" ||
+    item.status === "completed" ||
+    isReadyRecord(item) ||
+    hasSubmittedWork(item)
+  );
 }
 
 function getCandidateName(item: BusinessOnboarding | null) {
   if (!item) return "Candidate";
-  return item.candidate?.display_name || `Application #${item.application_id}`;
+
+  const form = buildEmployeeRecordForm(item);
+  return form.legal_name || item.candidate?.display_name || `Application #${item.application_id}`;
 }
 
 function getJobTitle(item: BusinessOnboarding | null) {
@@ -658,8 +754,10 @@ export default function EmployeeRecordsPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<EmployeeRecordFilter>("all");
-  const [viewingSubmissionTask, setViewingSubmissionTask] = useState<BusinessOnboardingTask | null>(null);
-  const [employeeRecordForm, setEmployeeRecordForm] = useState<EmployeeRecordForm>(buildEmployeeRecordForm(null));
+  const [viewingSubmissionTask, setViewingSubmissionTask] =
+    useState<BusinessOnboardingTask | null>(null);
+  const [employeeRecordForm, setEmployeeRecordForm] =
+    useState<EmployeeRecordForm>(buildEmployeeRecordForm(null));
 
   async function loadList() {
     setLoading(true);
@@ -722,7 +820,15 @@ export default function EmployeeRecordsPage() {
 
       if (!query) return true;
 
+      const submitted = collectSubmittedValues(item);
+
       const haystack = [
+        submitted.legal_name,
+        submitted.full_name,
+        submitted.personal_email,
+        submitted.email,
+        submitted.phone,
+        submitted.phone_number,
         item.candidate?.display_name,
         item.candidate?.email,
         item.candidate?.phone,
@@ -748,6 +854,7 @@ export default function EmployeeRecordsPage() {
     }
 
     if (selectedId && filteredItems.some((item) => item.id === selectedId)) return;
+
     setSelectedId(filteredItems[0].id);
   }, [filteredItems, selectedId]);
 
@@ -920,7 +1027,9 @@ export default function EmployeeRecordsPage() {
 
               <select
                 value={filter}
-                onChange={(event) => setFilter(event.target.value as EmployeeRecordFilter)}
+                onChange={(event) =>
+                  setFilter(event.target.value as EmployeeRecordFilter)
+                }
                 className="mt-3 h-11 w-full rounded-2xl border border-hier-border bg-white px-3 text-sm text-hier-text outline-none focus:border-hier-primary"
               >
                 <option value="all">All records</option>
@@ -949,7 +1058,9 @@ export default function EmployeeRecordsPage() {
                 {filteredItems.map((item) => {
                   const isSelected = item.id === selectedId;
                   const submittedCount = (item.tasks || []).filter((task) =>
-                    ["submitted", "reviewed", "approved", "rejected", "waived"].includes(task.status || ""),
+                    ["submitted", "reviewed", "approved", "rejected", "waived"].includes(
+                      task.status || "",
+                    ),
                   ).length;
 
                   return (
@@ -1013,7 +1124,7 @@ export default function EmployeeRecordsPage() {
                       </div>
                       <div>
                         <p className="text-xl font-semibold text-hier-text">
-                          {getCandidateName(selected)}
+                          {employeeRecordForm.legal_name || getCandidateName(selected)}
                         </p>
                         <p className="mt-1 text-sm text-hier-muted">
                           {getJobTitle(selected)}
@@ -1046,7 +1157,7 @@ export default function EmployeeRecordsPage() {
                           Editable employee details
                         </h2>
                         <p className="mt-1 text-sm text-hier-muted">
-                          Update this whenever an employee moves, changes role, or details change.
+                          This prioritises submitted onboarding details, then saved employee records.
                         </p>
                       </div>
                     </div>
@@ -1069,6 +1180,7 @@ export default function EmployeeRecordsPage() {
                   <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <input value={employeeRecordForm.legal_name} onChange={(event) => updateEmployeeField("legal_name", event.target.value)} placeholder="Legal name" className={formInputClass(busyKey === "employee-record-save")} />
                     <input value={employeeRecordForm.preferred_name} onChange={(event) => updateEmployeeField("preferred_name", event.target.value)} placeholder="Preferred name" className={formInputClass(busyKey === "employee-record-save")} />
+                    <input value={employeeRecordForm.date_of_birth} onChange={(event) => updateEmployeeField("date_of_birth", event.target.value)} type="date" className={formInputClass(busyKey === "employee-record-save")} />
                     <input value={employeeRecordForm.employee_number} onChange={(event) => updateEmployeeField("employee_number", event.target.value)} placeholder="Employee number" className={formInputClass(busyKey === "employee-record-save")} />
                     <input value={employeeRecordForm.personal_email} onChange={(event) => updateEmployeeField("personal_email", event.target.value)} placeholder="Personal email" className={formInputClass(busyKey === "employee-record-save")} />
                     <input value={employeeRecordForm.work_email} onChange={(event) => updateEmployeeField("work_email", event.target.value)} placeholder="Work email" className={formInputClass(busyKey === "employee-record-save")} />
