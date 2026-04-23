@@ -241,10 +241,14 @@ function getTaskSubmissionValue(task: BusinessOnboardingTask): string | null {
 
 function getTaskSubmissionPairs(task: BusinessOnboardingTask): Array<{ label: string; value: string }> {
   const anyTask = task as any;
-  const meta = anyTask?.meta || anyTask?.submission_meta || anyTask?.response_meta || {};
+  const meta = anyTask?.meta || anyTask?.metadata || anyTask?.metadata_json || {};
+
   const candidates = [
-    meta?.fields,
     meta?.submitted_fields,
+    meta?.personal_details,
+    meta?.emergency_contact,
+    meta?.bank_details,
+    meta?.fields,
     meta?.answers,
     meta?.submitted_answers,
   ];
@@ -328,6 +332,9 @@ export default function OnboardingPage() {
   const [documentType, setDocumentType] = useState("contract");
   const [documentTaskId, setDocumentTaskId] = useState<number | "">("");
   const [removeReason, setRemoveReason] = useState("removed_by_business");
+
+  const [viewingSubmissionTask, setViewingSubmissionTask] =
+  useState<BusinessOnboardingTask | null>(null);
 
   const [employeeRecordForm, setEmployeeRecordForm] = useState<EmployeeRecordForm>(
     buildEmployeeRecordForm(null),
@@ -1288,6 +1295,19 @@ export default function OnboardingPage() {
                                       ) : null}
 
                                       {submissionPairs.length > 0 ? (
+                                        <div className="mt-3">
+                                          <button
+                                            type="button"
+                                            onClick={() => setViewingSubmissionTask(task)}
+                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            View details
+                                          </button>
+                                        </div>
+                                      ) : null}
+
+                                      {submissionPairs.length > 0 ? (
                                         <div className="mt-3 grid gap-3 md:grid-cols-2">
                                           {submissionPairs.map((pair) => (
                                             <div
@@ -2227,6 +2247,47 @@ export default function OnboardingPage() {
           </section>
         </div>
       )}
+
+    {viewingSubmissionTask ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="w-full max-w-2xl rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-hier-muted">
+                Submitted information
+              </p>
+              <h3 className="mt-1 text-xl font-semibold text-hier-text">
+                {viewingSubmissionTask.title || formatLabel(viewingSubmissionTask.task_key)}
+              </h3>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setViewingSubmissionTask(null)}
+              className="rounded-2xl border border-hier-border bg-white px-4 py-2 text-sm font-semibold text-hier-text"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {getTaskSubmissionPairs(viewingSubmissionTask).map((pair) => (
+              <div
+                key={pair.label}
+                className="rounded-[18px] border border-hier-border bg-hier-panel p-4"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                  {pair.label}
+                </p>
+                <p className="mt-2 text-sm text-hier-text">
+                  {pair.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    ) : null}
     </div>
   );
 }
