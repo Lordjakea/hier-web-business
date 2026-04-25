@@ -128,16 +128,6 @@ export default function StaffAccountDetailPage() {
           ? {
               ...current,
               notes: [response.note, ...(current.notes || [])],
-              activity: [
-                {
-                  id: `note-${response.note.id}`,
-                  type: "note",
-                  title: "Internal note added",
-                  description: response.note.note,
-                  created_at: response.note.created_at,
-                },
-                ...(current.activity || []),
-              ],
             }
           : current
       );
@@ -340,23 +330,39 @@ export default function StaffAccountDetailPage() {
           </section>
 
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
-            <h2 className="text-base font-semibold text-hier-text">Activity</h2>
+            <h2 className="text-base font-semibold text-hier-text">Internal notes</h2>
+
             <div className="mt-5 space-y-3">
-              {account.activity.length ? (
-                account.activity.map((item) => (
-                  <div key={item.id} className="flex gap-3 rounded-[22px] border border-hier-border bg-hier-panel p-4">
+              {account.notes?.length ? (
+                account.notes.map((note) => (
+                  <div
+                    key={note.id}
+                    className="flex gap-3 rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                  >
                     <div className="mt-0.5 rounded-2xl bg-white p-2 text-hier-primary shadow-sm">
-                      {item.type === "note" ? <StickyNote className="h-4 w-4" /> : <CalendarClock className="h-4 w-4" />}
+                      <StickyNote className="h-4 w-4" />
                     </div>
+
                     <div>
-                      <p className="text-sm font-semibold text-hier-text">{item.title}</p>
-                      <p className="mt-1 text-sm leading-5 text-hier-muted">{item.description || "—"}</p>
-                      <p className="mt-2 text-xs text-hier-muted">{formatDate(item.created_at)}</p>
+                      <p className="text-sm font-semibold text-hier-text">
+                        Internal note
+                      </p>
+
+                      <p className="mt-1 text-sm leading-5 text-hier-muted">
+                        {note.note || "—"}
+                      </p>
+
+                      <p className="mt-2 text-xs text-hier-muted">
+                        {(note.author?.full_name ||
+                          note.author?.email ||
+                          "Hier staff")}{" "}
+                        · {formatDate(note.created_at)}
+                      </p>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-hier-muted">No activity yet.</p>
+                <p className="text-sm text-hier-muted">No internal notes yet.</p>
               )}
             </div>
           </section>
