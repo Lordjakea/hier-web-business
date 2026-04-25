@@ -52,12 +52,15 @@ function Feature({
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const reason = searchParams.get("reason");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const showIdleTimeout = reason === "idle_timeout";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -167,7 +170,9 @@ function LoginPageContent() {
                     key={label}
                     className="rounded-[24px] border border-white/60 bg-white/80 p-5 shadow-card"
                   >
-                    <p className="text-2xl font-semibold text-hier-text">{value}</p>
+                    <p className="text-2xl font-semibold text-hier-text">
+                      {value}
+                    </p>
                     <p className="mt-2 text-sm text-hier-muted">{label}</p>
                   </div>
                 ))}
@@ -194,6 +199,12 @@ function LoginPageContent() {
                 stores the returned JWT locally for authenticated API calls.
               </p>
             </div>
+
+            {showIdleTimeout ? (
+              <div className="mt-6 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                You’ve been idle for too long. Please log back in.
+              </div>
+            ) : null}
 
             <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
               <label className="block space-y-2">
