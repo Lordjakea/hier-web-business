@@ -353,10 +353,7 @@ export default function StaffAccountDetailPage() {
                       </p>
 
                       <p className="mt-2 text-xs text-hier-muted">
-                        {(note.author?.full_name ||
-                          note.author?.email ||
-                          "Hier staff")}{" "}
-                        · {formatDate(note.created_at)}
+                        Hier staff · {formatDate(note.created_at)}
                       </p>
                     </div>
                   </div>
