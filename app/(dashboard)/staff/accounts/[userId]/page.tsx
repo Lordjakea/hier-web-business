@@ -455,6 +455,20 @@ export default function StaffAccountDetailPage() {
                       key={post.id}
                       className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
                     >
+                      {post.image_url ? (
+                        <div className="mb-4 overflow-hidden rounded-[20px] border border-hier-border bg-white">
+                          <img
+                            src={post.image_url}
+                            alt={post.title || "Job post image"}
+                            className="h-48 w-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="mb-4 flex h-32 items-center justify-center rounded-[20px] border border-dashed border-hier-border bg-white text-sm text-hier-muted">
+                          No post image
+                        </div>
+                      )}
+                      
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="text-sm font-semibold text-hier-text">
