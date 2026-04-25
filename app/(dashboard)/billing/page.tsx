@@ -263,7 +263,7 @@ export default function BillingPage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-hier-muted">Current plan</p>
                   <h2 className="mt-2 text-2xl font-semibold text-hier-text">{currentPlan?.name || formatStatus(currentPlanCode)}</h2>
                   <p className="mt-2 text-sm leading-7 text-hier-muted">
-                    {currentPlan ? `${formatMonthlyPrice(currentPlan.price_monthly, currentPlan.currency)} / month` : "Plan details unavailable right now."}
+                    {currentPlan ? `${formatMonthlyPrice(currentPlan.price_monthly, currentPlan.currency)} / month Ex VAT` : "Plan details unavailable right now."}
                   </p>
                 </div>
                 <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold ${cancelAtPeriodEnd ? "bg-amber-50 text-amber-700" : "bg-hier-soft text-hier-primary"}`}>
@@ -378,7 +378,7 @@ export default function BillingPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-xl font-semibold text-hier-text">{plan.name}</h3>
-                        <p className="mt-2 text-3xl font-semibold tracking-tight text-hier-text">{formatMonthlyPrice(plan.price_monthly, plan.currency)}<span className="ml-1 text-sm font-medium text-hier-muted">/ month</span></p>
+                        <p className="mt-2 text-3xl font-semibold tracking-tight text-hier-text">{formatMonthlyPrice(plan.price_monthly, plan.currency)}<span className="ml-1 text-sm font-medium text-hier-muted">/ month Ex VAT</span></p>
                       </div>
                       {current ? <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-primary shadow-sm">Current</span> : null}
                     </div>
