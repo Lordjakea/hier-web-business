@@ -129,7 +129,10 @@ export async function fetchStaffAccount(userId: number | string) {
   );
 }
 
-export async function createStaffAccountNote(userId: number | string, note: string) {
+export async function createStaffAccountNote(
+  userId: number | string,
+  note: string
+) {
   return apiFetch<{ ok: boolean; note: StaffNote }>(
     `/api/staff/accounts/${userId}/notes`,
     {
@@ -137,6 +140,56 @@ export async function createStaffAccountNote(userId: number | string, note: stri
       body: JSON.stringify({ note }),
     }
   );
+}
+
+export async function updateStaffAccountIdentity(
+  userId: number | string,
+  payload: {
+    email?: string | null;
+    phone?: string | null;
+    full_name?: string | null;
+    reason: string;
+  }
+) {
+  return apiFetch<{
+    ok: boolean;
+    account: StaffAccountDetail["basic"];
+    changes: Array<{
+      field: string;
+      old_value: any;
+      new_value: any;
+    }>;
+  }>(`/api/staff/accounts/${userId}/identity`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function markStaffAccountEmailVerified(
+  userId: number | string,
+  reason: string
+) {
+  return apiFetch<{
+    ok: boolean;
+    account: StaffAccountDetail["basic"];
+  }>(`/api/staff/accounts/${userId}/mark-email-verified`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function resendStaffAccountVerificationEmail(
+  userId: number | string,
+  reason: string
+) {
+  return apiFetch<{
+    ok: boolean;
+    message?: string;
+    dev_code?: string;
+  }>(`/api/staff/accounts/${userId}/resend-verification-email`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export async function fetchStaffTeam() {
@@ -187,10 +240,7 @@ export async function fetchStaffAccountPosts(userId: number | string) {
   );
 }
 
-export async function removeStaffPost(
-  postId: number | string,
-  reason: string
-) {
+export async function removeStaffPost(postId: number | string, reason: string) {
   return apiFetch<{
     ok: boolean;
     post?: any;

@@ -9,7 +9,6 @@ import {
   BriefcaseBusiness,
   CheckCircle2,
   FileText,
-  Trash2,
   X,
   Loader2,
   Mail,
@@ -22,7 +21,10 @@ import {
   createStaffAccountNote,
   fetchStaffAccountDetail,
   fetchStaffAccountPosts,
+  markStaffAccountEmailVerified,
   removeStaffPost,
+  resendStaffAccountVerificationEmail,
+  updateStaffAccountIdentity,
   type StaffAccountDetail,
 } from "@/lib/staff-crm";
 
@@ -101,6 +103,14 @@ export default function StaffAccountDetailPage() {
   const [removeReason, setRemoveReason] = useState("");
   const [removingPost, setRemovingPost] = useState(false);
 
+  const [identityEmail, setIdentityEmail] = useState("");
+  const [identityPhone, setIdentityPhone] = useState("");
+  const [identityFullName, setIdentityFullName] = useState("");
+  const [identityReason, setIdentityReason] = useState("");
+  const [savingIdentity, setSavingIdentity] = useState(false);
+  const [markingVerified, setMarkingVerified] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
+
   const loadAccount = useCallback(async () => {
     if (!userId) return;
 
@@ -110,6 +120,10 @@ export default function StaffAccountDetailPage() {
     try {
       const response = await fetchStaffAccountDetail(userId);
       setAccount(response.account);
+      setIdentityEmail(response.account.basic?.email || "");
+      setIdentityPhone(response.account.basic?.phone || "");
+      setIdentityFullName(response.account.basic?.full_name || "");
+      setIdentityReason("");
 
       if (response.account.account_type === "business") {
         setLoadingPosts(true);
@@ -168,51 +182,163 @@ export default function StaffAccountDetailPage() {
     }
   }
 
+  async function handleUpdateIdentity(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!userId) return;
+
+    const reason = identityReason.trim();
+
+    if (reason.length < 5) {
+      setError("Please enter a reason of at least 5 characters.");
+      return;
+    }
+
+    setSavingIdentity(true);
+    setError(null);
+
+    try {
+      const response = await updateStaffAccountIdentity(userId, {
+        email: identityEmail,
+        phone: identityPhone,
+        full_name: identityFullName,
+        reason,
+      });
+
+      setAccount((current) =>
+        current
+          ? {
+              ...current,
+              basic: response.account,
+            }
+          : current
+      );
+
+      setIdentityReason("");
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update account identity."
+      );
+    } finally {
+      setSavingIdentity(false);
+    }
+  }
+
+  async function handleMarkEmailVerified() {
+    if (!userId) return;
+
+    const reason = identityReason.trim();
+
+    if (reason.length < 5) {
+      setError("Please enter a reason of at least 5 characters first.");
+      return;
+    }
+
+    setMarkingVerified(true);
+    setError(null);
+
+    try {
+      const response = await markStaffAccountEmailVerified(userId, reason);
+
+      setAccount((current) =>
+        current
+          ? {
+              ...current,
+              basic: response.account,
+            }
+          : current
+      );
+
+      setIdentityReason("");
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not mark email as verified."
+      );
+    } finally {
+      setMarkingVerified(false);
+    }
+  }
+
+  async function handleResendVerificationEmail() {
+    if (!userId) return;
+
+    const reason = identityReason.trim();
+
+    if (reason.length < 5) {
+      setError("Please enter a reason of at least 5 characters first.");
+      return;
+    }
+
+    setResendingVerification(true);
+    setError(null);
+
+    try {
+      await resendStaffAccountVerificationEmail(userId, reason);
+
+      setIdentityReason("");
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not resend verification email."
+      );
+    } finally {
+      setResendingVerification(false);
+    }
+  }
+
   async function handleConfirmRemovePost() {
-  if (!selectedPost) return;
+    if (!selectedPost) return;
 
-  const trimmed = removeReason.trim();
+    const trimmed = removeReason.trim();
 
-  if (trimmed.length < 10) {
-    setError("Please enter a removal reason of at least 10 characters.");
-    return;
+    if (trimmed.length < 10) {
+      setError("Please enter a removal reason of at least 10 characters.");
+      return;
+    }
+
+    setRemovingPost(true);
+    setError(null);
+
+    try {
+      const response = await removeStaffPost(selectedPost.id, trimmed);
+
+      setPosts((current) =>
+        current.map((post) =>
+          post.id === selectedPost.id ? { ...post, ...response.post } : post
+        )
+      );
+
+      setAccount((current) =>
+        current
+          ? {
+              ...current,
+              notes: response.note
+                ? [response.note, ...(current.notes || [])]
+                : current.notes,
+            }
+          : current
+      );
+
+      setSelectedPost(null);
+      setRemoveReason("");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not remove this post."
+      );
+    } finally {
+      setRemovingPost(false);
+    }
   }
-
-  setRemovingPost(true);
-  setError(null);
-
-  try {
-    const response = await removeStaffPost(selectedPost.id, trimmed);
-
-    setPosts((current) =>
-      current.map((post) =>
-        post.id === selectedPost.id ? { ...post, ...response.post } : post
-      )
-    );
-
-    setAccount((current) =>
-      current
-        ? {
-            ...current,
-            notes: response.note
-              ? [response.note, ...(current.notes || [])]
-              : current.notes,
-          }
-        : current
-    );
-
-    setSelectedPost(null);
-    setRemoveReason("");
-  } catch (caughtError) {
-    setError(
-      caughtError instanceof Error
-        ? caughtError.message
-        : "Could not remove this post."
-    );
-  } finally {
-    setRemovingPost(false);
-  }
-}
 
   const title = useMemo(() => {
     if (!account?.basic) return "Account detail";
@@ -360,16 +486,28 @@ export default function StaffAccountDetailPage() {
             </InfoCard>
           ) : (
             <InfoCard title="Candidate profile">
-              <DetailRow label="First name" value={account.user_profile?.first_name} />
-              <DetailRow label="Last name" value={account.user_profile?.last_name} />
-              <DetailRow label="Headline" value={account.user_profile?.headline} />
+              <DetailRow
+                label="First name"
+                value={account.user_profile?.first_name}
+              />
+              <DetailRow
+                label="Last name"
+                value={account.user_profile?.last_name}
+              />
+              <DetailRow
+                label="Headline"
+                value={account.user_profile?.headline}
+              />
               <DetailRow
                 label="Summary"
                 value={account.user_profile?.about || account.user_profile?.summary}
               />
               <DetailRow
                 label="Location"
-                value={account.user_profile?.address_text || account.user_profile?.location}
+                value={
+                  account.user_profile?.address_text ||
+                  account.user_profile?.location
+                }
               />
               <DetailRow
                 label="Contact number"
@@ -502,7 +640,7 @@ export default function StaffAccountDetailPage() {
                           }}
                           className="inline-flex items-center gap-2 rounded-2xl border border-hier-border bg-white px-3 py-2 text-xs font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <FileText className="h-3.5 w-3.5" />
                           Review
                         </button>
                       </div>
@@ -549,6 +687,114 @@ export default function StaffAccountDetailPage() {
         </div>
 
         <aside className="space-y-6">
+          <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
+                <UserRound className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h2 className="text-base font-semibold text-hier-text">
+                  Account actions
+                </h2>
+                <p className="text-sm text-hier-muted">
+                  Edit account identity details with an audit reason.
+                </p>
+              </div>
+            </div>
+
+            <form className="mt-5 space-y-3" onSubmit={handleUpdateIdentity}>
+              <div>
+                <label className="text-xs font-semibold text-hier-muted">
+                  Email
+                </label>
+                <input
+                  value={identityEmail}
+                  onChange={(event) => setIdentityEmail(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-hier-muted">
+                  Phone
+                </label>
+                <input
+                  value={identityPhone}
+                  onChange={(event) => setIdentityPhone(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-hier-muted">
+                  Full name
+                </label>
+                <input
+                  value={identityFullName}
+                  onChange={(event) => setIdentityFullName(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-hier-muted">
+                  Reason required
+                </label>
+                <textarea
+                  value={identityReason}
+                  onChange={(event) => setIdentityReason(event.target.value)}
+                  rows={4}
+                  placeholder="Why is this staff change being made?"
+                  className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingIdentity || identityReason.trim().length < 5}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingIdentity ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Save identity changes
+              </button>
+
+              {!account.basic?.email_verified ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={markingVerified || identityReason.trim().length < 5}
+                    onClick={handleMarkEmailVerified}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {markingVerified ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
+                    )}
+                    Mark email verified
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={resendingVerification || identityReason.trim().length < 5}
+                    onClick={handleResendVerificationEmail}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resendingVerification ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Mail className="h-4 w-4" />
+                    )}
+                    Resend verification email
+                  </button>
+                </>
+              ) : null}
+            </form>
+          </section>
+
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
@@ -610,7 +856,7 @@ export default function StaffAccountDetailPage() {
                         Internal note
                       </p>
 
-                      <p className="mt-1 text-sm leading-5 text-hier-muted">
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-hier-muted">
                         {item.note || "—"}
                       </p>
 
@@ -630,137 +876,162 @@ export default function StaffAccountDetailPage() {
               )}
             </div>
           </section>
-
-          <section className="rounded-[32px] border border-amber-200 bg-amber-50 p-5 sm:p-6">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-
-              <div>
-                <h2 className="text-base font-semibold text-amber-950">
-                  Safe first version
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-amber-900">
-                  This account view is currently read and note only. Delete
-                  account, billing edits, email sending and post deletion should
-                  be added after audit logging and staff role checks are locked
-                  down.
-                </p>
-              </div>
-            </div>
-          </section>
         </aside>
       </section>
-    {selectedPost ? (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-        <div className="w-full max-w-lg rounded-[32px] border border-hier-border bg-white p-6 shadow-2xl">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-hier-text">
-                Review job post
-              </h2>
-              <p className="mt-1 text-sm text-hier-muted">
-                Review the full post before deciding whether it should stay live or be removed.
-              </p>
-            </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedPost(null);
-                setRemoveReason("");
-              }}
-              className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="mt-5 max-h-[65vh] overflow-y-auto pr-1">
-            {selectedPost.image_url ? (
-              <div className="overflow-hidden rounded-[24px] border border-hier-border bg-white">
-                <img
-                  src={selectedPost.image_url}
-                  alt={selectedPost.title || "Job post image"}
-                  className="h-64 w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="flex h-40 items-center justify-center rounded-[24px] border border-dashed border-hier-border bg-hier-panel text-sm text-hier-muted">
-                No post image
-              </div>
-            )}
-
-            <div className="mt-5 rounded-[22px] border border-hier-border bg-hier-panel p-4">
-              <p className="text-lg font-semibold text-hier-text">
-                {selectedPost.title || `Post #${selectedPost.id}`}
-              </p>
-
-              <div className="mt-3 grid gap-3 text-sm text-hier-muted sm:grid-cols-2">
-                <p><span className="font-semibold text-hier-text">Company:</span> {selectedPost.company_name || "—"}</p>
-                <p><span className="font-semibold text-hier-text">Location:</span> {selectedPost.location || "—"}</p>
-                <p><span className="font-semibold text-hier-text">Sector:</span> {selectedPost.sector || "—"}</p>
-                <p><span className="font-semibold text-hier-text">Type:</span> {selectedPost.employment_type || "—"}</p>
-                <p><span className="font-semibold text-hier-text">Salary min:</span> {selectedPost.salary_min || "—"}</p>
-                <p><span className="font-semibold text-hier-text">Salary max:</span> {selectedPost.salary_max || "—"}</p>
-                <p><span className="font-semibold text-hier-text">Created:</span> {formatDate(selectedPost.created_at)}</p>
-                <p><span className="font-semibold text-hier-text">Status:</span> {selectedPost.is_active ? "Live" : "Removed"}</p>
-              </div>
-
-              <div className="mt-5">
-                <p className="text-sm font-semibold text-hier-text">Description</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-hier-muted">
-                  {selectedPost.description || "No description provided."}
+      {selectedPost ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-[32px] border border-hier-border bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-hier-text">
+                  Review job post
+                </h2>
+                <p className="mt-1 text-sm text-hier-muted">
+                  Review the full post before deciding whether it should stay
+                  live or be removed.
                 </p>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPost(null);
+                  setRemoveReason("");
+                }}
+                className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
-            <div className="mt-5 rounded-[22px] border border-red-200 bg-red-50 p-4">
-              <label className="block text-sm font-semibold text-red-950">
-                Removal reason
-              </label>
-              <p className="mt-1 text-xs text-red-800">
-                Only complete this if you decide the post should be removed. This reason will be emailed to the business.
-              </p>
-
-              <textarea
-                value={removeReason}
-                onChange={(event) => setRemoveReason(event.target.value)}
-                rows={5}
-                placeholder="Explain why this post is being removed..."
-                className="mt-3 w-full resize-none rounded-[18px] border border-red-200 bg-white p-4 text-sm text-hier-text outline-none transition focus:border-red-500"
-              />
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedPost(null);
-                setRemoveReason("");
-              }}
-              className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              disabled={removeReason.trim().length < 10 || removingPost}
-              onClick={handleConfirmRemovePost}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {removingPost ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+            <div className="mt-5 max-h-[65vh] overflow-y-auto pr-1">
+              {selectedPost.image_url ? (
+                <div className="overflow-hidden rounded-[24px] border border-hier-border bg-white">
+                  <img
+                    src={selectedPost.image_url}
+                    alt={selectedPost.title || "Job post image"}
+                    className="h-64 w-full object-cover"
+                  />
+                </div>
               ) : (
-                <FileText className="h-4 w-4" />
+                <div className="flex h-40 items-center justify-center rounded-[24px] border border-dashed border-hier-border bg-hier-panel text-sm text-hier-muted">
+                  No post image
+                </div>
               )}
-              Remove post
-            </button>
+
+              <div className="mt-5 rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                <p className="text-lg font-semibold text-hier-text">
+                  {selectedPost.title || `Post #${selectedPost.id}`}
+                </p>
+
+                <div className="mt-3 grid gap-3 text-sm text-hier-muted sm:grid-cols-2">
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Company:
+                    </span>{" "}
+                    {selectedPost.company_name || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Location:
+                    </span>{" "}
+                    {selectedPost.location || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Sector:
+                    </span>{" "}
+                    {selectedPost.sector || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">Type:</span>{" "}
+                    {selectedPost.employment_type || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Salary min:
+                    </span>{" "}
+                    {selectedPost.salary_min || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Salary max:
+                    </span>{" "}
+                    {selectedPost.salary_max || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Created:
+                    </span>{" "}
+                    {formatDate(selectedPost.created_at)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Status:
+                    </span>{" "}
+                    {selectedPost.is_active ? "Live" : "Removed"}
+                  </p>
+                </div>
+
+                <div className="mt-5">
+                  <p className="text-sm font-semibold text-hier-text">
+                    Description
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-hier-muted">
+                    {selectedPost.description || "No description provided."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-[22px] border border-red-200 bg-red-50 p-4">
+                <label className="block text-sm font-semibold text-red-950">
+                  Removal reason
+                </label>
+                <p className="mt-1 text-xs text-red-800">
+                  Only complete this if you decide the post should be removed.
+                  This reason will be emailed to the business.
+                </p>
+
+                <textarea
+                  value={removeReason}
+                  onChange={(event) => setRemoveReason(event.target.value)}
+                  rows={5}
+                  placeholder="Explain why this post is being removed..."
+                  className="mt-3 w-full resize-none rounded-[18px] border border-red-200 bg-white p-4 text-sm text-hier-text outline-none transition focus:border-red-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPost(null);
+                  setRemoveReason("");
+                }}
+                className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={removeReason.trim().length < 10 || removingPost}
+                onClick={handleConfirmRemovePost}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {removingPost ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                Remove post
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    ) : null}
+      ) : null}
     </div>
   );
 }
