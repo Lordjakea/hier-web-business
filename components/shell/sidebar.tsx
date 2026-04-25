@@ -7,6 +7,7 @@ import {
   BriefcaseBusiness,
   CreditCard,
   LayoutGrid,
+  LifeBuoy,
   Megaphone,
   Shield,
   UserCog,
@@ -15,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import clsx from "clsx";
+import { getStoredUser } from "@/lib/auth";
 import { HierBrand } from "@/components/ui/brand";
 
 const primaryLinks = [
@@ -40,6 +42,15 @@ export function Sidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const storedUser = getStoredUser();
+  const isStaff = Boolean(
+    storedUser?.role === "staff" &&
+      storedUser?.email_verified &&
+      storedUser?.email?.toLowerCase().endsWith("@hierapp.co.uk")
+  );
+  const canManageStaff = ["admin", "owner"].includes(
+    String(storedUser?.staff_role || "").toLowerCase()
+  );
 
   const content = (
     <div className="flex h-full flex-col gap-8 border-r border-hier-border bg-white px-4 py-5">
@@ -94,6 +105,43 @@ export function Sidebar({
           );
         })}
       </nav>
+
+
+      {isStaff ? (
+        <nav className="space-y-2">
+          <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+            Hier Staff
+          </p>
+
+          <Link
+            href="/staff"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              (pathname === "/staff" || pathname.startsWith("/staff/accounts"))
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <LifeBuoy className="h-4 w-4" />
+            Staff CRM
+          </Link>
+
+          {canManageStaff ? (
+            <Link
+              href="/staff/team"
+              className={clsx(
+                "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+                pathname.startsWith("/staff/team")
+                  ? "bg-hier-primary text-white shadow-card"
+                  : "text-hier-ink hover:bg-hier-panel"
+              )}
+            >
+              <Users className="h-4 w-4" />
+              Staff team
+            </Link>
+          ) : null}
+        </nav>
+      ) : null}
 
       <nav className="space-y-2">
         <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">

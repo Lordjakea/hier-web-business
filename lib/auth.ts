@@ -8,6 +8,9 @@ export type StoredBusinessUser = {
   email?: string | null;
   full_name?: string | null;
   role?: string | null;
+  email_verified?: boolean | null;
+  is_staff?: boolean | null;
+  staff_role?: string | null;
   avatar_url?: string | null;
   business_name?: string | null;
 };

@@ -14,6 +14,9 @@ type LoginResponseUser = {
   full_name?: string | null;
   name?: string | null;
   role?: string | null;
+  email_verified?: boolean | null;
+  is_staff?: boolean | null;
+  staff_role?: string | null;
   avatar_url?: string | null;
   logo_url?: string | null;
   profile?: {
@@ -95,6 +98,9 @@ function LoginPageContent() {
         email: rawUser.email || normalizedEmail,
         full_name: rawUser.full_name || rawUser.name || normalizedEmail,
         role: rawUser.role || "business_user",
+        email_verified: rawUser.email_verified ?? null,
+        is_staff: rawUser.is_staff ?? null,
+        staff_role: rawUser.staff_role ?? null,
         avatar_url:
           rawUser.avatar_url ||
           rawUser.profile?.avatar_url ||
@@ -112,7 +118,8 @@ function LoginPageContent() {
         window.sessionStorage.removeItem("hier_business_session_only");
       }
 
-      router.replace(searchParams.get("next") || "/candidates");
+      const nextPath = searchParams.get("next");
+      router.replace(nextPath || (rawUser.role === "staff" ? "/staff" : "/candidates"));
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
