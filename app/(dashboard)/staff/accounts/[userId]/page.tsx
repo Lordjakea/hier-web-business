@@ -1016,6 +1016,118 @@ export default function StaffAccountDetailPage() {
           </section>
         </aside>
       </section>
+
+      {selectedPost ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-[32px] border border-hier-border bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-hier-text">
+                  Review job post
+                </h2>
+                <p className="mt-1 text-sm text-hier-muted">
+                  Review the full post before deciding whether it should stay live or be removed.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPost(null);
+                  setRemoveReason("");
+                }}
+                className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 max-h-[65vh] overflow-y-auto pr-1">
+              {selectedPost.image_url ? (
+                <div className="overflow-hidden rounded-[24px] border border-hier-border bg-white">
+                  <img
+                    src={selectedPost.image_url}
+                    alt={selectedPost.title || "Job post image"}
+                    className="h-64 w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="flex h-40 items-center justify-center rounded-[24px] border border-dashed border-hier-border bg-hier-panel text-sm text-hier-muted">
+                  No post image
+                </div>
+              )}
+
+              <div className="mt-5 rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                <p className="text-lg font-semibold text-hier-text">
+                  {selectedPost.title || `Post #${selectedPost.id}`}
+                </p>
+
+                <div className="mt-3 grid gap-3 text-sm text-hier-muted sm:grid-cols-2">
+                  <p><span className="font-semibold text-hier-text">Company:</span> {selectedPost.company_name || "—"}</p>
+                  <p><span className="font-semibold text-hier-text">Location:</span> {selectedPost.location || "—"}</p>
+                  <p><span className="font-semibold text-hier-text">Sector:</span> {selectedPost.sector || "—"}</p>
+                  <p><span className="font-semibold text-hier-text">Type:</span> {selectedPost.employment_type || "—"}</p>
+                  <p><span className="font-semibold text-hier-text">Salary min:</span> {selectedPost.salary_min || "—"}</p>
+                  <p><span className="font-semibold text-hier-text">Salary max:</span> {selectedPost.salary_max || "—"}</p>
+                  <p><span className="font-semibold text-hier-text">Created:</span> {formatDate(selectedPost.created_at)}</p>
+                  <p><span className="font-semibold text-hier-text">Status:</span> {selectedPost.is_active ? "Live" : "Removed"}</p>
+                </div>
+
+                <div className="mt-5">
+                  <p className="text-sm font-semibold text-hier-text">Description</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-hier-muted">
+                    {selectedPost.description || "No description provided."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-[22px] border border-red-200 bg-red-50 p-4">
+                <label className="block text-sm font-semibold text-red-950">
+                  Removal reason
+                </label>
+                <p className="mt-1 text-xs text-red-800">
+                  Only complete this if you decide the post should be removed.
+                </p>
+
+                <textarea
+                  value={removeReason}
+                  onChange={(event) => setRemoveReason(event.target.value)}
+                  rows={5}
+                  placeholder="Explain why this post is being removed..."
+                  className="mt-3 w-full resize-none rounded-[18px] border border-red-200 bg-white p-4 text-sm text-hier-text outline-none transition focus:border-red-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPost(null);
+                  setRemoveReason("");
+                }}
+                className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={removeReason.trim().length < 10 || removingPost}
+                onClick={handleConfirmRemovePost}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {removingPost ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                Remove post
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
