@@ -732,17 +732,6 @@ export default function StaffAccountDetailPage() {
             </div>
           </div>
 
-          <label className="mt-5 block text-sm font-semibold text-hier-text">
-            Removal reason
-          </label>
-          <textarea
-            value={removeReason}
-            onChange={(event) => setRemoveReason(event.target.value)}
-            rows={5}
-            placeholder="Explain why this post is being removed. This will be included in the email to the business."
-            className="mt-2 w-full resize-none rounded-[22px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-          />
-
           <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
               type="button"
@@ -764,7 +753,7 @@ export default function StaffAccountDetailPage() {
               {removingPost ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Trash2 className="h-4 w-4" />
+                <FileText className="h-4 w-4" />
               )}
               Remove post
             </button>
