@@ -106,7 +106,7 @@ export default function StaffCrmPage() {
     try {
       const [staffResponse, accountsResponse] = await Promise.all([
         fetchStaffMe(),
-        searchStaffAccounts(query),
+        searchStaffAccounts({ q: query, role, per_page: 50 }),
       ]);
 
       setStaff(staffResponse.staff);

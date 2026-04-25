@@ -100,13 +100,27 @@ export async function fetchStaffMe() {
   return apiFetch<{ ok: boolean; staff: StaffMe }>("/api/staff/me");
 }
 
-export async function searchStaffAccounts(q: string, role?: string) {
-  const params = new URLSearchParams();
-  if (q.trim()) params.set("q", q.trim());
-  if (role) params.set("role", role);
-  return apiFetch<{ ok: boolean; items: StaffAccountSearchItem[] }>(
-    `/api/staff/accounts/search?${params.toString()}`
-  );
+export async function searchStaffAccounts(params?: {
+  q?: string;
+  role?: string;
+  per_page?: number;
+}) {
+  const search = new URLSearchParams();
+
+  if (params?.q?.trim()) search.set("q", params.q.trim());
+  if (params?.role && params.role !== "all") search.set("role", params.role);
+  if (params?.per_page) search.set("per_page", String(params.per_page));
+
+  const query = search.toString();
+
+  return apiFetch<{
+    ok: boolean;
+    items: StaffAccountSearchItem[];
+    total?: number;
+    page?: number;
+    per_page?: number;
+    pages?: number;
+  }>(`/api/staff/accounts/search${query ? `?${query}` : ""}`);
 }
 
 export async function fetchStaffAccount(userId: number | string) {
@@ -132,13 +146,15 @@ export async function fetchStaffTeam() {
 }
 
 export async function createStaffInvite(email: string, staffRole: string) {
-  return apiFetch<{ ok: boolean; invite: StaffInvite; invite_url?: string; warning?: string }>(
-    "/api/staff/invites",
-    {
-      method: "POST",
-      body: JSON.stringify({ email, staff_role: staffRole }),
-    }
-  );
+  return apiFetch<{
+    ok: boolean;
+    invite: StaffInvite;
+    invite_url?: string;
+    warning?: string;
+  }>("/api/staff/invites", {
+    method: "POST",
+    body: JSON.stringify({ email, staff_role: staffRole }),
+  });
 }
 
 export async function inspectStaffInvite(token: string) {
