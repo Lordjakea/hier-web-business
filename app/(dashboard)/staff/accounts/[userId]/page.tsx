@@ -7,14 +7,16 @@ import {
   AlertCircle,
   ArrowLeft,
   BriefcaseBusiness,
+  Check,
   CheckCircle2,
   FileText,
-  X,
   Loader2,
   Mail,
   MessageSquarePlus,
+  Pencil,
   StickyNote,
   UserRound,
+  X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
@@ -77,6 +79,128 @@ function DetailRow({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function EditableBusinessRow({
+  label,
+  field,
+  value,
+  editingField,
+  editingValue,
+  editingBooleanValue,
+  editingReason,
+  saving,
+  onStart,
+  onChangeValue,
+  onChangeBoolean,
+  onChangeReason,
+  onCancel,
+  onSave,
+}: {
+  label: string;
+  field: string;
+  value: unknown;
+  editingField: string | null;
+  editingValue: string;
+  editingBooleanValue: boolean;
+  editingReason: string;
+  saving: boolean;
+  onStart: (field: string, value: unknown) => void;
+  onChangeValue: (value: string) => void;
+  onChangeBoolean: (value: boolean) => void;
+  onChangeReason: (value: string) => void;
+  onCancel: () => void;
+  onSave: (field: string) => void;
+}) {
+  const isEditing = editingField === field;
+  const isBoolean = typeof value === "boolean";
+
+  if (!isEditing) {
+    return (
+      <div className="flex flex-col gap-2 border-b border-hier-border/70 pb-3 last:border-b-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
+        <p className="text-sm font-medium text-hier-muted">{label}</p>
+
+        <div className="flex items-center gap-2 sm:justify-end">
+          <p className="max-w-xl text-sm font-medium text-hier-text sm:text-right">
+            {displayValue(value)}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => onStart(field, value)}
+            className="rounded-xl border border-hier-border bg-white p-1.5 text-hier-muted transition hover:bg-hier-soft hover:text-hier-text"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 border-b border-hier-border/70 pb-4 last:border-b-0 last:pb-0">
+      <p className="text-sm font-semibold text-hier-text">{label}</p>
+
+      {isBoolean ? (
+        <label className="flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm font-semibold text-hier-text">
+          <input
+            type="checkbox"
+            checked={editingBooleanValue}
+            onChange={(event) => onChangeBoolean(event.target.checked)}
+            className="h-4 w-4"
+          />
+          Verified
+        </label>
+      ) : field === "bio" || field === "address_text" ? (
+        <textarea
+          value={editingValue}
+          onChange={(event) => onChangeValue(event.target.value)}
+          rows={field === "bio" ? 4 : 3}
+          className="w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+        />
+      ) : (
+        <input
+          value={editingValue}
+          onChange={(event) => onChangeValue(event.target.value)}
+          className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+        />
+      )}
+
+      <textarea
+        value={editingReason}
+        onChange={(event) => onChangeReason(event.target.value)}
+        rows={3}
+        placeholder="Reason required..."
+        className="w-full resize-none rounded-[18px] border border-hier-border bg-white p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary"
+      />
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={saving || editingReason.trim().length < 5}
+          onClick={() => onSave(field)}
+          className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-[16px] bg-hier-primary px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Check className="h-4 w-4" />
+          )}
+          Save
+        </button>
+
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onCancel}
+          className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-[16px] border border-hier-border bg-white px-3 text-sm font-semibold text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <X className="h-4 w-4" />
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StatCard({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="rounded-[28px] border border-hier-border bg-white p-5 shadow-sm">
@@ -112,15 +236,11 @@ export default function StaffAccountDetailPage() {
   const [markingVerified, setMarkingVerified] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
 
-  const [businessCompanyName, setBusinessCompanyName] = useState("");
-  const [businessCompanyNumber, setBusinessCompanyNumber] = useState("");
-  const [businessAddress, setBusinessAddress] = useState("");
-  const [businessContactEmail, setBusinessContactEmail] = useState("");
-  const [businessContactPhone, setBusinessContactPhone] = useState("");
-  const [businessBio, setBusinessBio] = useState("");
-  const [businessVerified, setBusinessVerified] = useState(false);
-  const [businessProfileReason, setBusinessProfileReason] = useState("");
-  const [savingBusinessProfile, setSavingBusinessProfile] = useState(false);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const [editingBooleanValue, setEditingBooleanValue] = useState(false);
+  const [editingReason, setEditingReason] = useState("");
+  const [savingInlineEdit, setSavingInlineEdit] = useState(false);
 
   const loadAccount = useCallback(async () => {
     if (!userId) return;
@@ -135,15 +255,6 @@ export default function StaffAccountDetailPage() {
       setIdentityPhone(response.account.basic?.phone || "");
       setIdentityFullName(response.account.basic?.full_name || "");
       setIdentityReason("");
-
-      setBusinessCompanyName(response.account.business_profile?.company_name || "");
-      setBusinessCompanyNumber(response.account.business_profile?.company_number || "");
-      setBusinessAddress(response.account.business_profile?.address_text || "");
-      setBusinessContactEmail(response.account.business_profile?.contact_email || "");
-      setBusinessContactPhone(response.account.business_profile?.contact_phone || "");
-      setBusinessBio(response.account.business_profile?.bio || "");
-      setBusinessVerified(Boolean(response.account.business_profile?.verified));
-      setBusinessProfileReason("");
 
       if (response.account.account_type === "business") {
         setLoadingPosts(true);
@@ -300,7 +411,6 @@ export default function StaffAccountDetailPage() {
 
     try {
       await resendStaffAccountVerificationEmail(userId, reason);
-
       setIdentityReason("");
       await loadAccount();
     } catch (caughtError) {
@@ -314,34 +424,49 @@ export default function StaffAccountDetailPage() {
     }
   }
 
-  async function handleUpdateBusinessProfile(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
+  function startInlineEdit(field: string, value: unknown) {
+    setEditingField(field);
+    setEditingReason("");
 
+    if (typeof value === "boolean") {
+      setEditingBooleanValue(value);
+      setEditingValue("");
+    } else {
+      setEditingValue(value === null || value === undefined ? "" : String(value));
+      setEditingBooleanValue(false);
+    }
+  }
+
+  function cancelInlineEdit() {
+    setEditingField(null);
+    setEditingValue("");
+    setEditingBooleanValue(false);
+    setEditingReason("");
+  }
+
+  async function handleSaveBusinessProfileField(field: string) {
     if (!userId) return;
 
-    const reason = businessProfileReason.trim();
+    const reason = editingReason.trim();
 
     if (reason.length < 5) {
-      setError("Please enter a business profile change reason of at least 5 characters.");
+      setError("Please enter a reason of at least 5 characters.");
       return;
     }
 
-    setSavingBusinessProfile(true);
+    setSavingInlineEdit(true);
     setError(null);
 
     try {
-      const response = await updateStaffBusinessProfile(userId, {
-        company_name: businessCompanyName,
-        company_number: businessCompanyNumber,
-        address_text: businessAddress,
-        contact_email: businessContactEmail,
-        contact_phone: businessContactPhone,
-        bio: businessBio,
-        verified: businessVerified,
-        reason,
-      });
+      const payload: Record<string, any> = { reason };
+
+      if (field === "verified") {
+        payload[field] = editingBooleanValue;
+      } else {
+        payload[field] = editingValue;
+      }
+
+      const response = await updateStaffBusinessProfile(userId, payload as any);
 
       setAccount((current) =>
         current
@@ -352,16 +477,16 @@ export default function StaffAccountDetailPage() {
           : current
       );
 
-      setBusinessProfileReason("");
+      cancelInlineEdit();
       await loadAccount();
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Could not update business profile."
+          : "Could not update business profile field."
       );
     } finally {
-      setSavingBusinessProfile(false);
+      setSavingInlineEdit(false);
     }
   }
 
@@ -456,6 +581,16 @@ export default function StaffAccountDetailPage() {
       ? account.recent_posts || []
       : account.recent_applications || [];
 
+  const businessProfileRows: Array<[string, string, unknown]> = [
+    ["Company", "company_name", account.business_profile?.company_name],
+    ["Company number", "company_number", account.business_profile?.company_number],
+    ["Contact email", "contact_email", account.business_profile?.contact_email],
+    ["Contact phone", "contact_phone", account.business_profile?.contact_phone],
+    ["Address", "address_text", account.business_profile?.address_text],
+    ["Verified", "verified", Boolean(account.business_profile?.verified)],
+    ["Bio", "bio", account.business_profile?.bio],
+  ];
+
   return (
     <div className="space-y-8">
       <Link
@@ -529,31 +664,25 @@ export default function StaffAccountDetailPage() {
 
           {account.account_type === "business" ? (
             <InfoCard title="Business profile">
-              <DetailRow
-                label="Company"
-                value={account.business_profile?.company_name}
-              />
-              <DetailRow
-                label="Company number"
-                value={account.business_profile?.company_number}
-              />
-              <DetailRow
-                label="Contact email"
-                value={account.business_profile?.contact_email}
-              />
-              <DetailRow
-                label="Contact phone"
-                value={account.business_profile?.contact_phone}
-              />
-              <DetailRow
-                label="Address"
-                value={account.business_profile?.address_text}
-              />
-              <DetailRow
-                label="Verified"
-                value={account.business_profile?.verified}
-              />
-              <DetailRow label="Bio" value={account.business_profile?.bio} />
+              {businessProfileRows.map(([label, field, value]) => (
+                <EditableBusinessRow
+                  key={field}
+                  label={label}
+                  field={field}
+                  value={value}
+                  editingField={editingField}
+                  editingValue={editingValue}
+                  editingBooleanValue={editingBooleanValue}
+                  editingReason={editingReason}
+                  saving={savingInlineEdit}
+                  onStart={startInlineEdit}
+                  onChangeValue={setEditingValue}
+                  onChangeBoolean={setEditingBooleanValue}
+                  onChangeReason={setEditingReason}
+                  onCancel={cancelInlineEdit}
+                  onSave={handleSaveBusinessProfileField}
+                />
+              ))}
             </InfoCard>
           ) : (
             <InfoCard title="Candidate profile">
@@ -686,20 +815,6 @@ export default function StaffAccountDetailPage() {
                           <p className="mt-1 text-sm text-hier-muted">
                             {post.location || post.sector || "—"}
                           </p>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                            <span className="rounded-full bg-white px-2.5 py-1 font-medium text-hier-muted">
-                              {post.employment_type || "Role"}
-                            </span>
-                            <span
-                              className={`rounded-full px-2.5 py-1 font-medium ${
-                                removed
-                                  ? "bg-red-50 text-red-700"
-                                  : "bg-emerald-50 text-emerald-700"
-                              }`}
-                            >
-                              {removed ? "Removed" : "Live"}
-                            </span>
-                          </div>
                         </div>
 
                         <button
@@ -730,24 +845,18 @@ export default function StaffAccountDetailPage() {
                     key={item.id}
                     className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-semibold text-hier-text">
-                          {item.title ||
-                            item.job_title ||
-                            item.company_name ||
-                            `Item #${item.id}`}
-                        </p>
-                        <p className="mt-1 text-sm text-hier-muted">
-                          {item.company_name ||
-                            item.stage ||
-                            item.status ||
-                            `${item.application_count || 0} applications`}
-                        </p>
-                      </div>
-
-                      <FileText className="h-4 w-4 shrink-0 text-hier-muted" />
-                    </div>
+                    <p className="text-sm font-semibold text-hier-text">
+                      {item.title ||
+                        item.job_title ||
+                        item.company_name ||
+                        `Item #${item.id}`}
+                    </p>
+                    <p className="mt-1 text-sm text-hier-muted">
+                      {item.company_name ||
+                        item.stage ||
+                        item.status ||
+                        `${item.application_count || 0} applications`}
+                    </p>
                   </div>
                 ))
               ) : (
@@ -759,128 +868,6 @@ export default function StaffAccountDetailPage() {
 
         <aside className="space-y-6">
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
-            {account.account_type === "business" ? (
-              <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
-                    <BriefcaseBusiness className="h-5 w-5" />
-                  </div>
-
-                  <div>
-                    <h2 className="text-base font-semibold text-hier-text">
-                      Business profile actions
-                    </h2>
-                    <p className="text-sm text-hier-muted">
-                      Edit company details shown in the app and dashboard.
-                    </p>
-                  </div>
-                </div>
-
-                <form className="mt-5 space-y-3" onSubmit={handleUpdateBusinessProfile}>
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">
-                      Company name
-                    </label>
-                    <input
-                      value={businessCompanyName}
-                      onChange={(event) => setBusinessCompanyName(event.target.value)}
-                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">
-                      Company number
-                    </label>
-                    <input
-                      value={businessCompanyNumber}
-                      onChange={(event) => setBusinessCompanyNumber(event.target.value)}
-                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">
-                      Contact email
-                    </label>
-                    <input
-                      value={businessContactEmail}
-                      onChange={(event) => setBusinessContactEmail(event.target.value)}
-                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">
-                      Contact phone
-                    </label>
-                    <input
-                      value={businessContactPhone}
-                      onChange={(event) => setBusinessContactPhone(event.target.value)}
-                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">
-                      Address
-                    </label>
-                    <textarea
-                      value={businessAddress}
-                      onChange={(event) => setBusinessAddress(event.target.value)}
-                      rows={3}
-                      className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">Bio</label>
-                    <textarea
-                      value={businessBio}
-                      onChange={(event) => setBusinessBio(event.target.value)}
-                      rows={4}
-                      className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-                    />
-                  </div>
-
-                  <label className="flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm font-semibold text-hier-text">
-                    <input
-                      type="checkbox"
-                      checked={businessVerified}
-                      onChange={(event) => setBusinessVerified(event.target.checked)}
-                      className="h-4 w-4"
-                    />
-                    Business verified
-                  </label>
-
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">
-                      Reason required
-                    </label>
-                    <textarea
-                      value={businessProfileReason}
-                      onChange={(event) => setBusinessProfileReason(event.target.value)}
-                      rows={4}
-                      placeholder="Why is this business profile change being made?"
-                      className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={
-                      savingBusinessProfile || businessProfileReason.trim().length < 5
-                    }
-                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingBusinessProfile ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : null}
-                    Save business profile
-                  </button>
-                </form>
-              </section>
-            ) : null}
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
                 <UserRound className="h-5 w-5" />
@@ -1027,204 +1014,8 @@ export default function StaffAccountDetailPage() {
               </button>
             </form>
           </section>
-
-          <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
-            <h2 className="text-base font-semibold text-hier-text">
-              Internal notes
-            </h2>
-
-            <div className="mt-5 space-y-3">
-              {account.notes?.length ? (
-                account.notes.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex gap-3 rounded-[22px] border border-hier-border bg-hier-panel p-4"
-                  >
-                    <div className="mt-0.5 rounded-2xl bg-white p-2 text-hier-primary shadow-sm">
-                      <StickyNote className="h-4 w-4" />
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-semibold text-hier-text">
-                        Internal note
-                      </p>
-
-                      <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-hier-muted">
-                        {item.note || "—"}
-                      </p>
-
-                      <p className="mt-2 flex flex-wrap items-center gap-1 text-xs text-hier-muted">
-                        <Mail className="h-3.5 w-3.5" />
-                        <span>
-                          {item.author_name || item.author_email || "Hier staff"}
-                        </span>
-                        <span>·</span>
-                        <span>{formatDate(item.created_at)}</span>
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-hier-muted">No internal notes yet.</p>
-              )}
-            </div>
-          </section>
         </aside>
       </section>
-
-      {selectedPost ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-[32px] border border-hier-border bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-hier-text">
-                  Review job post
-                </h2>
-                <p className="mt-1 text-sm text-hier-muted">
-                  Review the full post before deciding whether it should stay
-                  live or be removed.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedPost(null);
-                  setRemoveReason("");
-                }}
-                className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-5 max-h-[65vh] overflow-y-auto pr-1">
-              {selectedPost.image_url ? (
-                <div className="overflow-hidden rounded-[24px] border border-hier-border bg-white">
-                  <img
-                    src={selectedPost.image_url}
-                    alt={selectedPost.title || "Job post image"}
-                    className="h-64 w-full object-cover"
-                  />
-                </div>
-              ) : (
-                <div className="flex h-40 items-center justify-center rounded-[24px] border border-dashed border-hier-border bg-hier-panel text-sm text-hier-muted">
-                  No post image
-                </div>
-              )}
-
-              <div className="mt-5 rounded-[22px] border border-hier-border bg-hier-panel p-4">
-                <p className="text-lg font-semibold text-hier-text">
-                  {selectedPost.title || `Post #${selectedPost.id}`}
-                </p>
-
-                <div className="mt-3 grid gap-3 text-sm text-hier-muted sm:grid-cols-2">
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Company:
-                    </span>{" "}
-                    {selectedPost.company_name || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Location:
-                    </span>{" "}
-                    {selectedPost.location || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Sector:
-                    </span>{" "}
-                    {selectedPost.sector || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">Type:</span>{" "}
-                    {selectedPost.employment_type || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Salary min:
-                    </span>{" "}
-                    {selectedPost.salary_min || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Salary max:
-                    </span>{" "}
-                    {selectedPost.salary_max || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Created:
-                    </span>{" "}
-                    {formatDate(selectedPost.created_at)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Status:
-                    </span>{" "}
-                    {selectedPost.is_active ? "Live" : "Removed"}
-                  </p>
-                </div>
-
-                <div className="mt-5">
-                  <p className="text-sm font-semibold text-hier-text">
-                    Description
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-hier-muted">
-                    {selectedPost.description || "No description provided."}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-[22px] border border-red-200 bg-red-50 p-4">
-                <label className="block text-sm font-semibold text-red-950">
-                  Removal reason
-                </label>
-                <p className="mt-1 text-xs text-red-800">
-                  Only complete this if you decide the post should be removed.
-                  This reason will be emailed to the business.
-                </p>
-
-                <textarea
-                  value={removeReason}
-                  onChange={(event) => setRemoveReason(event.target.value)}
-                  rows={5}
-                  placeholder="Explain why this post is being removed..."
-                  className="mt-3 w-full resize-none rounded-[18px] border border-red-200 bg-white p-4 text-sm text-hier-text outline-none transition focus:border-red-500"
-                />
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedPost(null);
-                  setRemoveReason("");
-                }}
-                className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={removeReason.trim().length < 10 || removingPost}
-                onClick={handleConfirmRemovePost}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {removingPost ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                Remove post
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
