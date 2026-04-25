@@ -9,6 +9,8 @@ import {
   BriefcaseBusiness,
   CheckCircle2,
   FileText,
+  Trash2,
+  X,
   Loader2,
   Mail,
   MessageSquarePlus,
@@ -19,6 +21,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffAccountNote,
   fetchStaffAccountDetail,
+  fetchStaffAccountPosts,
+  removeStaffPost,
   type StaffAccountDetail,
 } from "@/lib/staff-crm";
 
@@ -91,6 +95,12 @@ export default function StaffAccountDetailPage() {
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<any | null>(null);
+  const [removeReason, setRemoveReason] = useState("");
+  const [removingPost, setRemovingPost] = useState(false);
+
   const loadAccount = useCallback(async () => {
     if (!userId) return;
 
@@ -100,6 +110,16 @@ export default function StaffAccountDetailPage() {
     try {
       const response = await fetchStaffAccountDetail(userId);
       setAccount(response.account);
+
+      if (response.account.account_type === "business") {
+        setLoadingPosts(true);
+        try {
+          const postsResponse = await fetchStaffAccountPosts(userId);
+          setPosts(postsResponse.items || []);
+        } finally {
+          setLoadingPosts(false);
+        }
+      }
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -147,6 +167,52 @@ export default function StaffAccountDetailPage() {
       setSavingNote(false);
     }
   }
+
+  async function handleConfirmRemovePost() {
+  if (!selectedPost) return;
+
+  const trimmed = removeReason.trim();
+
+  if (trimmed.length < 10) {
+    setError("Please enter a removal reason of at least 10 characters.");
+    return;
+  }
+
+  setRemovingPost(true);
+  setError(null);
+
+  try {
+    const response = await removeStaffPost(selectedPost.id, trimmed);
+
+    setPosts((current) =>
+      current.map((post) =>
+        post.id === selectedPost.id ? { ...post, ...response.post } : post
+      )
+    );
+
+    setAccount((current) =>
+      current
+        ? {
+            ...current,
+            notes: response.note
+              ? [response.note, ...(current.notes || [])]
+              : current.notes,
+          }
+        : current
+    );
+
+    setSelectedPost(null);
+    setRemoveReason("");
+  } catch (caughtError) {
+    setError(
+      caughtError instanceof Error
+        ? caughtError.message
+        : "Could not remove this post."
+    );
+  } finally {
+    setRemovingPost(false);
+  }
+}
 
   const title = useMemo(() => {
     if (!account?.basic) return "Account detail";
@@ -372,43 +438,100 @@ export default function StaffAccountDetailPage() {
             </InfoCard>
           ) : null}
 
-          <InfoCard
-            title={
-              account.account_type === "business"
-                ? "Recent posts"
-                : "Recent applications"
-            }
-          >
-            {recentItems.length ? (
-              recentItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-hier-text">
-                        {item.title ||
-                          item.job_title ||
-                          item.company_name ||
-                          `Item #${item.id}`}
-                      </p>
-                      <p className="mt-1 text-sm text-hier-muted">
-                        {item.company_name ||
-                          item.stage ||
-                          item.status ||
-                          `${item.application_count || 0} applications`}
-                      </p>
-                    </div>
-
-                    <FileText className="h-4 w-4 shrink-0 text-hier-muted" />
-                  </div>
+          {account.account_type === "business" ? (
+            <InfoCard title="Business posts">
+              {loadingPosts ? (
+                <div className="flex items-center gap-2 text-sm text-hier-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading posts...
                 </div>
-              ))
-            ) : (
-              <p className="text-sm text-hier-muted">No recent items yet.</p>
-            )}
-          </InfoCard>
+              ) : posts.length ? (
+                posts.map((post) => {
+                  const removed =
+                    !post.is_active || post.archived_at || post.shadow_hidden;
+
+                  return (
+                    <div
+                      key={post.id}
+                      className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-hier-text">
+                            {post.title || `Post #${post.id}`}
+                          </p>
+                          <p className="mt-1 text-sm text-hier-muted">
+                            {post.location || post.sector || "—"}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                            <span className="rounded-full bg-white px-2.5 py-1 font-medium text-hier-muted">
+                              {post.employment_type || "Role"}
+                            </span>
+                            <span
+                              className={`rounded-full px-2.5 py-1 font-medium ${
+                                removed
+                                  ? "bg-red-50 text-red-700"
+                                  : "bg-emerald-50 text-emerald-700"
+                              }`}
+                            >
+                              {removed ? "Removed" : "Live"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={removed}
+                          onClick={() => {
+                            setSelectedPost(post);
+                            setRemoveReason("");
+                          }}
+                          className="inline-flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-hier-muted">No posts found.</p>
+              )}
+            </InfoCard>
+          ) : (
+            <InfoCard title="Recent applications">
+              {recentItems.length ? (
+                recentItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-hier-text">
+                          {item.title ||
+                            item.job_title ||
+                            item.company_name ||
+                            `Item #${item.id}`}
+                        </p>
+                        <p className="mt-1 text-sm text-hier-muted">
+                          {item.company_name ||
+                            item.stage ||
+                            item.status ||
+                            `${item.application_count || 0} applications`}
+                        </p>
+                      </div>
+
+                      <FileText className="h-4 w-4 shrink-0 text-hier-muted" />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-hier-muted">No recent items yet.</p>
+              )}
+            </InfoCard>
+          )}
         </div>
 
         <aside className="space-y-6">
@@ -513,6 +636,81 @@ export default function StaffAccountDetailPage() {
           </section>
         </aside>
       </section>
+    {selectedPost ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="w-full max-w-lg rounded-[32px] border border-hier-border bg-white p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-hier-text">
+                Remove job post
+              </h2>
+              <p className="mt-1 text-sm text-hier-muted">
+                This will hide the post, log the reason internally, and email the
+                business.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedPost(null);
+                setRemoveReason("");
+              }}
+              className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-5 rounded-[22px] border border-hier-border bg-hier-panel p-4">
+            <p className="text-sm font-semibold text-hier-text">
+              {selectedPost.title || `Post #${selectedPost.id}`}
+            </p>
+            <p className="mt-1 text-sm text-hier-muted">
+              {selectedPost.location || selectedPost.sector || "—"}
+            </p>
+          </div>
+
+          <label className="mt-5 block text-sm font-semibold text-hier-text">
+            Removal reason
+          </label>
+          <textarea
+            value={removeReason}
+            onChange={(event) => setRemoveReason(event.target.value)}
+            rows={5}
+            placeholder="Explain why this post is being removed. This will be included in the email to the business."
+            className="mt-2 w-full resize-none rounded-[22px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+          />
+
+          <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedPost(null);
+                setRemoveReason("");
+              }}
+              className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              disabled={removeReason.trim().length < 10 || removingPost}
+              onClick={handleConfirmRemovePost}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {removingPost ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Remove post
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null}
     </div>
   );
 }

@@ -180,3 +180,24 @@ export async function acceptStaffInvite(
 }
 
 export const fetchStaffAccountDetail = fetchStaffAccount;
+
+export async function fetchStaffAccountPosts(userId: number | string) {
+  return apiFetch<{ ok: boolean; items: any[] }>(
+    `/api/staff/accounts/${userId}/posts`
+  );
+}
+
+export async function removeStaffPost(
+  postId: number | string,
+  reason: string
+) {
+  return apiFetch<{
+    ok: boolean;
+    post?: any;
+    note?: StaffNote;
+    warning?: string;
+  }>(`/api/staff/posts/${postId}/remove`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
