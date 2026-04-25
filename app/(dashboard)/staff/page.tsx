@@ -106,12 +106,12 @@ export default function StaffCrmPage() {
     try {
       const [staffResponse, accountsResponse] = await Promise.all([
         fetchStaffMe(),
-        searchStaffAccounts({ q: query, role, per_page: 50 }),
+        searchStaffAccounts(query),
       ]);
 
       setStaff(staffResponse.staff);
       setAccounts(accountsResponse.items || []);
-      setTotal(accountsResponse.total || 0);
+      setTotal(accountsResponse.items?.length || 0);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
