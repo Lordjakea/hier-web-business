@@ -192,6 +192,33 @@ export async function resendStaffAccountVerificationEmail(
   });
 }
 
+export async function updateStaffBusinessProfile(
+  userId: number | string,
+  payload: {
+    company_name?: string | null;
+    company_number?: string | null;
+    address_text?: string | null;
+    contact_email?: string | null;
+    contact_phone?: string | null;
+    bio?: string | null;
+    verified?: boolean;
+    reason: string;
+  }
+) {
+  return apiFetch<{
+    ok: boolean;
+    business_profile: Record<string, any> | null;
+    changes: Array<{
+      field: string;
+      old_value: any;
+      new_value: any;
+    }>;
+  }>(`/api/staff/accounts/${userId}/business-profile`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function fetchStaffTeam() {
   return apiFetch<{ ok: boolean; staff: StaffTeamUser[]; invites: StaffInvite[] }>(
     "/api/staff/team"

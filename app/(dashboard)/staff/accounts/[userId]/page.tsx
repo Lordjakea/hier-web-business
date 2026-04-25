@@ -25,6 +25,7 @@ import {
   removeStaffPost,
   resendStaffAccountVerificationEmail,
   updateStaffAccountIdentity,
+  updateStaffBusinessProfile,
   type StaffAccountDetail,
 } from "@/lib/staff-crm";
 
@@ -111,6 +112,16 @@ export default function StaffAccountDetailPage() {
   const [markingVerified, setMarkingVerified] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
 
+  const [businessCompanyName, setBusinessCompanyName] = useState("");
+  const [businessCompanyNumber, setBusinessCompanyNumber] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [businessContactEmail, setBusinessContactEmail] = useState("");
+  const [businessContactPhone, setBusinessContactPhone] = useState("");
+  const [businessBio, setBusinessBio] = useState("");
+  const [businessVerified, setBusinessVerified] = useState(false);
+  const [businessProfileReason, setBusinessProfileReason] = useState("");
+  const [savingBusinessProfile, setSavingBusinessProfile] = useState(false);
+
   const loadAccount = useCallback(async () => {
     if (!userId) return;
 
@@ -124,6 +135,15 @@ export default function StaffAccountDetailPage() {
       setIdentityPhone(response.account.basic?.phone || "");
       setIdentityFullName(response.account.basic?.full_name || "");
       setIdentityReason("");
+
+      setBusinessCompanyName(response.account.business_profile?.company_name || "");
+      setBusinessCompanyNumber(response.account.business_profile?.company_number || "");
+      setBusinessAddress(response.account.business_profile?.address_text || "");
+      setBusinessContactEmail(response.account.business_profile?.contact_email || "");
+      setBusinessContactPhone(response.account.business_profile?.contact_phone || "");
+      setBusinessBio(response.account.business_profile?.bio || "");
+      setBusinessVerified(Boolean(response.account.business_profile?.verified));
+      setBusinessProfileReason("");
 
       if (response.account.account_type === "business") {
         setLoadingPosts(true);
@@ -291,6 +311,57 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setResendingVerification(false);
+    }
+  }
+
+  async function handleUpdateBusinessProfile(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (!userId) return;
+
+    const reason = businessProfileReason.trim();
+
+    if (reason.length < 5) {
+      setError("Please enter a business profile change reason of at least 5 characters.");
+      return;
+    }
+
+    setSavingBusinessProfile(true);
+    setError(null);
+
+    try {
+      const response = await updateStaffBusinessProfile(userId, {
+        company_name: businessCompanyName,
+        company_number: businessCompanyNumber,
+        address_text: businessAddress,
+        contact_email: businessContactEmail,
+        contact_phone: businessContactPhone,
+        bio: businessBio,
+        verified: businessVerified,
+        reason,
+      });
+
+      setAccount((current) =>
+        current
+          ? {
+              ...current,
+              business_profile: response.business_profile,
+            }
+          : current
+      );
+
+      setBusinessProfileReason("");
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update business profile."
+      );
+    } finally {
+      setSavingBusinessProfile(false);
     }
   }
 
@@ -688,6 +759,128 @@ export default function StaffAccountDetailPage() {
 
         <aside className="space-y-6">
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+            {account.account_type === "business" ? (
+              <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
+                    <BriefcaseBusiness className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-base font-semibold text-hier-text">
+                      Business profile actions
+                    </h2>
+                    <p className="text-sm text-hier-muted">
+                      Edit company details shown in the app and dashboard.
+                    </p>
+                  </div>
+                </div>
+
+                <form className="mt-5 space-y-3" onSubmit={handleUpdateBusinessProfile}>
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">
+                      Company name
+                    </label>
+                    <input
+                      value={businessCompanyName}
+                      onChange={(event) => setBusinessCompanyName(event.target.value)}
+                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">
+                      Company number
+                    </label>
+                    <input
+                      value={businessCompanyNumber}
+                      onChange={(event) => setBusinessCompanyNumber(event.target.value)}
+                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">
+                      Contact email
+                    </label>
+                    <input
+                      value={businessContactEmail}
+                      onChange={(event) => setBusinessContactEmail(event.target.value)}
+                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">
+                      Contact phone
+                    </label>
+                    <input
+                      value={businessContactPhone}
+                      onChange={(event) => setBusinessContactPhone(event.target.value)}
+                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">
+                      Address
+                    </label>
+                    <textarea
+                      value={businessAddress}
+                      onChange={(event) => setBusinessAddress(event.target.value)}
+                      rows={3}
+                      className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">Bio</label>
+                    <textarea
+                      value={businessBio}
+                      onChange={(event) => setBusinessBio(event.target.value)}
+                      rows={4}
+                      className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm font-semibold text-hier-text">
+                    <input
+                      type="checkbox"
+                      checked={businessVerified}
+                      onChange={(event) => setBusinessVerified(event.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Business verified
+                  </label>
+
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">
+                      Reason required
+                    </label>
+                    <textarea
+                      value={businessProfileReason}
+                      onChange={(event) => setBusinessProfileReason(event.target.value)}
+                      rows={4}
+                      placeholder="Why is this business profile change being made?"
+                      className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={
+                      savingBusinessProfile || businessProfileReason.trim().length < 5
+                    }
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingBusinessProfile ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    Save business profile
+                  </button>
+                </form>
+              </section>
+            ) : null}
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
                 <UserRound className="h-5 w-5" />
