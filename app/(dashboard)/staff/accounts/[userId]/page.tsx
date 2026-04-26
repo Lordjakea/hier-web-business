@@ -282,19 +282,17 @@ export default function StaffAccountDetailPage() {
         setBillingPlans(billingResponse.plans || []);
         setBillingStatuses(billingResponse.allowed_statuses || []);
 
+        const trialSource =
+          billingResponse.billing.trial_ends_at ||
+          billingResponse.billing.subscription?.trial_end ||
+          billingResponse.billing.subscription_current_period_end;
+
         setBillingForm({
           plan_code: billingResponse.billing.plan_code || "",
           status: billingResponse.billing.status || "",
-          trial_ends_at:
-            billingResponse.billing.trial_ends_at ||
-            billingResponse.billing.subscription?.trial_end
-              ? new Date(
-                  billingResponse.billing.trial_ends_at ||
-                    billingResponse.billing.subscription?.trial_end
-                )
-                  .toISOString()
-                  .slice(0, 16)
-              : "",
+          trial_ends_at: trialSource
+            ? new Date(trialSource).toISOString().slice(0, 16)
+            : "",
           monthly_boost_credits: String(
             billingResponse.billing.monthly_boost_credits ?? 0
           ),
@@ -895,7 +893,7 @@ export default function StaffAccountDetailPage() {
 
                   <div>
                     <label className="text-xs font-semibold text-hier-muted">
-                      Trial ends at
+                      Manual trial override
                     </label>
                     <input
                       type="datetime-local"
@@ -908,6 +906,11 @@ export default function StaffAccountDetailPage() {
                       }
                       className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
                     />
+                    
+                    <p className="mt-2 text-xs text-hier-muted">
+                      Leave blank unless you want to manually comp or extend trial access. Stripe
+                      subscriptions usually use current period end instead.
+                    </p>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -990,7 +993,7 @@ export default function StaffAccountDetailPage() {
                     </p>
                     <p className="mt-2 text-sm text-hier-muted">
                       Monthly: {billing.monthly_boost_credits_remaining ?? 0} ·
-                      Paid: {billing.paid_boost_credits_remaining ?? 0}
+                      Extra: {billing.paid_boost_credits_remaining ?? 0}
                     </p>
                   </div>
 
