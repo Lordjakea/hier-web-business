@@ -96,6 +96,42 @@ export type StaffTeamUser = {
   created_at?: string | null;
 };
 
+export type StaffBillingPlan = {
+  id: number;
+  code: string;
+  name: string;
+  price_monthly?: number | null;
+  currency?: string | null;
+  is_active?: boolean | null;
+};
+
+export type StaffBilling = {
+  id: number;
+  owner_user_id: number;
+  status?: string | null;
+  plan_code?: string | null;
+  trial_ends_at?: string | null;
+  stripe_customer_id?: string | null;
+  subscription_status?: string | null;
+  subscription_current_period_end?: string | null;
+  subscription_cancel_at_period_end?: boolean | null;
+  monthly_boost_credits?: number | null;
+  monthly_boost_credits_used?: number | null;
+  monthly_boost_credits_remaining?: number | null;
+  paid_boost_credits?: number | null;
+  paid_boost_credits_used?: number | null;
+  paid_boost_credits_remaining?: number | null;
+  boost_credits_reset_at?: string | null;
+  subscription?: Record<string, any> | null;
+};
+
+export type StaffBillingResponse = {
+  ok: boolean;
+  billing: StaffBilling;
+  plans: StaffBillingPlan[];
+  allowed_statuses: string[];
+};
+
 export async function fetchStaffMe() {
   return apiFetch<{ ok: boolean; staff: StaffMe }>("/api/staff/me");
 }
@@ -127,6 +163,34 @@ export async function fetchStaffAccount(userId: number | string) {
   return apiFetch<{ ok: boolean; account: StaffAccountDetail }>(
     `/api/staff/accounts/${userId}`
   );
+}
+
+export async function fetchStaffAccountBilling(userId: number | string) {
+  return apiFetch<StaffBillingResponse>(`/api/staff/accounts/${userId}/billing`);
+}
+
+export async function updateStaffAccountBilling(
+  userId: number | string,
+  payload: {
+    plan_code?: string;
+    status?: string;
+    trial_ends_at?: string | null;
+    boost_credits_reset_at?: string | null;
+    monthly_boost_credits?: number;
+    monthly_boost_credits_used?: number;
+    paid_boost_credits?: number;
+    paid_boost_credits_used?: number;
+    reason: string;
+  }
+) {
+  return apiFetch<{
+    ok: boolean;
+    billing: StaffBilling;
+    changes: Array<{ field: string; old_value: any; new_value: any }>;
+  }>(`/api/staff/accounts/${userId}/billing`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function createStaffAccountNote(

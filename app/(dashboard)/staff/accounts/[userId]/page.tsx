@@ -21,14 +21,18 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffAccountNote,
+  fetchStaffAccountBilling,
   fetchStaffAccountDetail,
   fetchStaffAccountPosts,
   markStaffAccountEmailVerified,
   removeStaffPost,
   resendStaffAccountVerificationEmail,
+  updateStaffAccountBilling,
   updateStaffAccountIdentity,
   updateStaffBusinessProfile,
   type StaffAccountDetail,
+  type StaffBilling,
+  type StaffBillingPlan,
 } from "@/lib/staff-crm";
 
 function formatDate(value?: string | null) {
@@ -217,6 +221,21 @@ export default function StaffAccountDetailPage() {
   const userId = Number(params.userId);
 
   const [account, setAccount] = useState<StaffAccountDetail | null>(null);
+  const [billing, setBilling] = useState<StaffBilling | null>(null);
+  const [billingPlans, setBillingPlans] = useState<StaffBillingPlan[]>([]);
+  const [billingStatuses, setBillingStatuses] = useState<string[]>([]);
+  const [savingBilling, setSavingBilling] = useState(false);
+  const [billingReason, setBillingReason] = useState("");
+  const [billingForm, setBillingForm] = useState({
+    plan_code: "",
+    status: "",
+    trial_ends_at: "",
+    monthly_boost_credits: "0",
+    monthly_boost_credits_used: "0",
+    paid_boost_credits: "0",
+    paid_boost_credits_used: "0",
+  });
+
   const [loading, setLoading] = useState(true);
   const [savingNote, setSavingNote] = useState(false);
   const [note, setNote] = useState("");
@@ -257,6 +276,32 @@ export default function StaffAccountDetailPage() {
       setIdentityReason("");
 
       if (response.account.account_type === "business") {
+        const billingResponse = await fetchStaffAccountBilling(userId);
+
+        setBilling(billingResponse.billing);
+        setBillingPlans(billingResponse.plans || []);
+        setBillingStatuses(billingResponse.allowed_statuses || []);
+
+        setBillingForm({
+          plan_code: billingResponse.billing.plan_code || "",
+          status: billingResponse.billing.status || "",
+          trial_ends_at: billingResponse.billing.trial_ends_at
+            ? billingResponse.billing.trial_ends_at.slice(0, 16)
+            : "",
+          monthly_boost_credits: String(
+            billingResponse.billing.monthly_boost_credits ?? 0
+          ),
+          monthly_boost_credits_used: String(
+            billingResponse.billing.monthly_boost_credits_used ?? 0
+          ),
+          paid_boost_credits: String(
+            billingResponse.billing.paid_boost_credits ?? 0
+          ),
+          paid_boost_credits_used: String(
+            billingResponse.billing.paid_boost_credits_used ?? 0
+          ),
+        });
+
         setLoadingPosts(true);
         try {
           const postsResponse = await fetchStaffAccountPosts(userId);
@@ -264,6 +309,11 @@ export default function StaffAccountDetailPage() {
         } finally {
           setLoadingPosts(false);
         }
+      } else {
+        setBilling(null);
+        setBillingPlans([]);
+        setBillingStatuses([]);
+        setPosts([]);
       }
     } catch (caughtError) {
       setError(
@@ -487,6 +537,51 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setSavingInlineEdit(false);
+    }
+  }
+
+  async function handleSaveBilling(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!userId) return;
+
+    const reason = billingReason.trim();
+
+    if (reason.length < 10) {
+      setError("Please enter a billing reason of at least 10 characters.");
+      return;
+    }
+
+    setSavingBilling(true);
+    setError(null);
+
+    try {
+      const response = await updateStaffAccountBilling(userId, {
+        plan_code: billingForm.plan_code,
+        status: billingForm.status,
+        trial_ends_at: billingForm.trial_ends_at
+          ? new Date(billingForm.trial_ends_at).toISOString()
+          : null,
+        monthly_boost_credits: Number(billingForm.monthly_boost_credits || 0),
+        monthly_boost_credits_used: Number(
+          billingForm.monthly_boost_credits_used || 0
+        ),
+        paid_boost_credits: Number(billingForm.paid_boost_credits || 0),
+        paid_boost_credits_used: Number(billingForm.paid_boost_credits_used || 0),
+        reason,
+      });
+
+      setBilling(response.billing);
+      setBillingReason("");
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update billing controls."
+      );
+    } finally {
+      setSavingBilling(false);
     }
   }
 
@@ -724,55 +819,203 @@ export default function StaffAccountDetailPage() {
             </InfoCard>
           )}
 
-          {account.business_account ? (
-            <InfoCard title="Billing and plan">
-              <DetailRow
-                label="Plan"
-                value={account.business_account.plan_code}
-              />
-              <DetailRow
-                label="Status"
-                value={
-                  account.business_account.status ||
-                  account.business_account.subscription_status
-                }
-              />
-              <DetailRow
-                label="Billing email"
-                value={account.business_account.billing_email}
-              />
-              <DetailRow
-                label="Stripe customer"
-                value={
-                  account.business_account.stripe_customer_id ||
-                  account.business_account.provider_customer_id
-                }
-              />
-              <DetailRow
-                label="Current period end"
-                value={formatDate(
-                  account.business_account.subscription_current_period_end ||
-                    account.business_account.current_period_end
-                )}
-              />
-              <DetailRow
-                label="Cancel at period end"
-                value={account.business_account.subscription_cancel_at_period_end}
-              />
-              <DetailRow
-                label="Monthly boost credits"
-                value={
-                  account.business_account.remaining_monthly_boost_credits ??
-                  account.business_account.monthly_boost_credits
-                }
-              />
-              <DetailRow
-                label="Paid boost credits"
-                value={
-                  account.business_account.remaining_paid_boost_credits ??
-                  account.business_account.paid_boost_credits
-                }
-              />
+          {account.account_type === "business" ? (
+            <InfoCard title="Billing controls">
+              {billing ? (
+                <form className="space-y-4" onSubmit={handleSaveBilling}>
+                  <DetailRow
+                    label="Stripe customer"
+                    value={billing.stripe_customer_id}
+                  />
+                  <DetailRow
+                    label="Subscription status"
+                    value={billing.subscription_status}
+                  />
+                  <DetailRow
+                    label="Current period end"
+                    value={formatDate(billing.subscription_current_period_end)}
+                  />
+                  <DetailRow
+                    label="Cancel at period end"
+                    value={billing.subscription_cancel_at_period_end}
+                  />
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-semibold text-hier-muted">
+                        Plan
+                      </label>
+                      <select
+                        value={billingForm.plan_code}
+                        onChange={(event) =>
+                          setBillingForm((current) => ({
+                            ...current,
+                            plan_code: event.target.value,
+                          }))
+                        }
+                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                      >
+                        {billingPlans.map((plan) => (
+                          <option key={plan.code} value={plan.code}>
+                            {plan.name || plan.code}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-hier-muted">
+                        Status
+                      </label>
+                      <select
+                        value={billingForm.status}
+                        onChange={(event) =>
+                          setBillingForm((current) => ({
+                            ...current,
+                            status: event.target.value,
+                          }))
+                        }
+                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                      >
+                        {billingStatuses.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">
+                      Trial ends at
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={billingForm.trial_ends_at}
+                      onChange={(event) =>
+                        setBillingForm((current) => ({
+                          ...current,
+                          trial_ends_at: event.target.value,
+                        }))
+                      }
+                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-semibold text-hier-muted">
+                        Monthly boost credits
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={billingForm.monthly_boost_credits}
+                        onChange={(event) =>
+                          setBillingForm((current) => ({
+                            ...current,
+                            monthly_boost_credits: event.target.value,
+                          }))
+                        }
+                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-hier-muted">
+                        Monthly credits used
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={billingForm.monthly_boost_credits_used}
+                        onChange={(event) =>
+                          setBillingForm((current) => ({
+                            ...current,
+                            monthly_boost_credits_used: event.target.value,
+                          }))
+                        }
+                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-hier-muted">
+                        Paid boost credits
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={billingForm.paid_boost_credits}
+                        onChange={(event) =>
+                          setBillingForm((current) => ({
+                            ...current,
+                            paid_boost_credits: event.target.value,
+                          }))
+                        }
+                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-hier-muted">
+                        Paid credits used
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={billingForm.paid_boost_credits_used}
+                        onChange={(event) =>
+                          setBillingForm((current) => ({
+                            ...current,
+                            paid_boost_credits_used: event.target.value,
+                          }))
+                        }
+                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                    <p className="text-sm font-semibold text-hier-text">
+                      Credit remaining
+                    </p>
+                    <p className="mt-2 text-sm text-hier-muted">
+                      Monthly: {billing.monthly_boost_credits_remaining ?? 0} ·
+                      Paid: {billing.paid_boost_credits_remaining ?? 0}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-hier-muted">
+                      Reason required
+                    </label>
+                    <textarea
+                      value={billingReason}
+                      onChange={(event) => setBillingReason(event.target.value)}
+                      rows={4}
+                      placeholder="Why is this billing change being made?"
+                      className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={savingBilling || billingReason.trim().length < 10}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingBilling ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    Save billing changes
+                  </button>
+                </form>
+              ) : (
+                <p className="text-sm text-hier-muted">
+                  Billing controls unavailable.
+                </p>
+              )}
             </InfoCard>
           ) : null}
 
@@ -959,7 +1202,9 @@ export default function StaffAccountDetailPage() {
 
                   <button
                     type="button"
-                    disabled={resendingVerification || identityReason.trim().length < 5}
+                    disabled={
+                      resendingVerification || identityReason.trim().length < 5
+                    }
                     onClick={handleResendVerificationEmail}
                     className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -1026,7 +1271,8 @@ export default function StaffAccountDetailPage() {
                   Review job post
                 </h2>
                 <p className="mt-1 text-sm text-hier-muted">
-                  Review the full post before deciding whether it should stay live or be removed.
+                  Review the full post before deciding whether it should stay
+                  live or be removed.
                 </p>
               </div>
 
@@ -1063,18 +1309,58 @@ export default function StaffAccountDetailPage() {
                 </p>
 
                 <div className="mt-3 grid gap-3 text-sm text-hier-muted sm:grid-cols-2">
-                  <p><span className="font-semibold text-hier-text">Company:</span> {selectedPost.company_name || "—"}</p>
-                  <p><span className="font-semibold text-hier-text">Location:</span> {selectedPost.location || "—"}</p>
-                  <p><span className="font-semibold text-hier-text">Sector:</span> {selectedPost.sector || "—"}</p>
-                  <p><span className="font-semibold text-hier-text">Type:</span> {selectedPost.employment_type || "—"}</p>
-                  <p><span className="font-semibold text-hier-text">Salary min:</span> {selectedPost.salary_min || "—"}</p>
-                  <p><span className="font-semibold text-hier-text">Salary max:</span> {selectedPost.salary_max || "—"}</p>
-                  <p><span className="font-semibold text-hier-text">Created:</span> {formatDate(selectedPost.created_at)}</p>
-                  <p><span className="font-semibold text-hier-text">Status:</span> {selectedPost.is_active ? "Live" : "Removed"}</p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Company:
+                    </span>{" "}
+                    {selectedPost.company_name || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Location:
+                    </span>{" "}
+                    {selectedPost.location || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Sector:
+                    </span>{" "}
+                    {selectedPost.sector || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">Type:</span>{" "}
+                    {selectedPost.employment_type || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Salary min:
+                    </span>{" "}
+                    {selectedPost.salary_min || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Salary max:
+                    </span>{" "}
+                    {selectedPost.salary_max || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Created:
+                    </span>{" "}
+                    {formatDate(selectedPost.created_at)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-hier-text">
+                      Status:
+                    </span>{" "}
+                    {selectedPost.is_active ? "Live" : "Removed"}
+                  </p>
                 </div>
 
                 <div className="mt-5">
-                  <p className="text-sm font-semibold text-hier-text">Description</p>
+                  <p className="text-sm font-semibold text-hier-text">
+                    Description
+                  </p>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-hier-muted">
                     {selectedPost.description || "No description provided."}
                   </p>
