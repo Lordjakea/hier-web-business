@@ -286,7 +286,9 @@ export default function StaffAccountDetailPage() {
           plan_code: billingResponse.billing.plan_code || "",
           status: billingResponse.billing.status || "",
           trial_ends_at: billingResponse.billing.trial_ends_at
-            ? billingResponse.billing.trial_ends_at.slice(0, 16)
+            ? new Date(billingResponse.billing.trial_ends_at)
+                .toISOString()
+                .slice(0, 16)
             : "",
           monthly_boost_credits: String(
             billingResponse.billing.monthly_boost_credits ?? 0
