@@ -26,14 +26,71 @@ const snapshots = [
 
 export default function WaitlistPage() {
   const [email, setEmail] = useState("");
+  const [submittedEmail, setSubmittedEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!email.trim()) return;
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) return;
 
-    alert("Thanks — you're on the Hier waitlist.");
-    setEmail("");
+    setLoading(true);
+    setError("");
+
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+
+      const res = await fetch(`${baseUrl}/api/waitlist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          source: "waitlist_page",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Could not join the waitlist.");
+      }
+
+      setSubmittedEmail(trimmedEmail);
+      setEmail("");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleShare() {
+    const shareUrl = window.location.href;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Join the Hier waitlist",
+          text: "I just joined the Hier waitlist — check it out.",
+          url: shareUrl,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      setError("Waitlist link copied.");
+    } catch {
+      setError("Could not open share options. Please copy the page link.");
+    }
   }
 
   return (
@@ -70,26 +127,78 @@ export default function WaitlistPage() {
           confidence.
         </p>
 
-        <form
-          onSubmit={handleSubmit}
-          className="mt-12 w-full max-w-md rounded-3xl border border-[#D6D0C7] bg-white p-3 shadow-sm"
-        >
-          <input
-            type="email"
-            required
-            placeholder="Enter your email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mb-3 w-full rounded-2xl border border-[#D6D0C7] bg-[#F0EFEB] px-5 py-4 text-base outline-none focus:border-[#91A6EB]"
-          />
+        {submittedEmail ? (
+          <div className="mt-12 w-full max-w-md rounded-3xl border border-[#D6D0C7] bg-white p-6 text-center shadow-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#91A6EB]/20 text-2xl">
+              🎉
+            </div>
 
-          <button
-            type="submit"
-            className="w-full rounded-2xl bg-[#91A6EB] px-5 py-4 text-base font-semibold text-white shadow-sm transition hover:scale-[1.01] hover:opacity-95"
+            <h2 className="mt-5 text-2xl font-bold text-[#111111]">
+              Thanks — you’re on the waitlist
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-[#6B7280]">
+              We’ll email{" "}
+              <span className="font-semibold text-[#111111]">
+                {submittedEmail}
+              </span>{" "}
+              when Hier is ready.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleShare}
+              className="mt-5 w-full rounded-2xl bg-[#91A6EB] px-5 py-4 text-base font-semibold text-white shadow-sm transition hover:scale-[1.01] hover:opacity-95"
+            >
+              Share Hier
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSubmittedEmail("");
+                setError("");
+              }}
+              className="mt-3 w-full rounded-2xl border border-[#D6D0C7] bg-white px-5 py-4 text-base font-semibold text-[#111111] transition hover:bg-[#F0EFEB]"
+            >
+              Add another email
+            </button>
+
+            {error ? (
+              <p className="mt-3 rounded-2xl bg-[#F0EFEB] px-4 py-3 text-sm font-medium text-[#6B7280]">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="mt-12 w-full max-w-md rounded-3xl border border-[#D6D0C7] bg-white p-3 shadow-sm"
           >
-            Join the waitlist
-          </button>
-        </form>
+            <input
+              type="email"
+              required
+              placeholder="Enter your email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mb-3 w-full rounded-2xl border border-[#D6D0C7] bg-[#F0EFEB] px-5 py-4 text-base outline-none focus:border-[#91A6EB]"
+            />
+
+            {error ? (
+              <p className="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {error}
+              </p>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-2xl bg-[#91A6EB] px-5 py-4 text-base font-semibold text-white shadow-sm transition hover:scale-[1.01] hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? "Joining..." : "Join the waitlist"}
+            </button>
+          </form>
+        )}
       </section>
 
       <section className="relative z-10 mx-auto mt-16 grid max-w-6xl grid-cols-1 gap-5 px-6 md:grid-cols-3">
