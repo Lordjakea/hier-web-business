@@ -13,6 +13,7 @@ import {
   UserCog,
   ClipboardCheck,
   Users,
+  Mail,
   X,
 } from "lucide-react";
 import clsx from "clsx";
@@ -43,17 +44,20 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const storedUser = getStoredUser();
+
   const isStaff = Boolean(
     storedUser?.role === "staff" &&
       storedUser?.email_verified &&
       storedUser?.email?.toLowerCase().endsWith("@hierapp.co.uk")
   );
+
   const canManageStaff = ["admin", "owner"].includes(
     String(storedUser?.staff_role || "").toLowerCase()
   );
 
   const content = (
     <div className="flex h-full flex-col gap-8 border-r border-hier-border bg-white px-4 py-5">
+      {/* Header */}
       <div className="flex items-center justify-between lg:justify-start">
         <HierBrand />
 
@@ -67,6 +71,7 @@ export function Sidebar({
         </button>
       </div>
 
+      {/* Workspace card */}
       <div className="rounded-[24px] border border-hier-border bg-hier-soft p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
           Workspace
@@ -80,6 +85,7 @@ export function Sidebar({
         </p>
       </div>
 
+      {/* Main */}
       <nav className="space-y-2">
         <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
           Main
@@ -106,18 +112,19 @@ export function Sidebar({
         })}
       </nav>
 
-
+      {/* STAFF SECTION */}
       {isStaff ? (
         <nav className="space-y-2">
           <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
             Hier Staff
           </p>
 
+          {/* CRM */}
           <Link
             href="/staff"
             className={clsx(
               "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              (pathname === "/staff" || pathname.startsWith("/staff/accounts"))
+              pathname === "/staff" || pathname.startsWith("/staff/accounts")
                 ? "bg-hier-primary text-white shadow-card"
                 : "text-hier-ink hover:bg-hier-panel"
             )}
@@ -126,6 +133,21 @@ export function Sidebar({
             Staff CRM
           </Link>
 
+          {/* WAITLIST */}
+          <Link
+            href="/staff/waitlist"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              pathname.startsWith("/staff/waitlist")
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <Mail className="h-4 w-4" />
+            Waitlist
+          </Link>
+
+          {/* TEAM */}
           {canManageStaff ? (
             <Link
               href="/staff/team"
@@ -143,6 +165,7 @@ export function Sidebar({
         </nav>
       ) : null}
 
+      {/* Account */}
       <nav className="space-y-2">
         <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
           Account
@@ -169,6 +192,7 @@ export function Sidebar({
         })}
       </nav>
 
+      {/* Footer */}
       <div className="mt-auto rounded-[24px] border border-hier-border bg-hier-panel p-4">
         <p className="text-sm font-semibold text-hier-text">
           Clean integration layer

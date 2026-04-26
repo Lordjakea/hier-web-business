@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api";
+import { apiFetch, resolveApiUrl } from "@/lib/api";
 
 export type StaffMe = {
   id: number;
@@ -341,4 +341,26 @@ export async function removeStaffPost(postId: number | string, reason: string) {
     method: "POST",
     body: JSON.stringify({ reason }),
   });
+}
+
+export type StaffWaitlistEmail = {
+  id: number;
+  email: string;
+  source?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export async function fetchStaffWaitlist() {
+  return apiFetch<{
+    ok: boolean;
+    items: StaffWaitlistEmail[];
+    total: number;
+  }>("/api/waitlist/admin");
+}
+
+export function getStaffWaitlistExportUrl() {
+  return resolveApiUrl("/api/waitlist/export.csv");
 }
