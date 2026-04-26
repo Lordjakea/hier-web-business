@@ -285,11 +285,16 @@ export default function StaffAccountDetailPage() {
         setBillingForm({
           plan_code: billingResponse.billing.plan_code || "",
           status: billingResponse.billing.status || "",
-          trial_ends_at: billingResponse.billing.trial_ends_at
-            ? new Date(billingResponse.billing.trial_ends_at)
-                .toISOString()
-                .slice(0, 16)
-            : "",
+          trial_ends_at:
+            billingResponse.billing.trial_ends_at ||
+            billingResponse.billing.subscription?.trial_end
+              ? new Date(
+                  billingResponse.billing.trial_ends_at ||
+                    billingResponse.billing.subscription?.trial_end
+                )
+                  .toISOString()
+                  .slice(0, 16)
+              : "",
           monthly_boost_credits: String(
             billingResponse.billing.monthly_boost_credits ?? 0
           ),
@@ -944,7 +949,7 @@ export default function StaffAccountDetailPage() {
 
                     <div>
                       <label className="text-xs font-semibold text-hier-muted">
-                        Paid boost credits
+                        Extra Boost Credits
                       </label>
                       <input
                         type="number"
@@ -962,7 +967,7 @@ export default function StaffAccountDetailPage() {
 
                     <div>
                       <label className="text-xs font-semibold text-hier-muted">
-                        Paid credits used
+                        Extra Credits Used
                       </label>
                       <input
                         type="number"
