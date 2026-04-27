@@ -14,6 +14,8 @@ import {
   X,
 } from "lucide-react";
 
+import { apiFetch } from "@/lib/api";
+
 import { CVViewerModal } from "@/components/board/cv-viewer-modal";
 import {
   fetchOnboardingEligibility,
@@ -407,21 +409,13 @@ export function ApplicationDetailDrawer({
       setInterviewSlotsError(null);
 
       try {
-        const res = await fetch(
-          `/api/business/applications/${application.id}/interview-slots`,
-          {
-            method: "GET",
-            credentials: "include",
-          }
+        const json = await apiFetch(
+          `/api/business/applications/${application.id}/interview-slots`
         );
 
-        const json = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          throw new Error(json?.message || json?.error || "Could not load interview slots");
-        }
-
-        const raw = Array.isArray(json) ? json : json?.slots;
+        const raw = Array.isArray(json)
+          ? json
+          : (json as any)?.slots;
         setInterviewSlots(Array.isArray(raw) ? raw : []);
       } catch (error: any) {
         setInterviewSlots([]);
@@ -468,21 +462,13 @@ export function ApplicationDetailDrawer({
     setInterviewSlotsError(null);
 
     try {
-      const res = await fetch(
-        `/api/business/applications/${application.id}/interview-slots`,
-        {
-          method: "GET",
-          credentials: "include",
-        }
+      const json = await apiFetch(
+        `/api/business/applications/${application.id}/interview-slots`
       );
 
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(json?.message || json?.error || "Could not load interview slots");
-      }
-
-      const raw = Array.isArray(json) ? json : json?.slots;
+      const raw = Array.isArray(json)
+        ? json
+        : (json as any)?.slots;
       setInterviewSlots(Array.isArray(raw) ? raw : []);
     } catch (error: any) {
       setInterviewSlotsError(error?.message || "Could not load interview slots");
@@ -547,33 +533,20 @@ export function ApplicationDetailDrawer({
     setSendingSlots(true);
 
     try {
-      const res = await fetch(
-        `/api/business/applications/${application.id}/interview-slots`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            slots: cleanedSlots.map((slot) => ({
-              starts_at: slot.starts_at,
-              ends_at: slot.ends_at,
-              timezone: "Europe/London",
-              meeting_link: interviewType !== "face" ? meetingLink.trim() : null,
-              meeting_url: interviewType !== "face" ? meetingLink.trim() : null,
-              location: interviewType === "face" ? interviewLocation.trim() : null,
-              notes: interviewWith.trim(),
-            })),
-          }),
-        }
-      );
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(json?.message || json?.error || "Failed to send interview options");
-      }
+      await apiFetch(`/api/business/applications/${application.id}/interview-slots`, {
+        method: "POST",
+        body: JSON.stringify({
+          slots: cleanedSlots.map((slot) => ({
+            starts_at: slot.starts_at,
+            ends_at: slot.ends_at,
+            timezone: "Europe/London",
+            meeting_link: interviewType !== "face" ? meetingLink.trim() : null,
+            meeting_url: interviewType !== "face" ? meetingLink.trim() : null,
+            location: interviewType === "face" ? interviewLocation.trim() : null,
+            notes: interviewWith.trim(),
+          })),
+        }),
+      });
 
       setEditingInterview(false);
       setDraftSlots(defaultSlots);
