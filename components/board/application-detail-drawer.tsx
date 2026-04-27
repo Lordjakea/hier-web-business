@@ -500,7 +500,7 @@ export function ApplicationDetailDrawer({
       );
 
     if (!interviewWith.trim()) {
-      alert("Add who the interview is with, for example Jake Allen - Sales Director.");
+      alert("Add who the interview is with, Name - Job Title.");
       return;
     }
 
