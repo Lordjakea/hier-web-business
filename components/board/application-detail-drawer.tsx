@@ -978,7 +978,7 @@ export function ApplicationDetailDrawer({
                       <input
                         value={interviewLocation}
                         onChange={(event) => setInterviewLocation(event.target.value)}
-                        placeholder="e.g. 48 Orchard Way, Grantham"
+                        placeholder="address"
                         className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
                       />
                     </label>
