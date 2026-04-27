@@ -14,13 +14,9 @@ import {
   X,
 } from "lucide-react";
 
-import { apiFetch } from "@/lib/api";
-
 import { CVViewerModal } from "@/components/board/cv-viewer-modal";
-import {
-  fetchOnboardingEligibility,
-  startOnboarding,
-} from "@/lib/business-onboarding";
+import { fetchOnboardingEligibility, startOnboarding } from "@/lib/business-onboarding";
+import { apiFetch } from "@/lib/api";
 import { boardColumns } from "@/lib/theme";
 import type {
   ApplicationStage,
@@ -150,9 +146,7 @@ function buildQuestionAnswerRows(
 ): QuestionAnswerRow[] {
   const questions = Array.isArray(questionsRaw)
     ? questionsRaw
-        .map((item, index) =>
-          normalizeQuestion(item as RawApplicationQuestion, index)
-        )
+        .map((item, index) => normalizeQuestion(item as RawApplicationQuestion, index))
         .filter((item): item is NonNullable<typeof item> => !!item)
     : [];
 
@@ -178,9 +172,7 @@ function buildQuestionAnswerRows(
         safeString(obj.question) ||
         `q_${index}`;
 
-      const text = answerToText(
-        obj.answer ?? obj.value ?? obj.response ?? obj.text
-      );
+      const text = answerToText(obj.answer ?? obj.value ?? obj.response ?? obj.text);
 
       if (key && text) answerMap[key] = text;
     });
@@ -205,21 +197,6 @@ function buildQuestionAnswerRows(
     answer: value || "No answer provided",
     required: false,
   }));
-}
-
-function fmtDateTime(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-
-  return d.toLocaleString("en-GB", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function fmtRange(slot?: InterviewSlot | null) {
@@ -314,6 +291,7 @@ export function ApplicationDetailDrawer({
   const [interviewSlotsError, setInterviewSlotsError] = useState<string | null>(null);
   const [editingInterview, setEditingInterview] = useState(false);
   const [sendingSlots, setSendingSlots] = useState(false);
+  const [cancellingSlotId, setCancellingSlotId] = useState<number | null>(null);
   const [interviewWith, setInterviewWith] = useState("");
   const [interviewType, setInterviewType] = useState<InterviewType>("teams");
   const [meetingLink, setMeetingLink] = useState("");
@@ -358,9 +336,7 @@ export function ApplicationDetailDrawer({
     application?.user?.full_name ||
     "Candidate";
 
-  const headline =
-    candidate?.headline || application?.job_post?.title || "Candidate profile";
-
+  const headline = candidate?.headline || application?.job_post?.title || "Candidate profile";
   const email = candidate?.email || application?.user?.email;
   const phone = candidate?.phone || application?.user?.phone;
 
@@ -413,9 +389,7 @@ export function ApplicationDetailDrawer({
           `/api/business/applications/${application.id}/interview-slots`
         );
 
-        const raw = Array.isArray(json)
-          ? json
-          : (json as any)?.slots;
+        const raw = Array.isArray(json) ? json : (json as any)?.slots;
         setInterviewSlots(Array.isArray(raw) ? raw : []);
       } catch (error: any) {
         setInterviewSlots([]);
@@ -466,9 +440,7 @@ export function ApplicationDetailDrawer({
         `/api/business/applications/${application.id}/interview-slots`
       );
 
-      const raw = Array.isArray(json)
-        ? json
-        : (json as any)?.slots;
+      const raw = Array.isArray(json) ? json : (json as any)?.slots;
       setInterviewSlots(Array.isArray(raw) ? raw : []);
     } catch (error: any) {
       setInterviewSlotsError(error?.message || "Could not load interview slots");
@@ -477,10 +449,7 @@ export function ApplicationDetailDrawer({
     }
   }
 
-  function updateDraftSlot(
-    index: number,
-    patch: Partial<InterviewDraftSlot>
-  ) {
+  function updateDraftSlot(index: number, patch: Partial<InterviewDraftSlot>) {
     setDraftSlots((prev) =>
       prev.map((slot, i) => (i === index ? { ...slot, ...patch } : slot))
     );
@@ -556,6 +525,31 @@ export function ApplicationDetailDrawer({
       alert(error?.message || "Could not send interview options.");
     } finally {
       setSendingSlots(false);
+    }
+  }
+
+  async function cancelInterviewSlot(slotId: number, booked?: boolean) {
+    if (!application?.id) return;
+
+    const message = booked
+      ? "Cancel this booked interview? The candidate will be notified."
+      : "Cancel this interview slot?";
+
+    if (!confirm(message)) return;
+
+    setCancellingSlotId(slotId);
+
+    try {
+      await apiFetch(
+        `/api/business/applications/${application.id}/interview-slots/${slotId}/cancel`,
+        { method: "POST" }
+      );
+
+      await reloadInterviewSlots();
+    } catch (error: any) {
+      alert(error?.message || "Could not cancel interview slot.");
+    } finally {
+      setCancellingSlotId(null);
     }
   }
 
@@ -711,9 +705,7 @@ export function ApplicationDetailDrawer({
                   <span className="text-sm font-medium text-hier-text">Stage</span>
                   <select
                     value={stage}
-                    onChange={(event) =>
-                      setStage(event.target.value as ApplicationStage)
-                    }
+                    onChange={(event) => setStage(event.target.value as ApplicationStage)}
                     className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
                   >
                     {stageOptions.map((option) => (
@@ -757,9 +749,7 @@ export function ApplicationDetailDrawer({
               </div>
 
               <label className="mt-5 block space-y-2">
-                <span className="text-sm font-medium text-hier-text">
-                  Recruiter tags
-                </span>
+                <span className="text-sm font-medium text-hier-text">Recruiter tags</span>
                 <input
                   value={tagText}
                   onChange={(event) => setTagText(event.target.value)}
@@ -858,10 +848,8 @@ export function ApplicationDetailDrawer({
                 <div className="mt-5 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4">
                   <div className="flex items-start gap-3">
                     <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-600" />
-                    <div>
-                      <p className="text-sm font-semibold text-emerald-900">
-                        Accepted
-                      </p>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-emerald-900">Accepted</p>
                       <p className="mt-1 text-sm leading-6 text-emerald-800">
                         {fmtRange(bookedSlot)}
                       </p>
@@ -880,6 +868,15 @@ export function ApplicationDetailDrawer({
                           Link: {getMeetingLink(bookedSlot)}
                         </p>
                       ) : null}
+
+                      <button
+                        type="button"
+                        disabled={cancellingSlotId === bookedSlot.id}
+                        onClick={() => cancelInterviewSlot(bookedSlot.id, true)}
+                        className="mt-3 inline-flex h-9 items-center justify-center rounded-full border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {cancellingSlotId === bookedSlot.id ? "Cancelling…" : "Cancel interview"}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -906,7 +903,15 @@ export function ApplicationDetailDrawer({
                             key={slot.id}
                             className="rounded-2xl bg-white/70 px-3 py-2 text-sm text-amber-900"
                           >
-                            {fmtRange(slot)}
+                            <div>{fmtRange(slot)}</div>
+                            <button
+                              type="button"
+                              disabled={cancellingSlotId === slot.id}
+                              onClick={() => cancelInterviewSlot(slot.id, false)}
+                              className="mt-2 text-xs font-semibold text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {cancellingSlotId === slot.id ? "Cancelling…" : "Cancel slot"}
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -928,9 +933,7 @@ export function ApplicationDetailDrawer({
               {showInterviewForm ? (
                 <div className="mt-5 space-y-5">
                   <label className="block space-y-2">
-                    <span className="text-sm font-medium text-hier-text">
-                      Interview with
-                    </span>
+                    <span className="text-sm font-medium text-hier-text">Interview with</span>
                     <input
                       value={interviewWith}
                       onChange={(event) => setInterviewWith(event.target.value)}
@@ -940,9 +943,7 @@ export function ApplicationDetailDrawer({
                   </label>
 
                   <div className="space-y-2">
-                    <span className="text-sm font-medium text-hier-text">
-                      Interview method
-                    </span>
+                    <span className="text-sm font-medium text-hier-text">Interview method</span>
                     <div className="flex flex-wrap gap-2">
                       {[
                         { value: "teams", label: "Teams" },
@@ -984,9 +985,7 @@ export function ApplicationDetailDrawer({
                     </label>
                   ) : (
                     <label className="block space-y-2">
-                      <span className="text-sm font-medium text-hier-text">
-                        Meeting link
-                      </span>
+                      <span className="text-sm font-medium text-hier-text">Meeting link</span>
                       <input
                         value={meetingLink}
                         onChange={(event) => setMeetingLink(event.target.value)}
@@ -998,9 +997,7 @@ export function ApplicationDetailDrawer({
 
                   <div className="space-y-3">
                     <div>
-                      <span className="text-sm font-medium text-hier-text">
-                        Interview slots
-                      </span>
+                      <span className="text-sm font-medium text-hier-text">Interview slots</span>
                       <p className="mt-1 text-xs leading-5 text-hier-muted">
                         Add up to 3 options. The candidate will choose one in the app.
                       </p>
@@ -1011,9 +1008,7 @@ export function ApplicationDetailDrawer({
                         key={index}
                         className="rounded-[22px] border border-hier-border bg-hier-panel px-4 py-4"
                       >
-                        <p className="text-sm font-semibold text-hier-text">
-                          Slot {index + 1}
-                        </p>
+                        <p className="text-sm font-semibold text-hier-text">Slot {index + 1}</p>
 
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           <label className="block space-y-2">
@@ -1093,9 +1088,7 @@ export function ApplicationDetailDrawer({
                       className="rounded-[20px] bg-hier-panel px-4 py-4"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <p className="text-sm font-semibold text-hier-text">
-                          {row.question}
-                        </p>
+                        <p className="text-sm font-semibold text-hier-text">{row.question}</p>
 
                         {row.required ? (
                           <span className="rounded-full bg-hier-soft px-2.5 py-1 text-[11px] font-semibold text-hier-primary">
@@ -1132,10 +1125,7 @@ export function ApplicationDetailDrawer({
 
                 <div className="mt-4 space-y-4">
                   {candidate.experience.slice(0, 4).map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-[20px] bg-hier-panel px-4 py-4"
-                    >
+                    <div key={item.id} className="rounded-[20px] bg-hier-panel px-4 py-4">
                       <p className="text-sm font-semibold text-hier-text">
                         {item.title || "Role"}
                       </p>
