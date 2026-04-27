@@ -934,7 +934,7 @@ export function ApplicationDetailDrawer({
                     <input
                       value={interviewWith}
                       onChange={(event) => setInterviewWith(event.target.value)}
-                      placeholder="e.g. Jake Allen - Sales Director"
+                      placeholder="Name - Job Title"
                       className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
                     />
                   </label>
