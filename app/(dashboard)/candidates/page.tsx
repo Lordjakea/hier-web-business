@@ -596,6 +596,15 @@ export default function CandidatesPage() {
 
             <button
               type="button"
+              disabled={bulkBusy || visibleApplications.length === 0}
+              onClick={() => setSelectedIds(visibleApplications.map((app) => app.id))}
+              className="h-10 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:opacity-50"
+            >
+              Select all filtered
+            </button>
+
+            <button
+              type="button"
               disabled={bulkBusy}
               onClick={() => setSelectedIds([])}
               className="h-10 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:opacity-50"
