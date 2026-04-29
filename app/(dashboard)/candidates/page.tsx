@@ -52,6 +52,7 @@ export default function CandidatesPage() {
   const [cvPreviewUrl, setCvPreviewUrl] = useState<string | null>(null);
   const [cvPreviewLoading, setCvPreviewLoading] = useState(false);
   const [cvPreviewError, setCvPreviewError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkStage, setBulkStage] = useState<ApplicationStage>("shortlisted");
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -338,39 +339,39 @@ export default function CandidatesPage() {
     await moveApplication(applicationId, "rejected" as ApplicationStage);
   }
 
+  function showToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  }
+
   async function runBulkStageMove() {
     if (!selectedIds.length) return;
 
     const previous = applications;
-    const selectedCount = selectedIds.length;
+    const idsToUpdate = [...selectedIds];
+    const selectedCount = idsToUpdate.length;
 
     setBulkBusy(true);
     setError(null);
 
-    // Move cards instantly on screen
     setApplications((current) =>
       current.map((app) =>
-        selectedIds.includes(app.id)
-          ? { ...app, stage: bulkStage }
-          : app
+        idsToUpdate.includes(app.id) ? { ...app, stage: bulkStage } : app
       )
     );
 
     try {
       const result = await bulkMoveBusinessApplicationsStage({
-        application_ids: selectedIds,
+        application_ids: idsToUpdate,
         stage: bulkStage,
       });
 
       setSelectedIds([]);
-
-      setError(
+      showToast(
         `Moved ${result.updated || selectedCount} candidate${
           (result.updated || selectedCount) === 1 ? "" : "s"
         } successfully.`
       );
-
-      await loadApplications({ searchText: query, jobPostId: selectedJobId });
     } catch (caughtError) {
       setApplications(previous);
       setError(
@@ -387,14 +388,15 @@ export default function CandidatesPage() {
     if (!selectedIds.length) return;
 
     const previous = applications;
-    const selectedCount = selectedIds.length;
+    const idsToUpdate = [...selectedIds];
+    const selectedCount = idsToUpdate.length;
 
     setBulkBusy(true);
     setError(null);
 
     setApplications((current) =>
       current.map((app) =>
-        selectedIds.includes(app.id)
+        idsToUpdate.includes(app.id)
           ? { ...app, stage: "rejected" as ApplicationStage, status: "rejected" }
           : app
       )
@@ -402,18 +404,15 @@ export default function CandidatesPage() {
 
     try {
       const result = await bulkRejectBusinessApplications({
-        application_ids: selectedIds,
+        application_ids: idsToUpdate,
       });
 
       setSelectedIds([]);
-
-      setError(
+      showToast(
         `Rejected ${result.updated || selectedCount} candidate${
           (result.updated || selectedCount) === 1 ? "" : "s"
         } successfully.`
       );
-
-      await loadApplications({ searchText: query, jobPostId: selectedJobId });
     } catch (caughtError) {
       setApplications(previous);
       setError(
@@ -430,30 +429,27 @@ export default function CandidatesPage() {
     if (!selectedIds.length) return;
 
     const previous = applications;
-    const selectedCount = selectedIds.length;
+    const idsToUpdate = [...selectedIds];
+    const selectedCount = idsToUpdate.length;
 
     setBulkBusy(true);
     setError(null);
 
-    // Remove archived cards instantly from the active board
     setApplications((current) =>
-      current.filter((app) => !selectedIds.includes(app.id))
+      current.filter((app) => !idsToUpdate.includes(app.id))
     );
 
     try {
       const result = await bulkArchiveBusinessApplications({
-        application_ids: selectedIds,
+        application_ids: idsToUpdate,
       });
 
       setSelectedIds([]);
-
-      setError(
+      showToast(
         `Archived ${result.updated || selectedCount} candidate${
           (result.updated || selectedCount) === 1 ? "" : "s"
         } successfully.`
       );
-
-      await loadApplications({ searchText: query, jobPostId: selectedJobId });
     } catch (caughtError) {
       setApplications(previous);
       setError(
@@ -477,6 +473,12 @@ export default function CandidatesPage() {
       {error ? (
         <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
           {error}
+        </div>
+      ) : null}
+
+      {toast ? (
+        <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-700">
+          {toast}
         </div>
       ) : null}
 
