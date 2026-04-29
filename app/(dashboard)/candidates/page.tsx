@@ -14,6 +14,9 @@ import {
   markBusinessCvViewed,
   updateBusinessApplicationNotes,
   updateBusinessApplicationStage,
+  bulkArchiveBusinessApplications,
+  bulkMoveBusinessApplicationsStage,
+  bulkRejectBusinessApplications,
 } from "@/lib/business-applications";
 import { boardColumns } from "@/lib/theme";
 import type {
@@ -49,6 +52,9 @@ export default function CandidatesPage() {
   const [cvPreviewUrl, setCvPreviewUrl] = useState<string | null>(null);
   const [cvPreviewLoading, setCvPreviewLoading] = useState(false);
   const [cvPreviewError, setCvPreviewError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkStage, setBulkStage] = useState<ApplicationStage>("shortlisted");
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const hasAutoOpenedRef = useRef(false);
 
@@ -312,6 +318,99 @@ export default function CandidatesPage() {
     }
   }
 
+  function toggleSelected(id: number, checked: boolean) {
+    setSelectedIds((current) =>
+      checked
+        ? Array.from(new Set([...current, id]))
+        : current.filter((item) => item !== id)
+    );
+  }
+
+  function selectMany(ids: number[]) {
+    setSelectedIds((current) => Array.from(new Set([...current, ...ids])));
+  }
+
+  function clearMany(ids: number[]) {
+    setSelectedIds((current) => current.filter((id) => !ids.includes(id)));
+  }
+
+  async function rejectSingleCandidate(applicationId: number) {
+    await moveApplication(applicationId, "rejected" as ApplicationStage);
+  }
+
+  async function runBulkStageMove() {
+    if (!selectedIds.length) return;
+
+    setBulkBusy(true);
+    setError(null);
+
+    try {
+      await bulkMoveBusinessApplicationsStage({
+        application_ids: selectedIds,
+        stage: bulkStage,
+      });
+
+      setSelectedIds([]);
+      await loadApplications({ searchText: query, jobPostId: selectedJobId });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update selected candidates."
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function runBulkReject() {
+    if (!selectedIds.length) return;
+
+    setBulkBusy(true);
+    setError(null);
+
+    try {
+      await bulkRejectBusinessApplications({
+        application_ids: selectedIds,
+      });
+
+      setSelectedIds([]);
+      await loadApplications({ searchText: query, jobPostId: selectedJobId });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not reject selected candidates."
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function runBulkArchive() {
+    if (!selectedIds.length) return;
+
+    setBulkBusy(true);
+    setError(null);
+
+    try {
+      await bulkArchiveBusinessApplications({
+        application_ids: selectedIds,
+      });
+
+      setSelectedIds([]);
+      await loadApplications({ searchText: query, jobPostId: selectedJobId });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not archive selected candidates."
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -353,6 +452,69 @@ export default function CandidatesPage() {
         onSortChange={setSort}
       />
 
+      {selectedIds.length > 0 ? (
+        <div className="flex flex-col gap-3 rounded-[24px] border border-hier-border bg-white p-4 shadow-card md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-hier-text">
+              {selectedIds.length} candidate{selectedIds.length === 1 ? "" : "s"} selected
+            </p>
+            <p className="mt-1 text-xs text-hier-muted">
+              Move, reject, or archive selected candidates in bulk.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={bulkStage}
+              onChange={(event) => setBulkStage(event.target.value as ApplicationStage)}
+              className="h-10 rounded-2xl border border-hier-border bg-white px-3 text-sm font-semibold text-hier-text"
+            >
+              {boardColumns.map((column) => (
+                <option key={column.id} value={column.id}>
+                  Move to {column.title}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void runBulkStageMove()}
+              className="h-10 rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Move
+            </button>
+
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void runBulkReject()}
+              className="h-10 rounded-2xl border border-rose-100 bg-rose-50 px-4 text-sm font-semibold text-rose-700 disabled:opacity-50"
+            >
+              Reject
+            </button>
+
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void runBulkArchive()}
+              className="h-10 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-muted disabled:opacity-50"
+            >
+              Archive
+            </button>
+
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => setSelectedIds([])}
+              className="h-10 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="rounded-[28px] border border-hier-border bg-white p-10 text-sm text-hier-muted shadow-card">
           Loading applications…
@@ -365,10 +527,15 @@ export default function CandidatesPage() {
         <CandidateBoard
           columns={boardColumns}
           candidates={visibleApplications}
+          selectedIds={selectedIds}
           maxVisibleColumns={6}
           onOpenCandidate={openApplication}
           onMoveCandidate={moveApplication}
+          onRejectCandidate={rejectSingleCandidate}
           onDragCandidate={setDraggingApplicationId}
+          onToggleSelect={toggleSelected}
+          onSelectMany={selectMany}
+          onClearMany={clearMany}
           draggingApplicationId={draggingApplicationId}
         />
       )}

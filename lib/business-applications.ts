@@ -15,7 +15,12 @@ type FetchBusinessApplicationsParams = {
   per_page?: number;
   q?: string;
   stage?: string;
+  status?: string;
   job_post_id?: number | null;
+  recruiter_id?: number | null;
+  owner_recruiter_id?: number | null;
+  post_status?: "draft" | "live" | "archived";
+  include_archived?: boolean;
 };
 
 function normalizeApplication(application: BusinessApplication): BusinessApplication {
@@ -66,6 +71,26 @@ export async function fetchBusinessApplications(
 
   if (params?.stage) {
     search.set("stage", params.stage);
+  }
+
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+
+  if (params?.recruiter_id) {
+    search.set("recruiter_id", String(params.recruiter_id));
+  }
+
+  if (params?.owner_recruiter_id) {
+    search.set("owner_recruiter_id", String(params.owner_recruiter_id));
+  }
+
+  if (params?.post_status) {
+    search.set("post_status", params.post_status);
+  }
+
+  if (params?.include_archived) {
+    search.set("include_archived", "1");
   }
 
   if (params?.job_post_id) {
@@ -149,5 +174,63 @@ export async function fetchBusinessAnalyticsSummary(
 ) {
   return apiFetch<AnalyticsSummaryResponse>(
     `/api/business/analytics/summary?days=${days}`,
+  );
+}
+
+type BulkApplicationFilters = {
+  stage?: string;
+  status?: string;
+  job_post_id?: number | null;
+  recruiter_id?: number | null;
+  owner_recruiter_id?: number | null;
+  post_status?: "draft" | "live" | "archived";
+  include_archived?: boolean;
+};
+
+type BulkApplicationPayload = {
+  application_ids?: number[];
+  select_all_matching?: boolean;
+  filters?: BulkApplicationFilters;
+};
+
+type BulkApplicationResponse = {
+  ok: boolean;
+  mode: "ids" | "filters";
+  updated: number;
+};
+
+export async function bulkMoveBusinessApplicationsStage(
+  payload: BulkApplicationPayload & { stage: ApplicationStage },
+) {
+  return apiFetch<BulkApplicationResponse>(
+    "/api/business/applications/bulk-stage",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function bulkRejectBusinessApplications(
+  payload: BulkApplicationPayload,
+) {
+  return apiFetch<BulkApplicationResponse>(
+    "/api/business/applications/bulk-reject",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function bulkArchiveBusinessApplications(
+  payload: BulkApplicationPayload,
+) {
+  return apiFetch<BulkApplicationResponse>(
+    "/api/business/applications/bulk-archive",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
   );
 }

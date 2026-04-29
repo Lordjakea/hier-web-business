@@ -21,6 +21,10 @@ export type BusinessManagedJobPost = {
   budget?: number | null;
   is_remote?: boolean;
   is_active?: boolean;
+  post_status?: "draft" | "live" | "archived" | string | null;
+  assigned_recruiter_id?: number | null;
+  created_by_user_id?: number | null;
+  business_account_id?: number | null;
   applicant_count?: number;
   application_stage_counts?: Record<string, number>;
   tags?: string[];
@@ -175,12 +179,29 @@ type PresignResponse = {
   content_type?: string | null;
 };
 
-export async function fetchBusinessJobs(options?: { includeArchived?: boolean }) {
+export async function fetchBusinessJobs(options?: {
+  includeArchived?: boolean;
+  postStatus?: "draft" | "live" | "archived";
+  recruiterId?: number | null;
+  createdByUserId?: number | null;
+}) {
   const qs = new URLSearchParams({ content_type: "job" });
 
-  if (options?.includeArchived) {
+  if (options?.postStatus) {
+    qs.set("post_status", options.postStatus);
+  }
+
+  if (options?.includeArchived || options?.postStatus === "archived") {
     qs.set("include_archived", "1");
     qs.set("include_hidden", "1");
+  }
+
+  if (options?.recruiterId) {
+    qs.set("recruiter_id", String(options.recruiterId));
+  }
+
+  if (options?.createdByUserId) {
+    qs.set("created_by_user_id", String(options.createdByUserId));
   }
 
   return apiFetch<PaginatedResponse<BusinessManagedJobPost>>(
