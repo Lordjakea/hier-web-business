@@ -92,11 +92,12 @@ export function updateRecruiterSeats(extraRecruiterSeats: number) {
   });
 }
 
-export async function createBoostCheckout(credits: number) {
-  const res = await apiFetch("/api/business/billing/boosts/checkout", {
-    method: "POST",
-    body: JSON.stringify({ credits }),
-  });
-
-  return res;
+export function createBoostCheckout(credits: number) {
+  return apiFetch<{ checkout_url?: string }>(
+    "/api/business/billing/boosts/checkout",
+    {
+      method: "POST",
+      body: JSON.stringify({ credits }),
+    }
+  );
 }

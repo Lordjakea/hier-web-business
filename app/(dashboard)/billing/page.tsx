@@ -20,7 +20,7 @@ import {
   cancelSubscriptionAtPeriodEnd,
   changeSubscriptionPlan,
   createBillingPortal,
-  createBoostCreditCheckout,
+  createBoostCheckout,
   createSubscriptionCheckout,
   fetchBillingOverview,
   fetchBillingPlans,
@@ -239,7 +239,7 @@ export default function BillingPage() {
 
   async function handleBuyBoostCredits(creditsToBuy: number) {
     const res = await withAction(`boost-checkout-${creditsToBuy}`, () =>
-      createBoostCreditCheckout(creditsToBuy)
+      createBoostCheckout(creditsToBuy)
     );
 
     if (res.checkout_url) {
