@@ -31,6 +31,7 @@ const primaryLinks = [
 ];
 
 const secondaryLinks = [
+  { label: "Team", href: "/team", icon: Users },
   { label: "Profile management", href: "/settings/profile", icon: UserCog },
   { label: "Policies", href: "/settings/policies", icon: Shield },
 ];
