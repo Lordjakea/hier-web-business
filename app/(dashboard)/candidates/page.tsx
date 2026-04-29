@@ -341,18 +341,38 @@ export default function CandidatesPage() {
   async function runBulkStageMove() {
     if (!selectedIds.length) return;
 
+    const previous = applications;
+    const selectedCount = selectedIds.length;
+
     setBulkBusy(true);
     setError(null);
 
+    // Move cards instantly on screen
+    setApplications((current) =>
+      current.map((app) =>
+        selectedIds.includes(app.id)
+          ? { ...app, stage: bulkStage }
+          : app
+      )
+    );
+
     try {
-      await bulkMoveBusinessApplicationsStage({
+      const result = await bulkMoveBusinessApplicationsStage({
         application_ids: selectedIds,
         stage: bulkStage,
       });
 
       setSelectedIds([]);
+
+      setError(
+        `Moved ${result.updated || selectedCount} candidate${
+          (result.updated || selectedCount) === 1 ? "" : "s"
+        } successfully.`
+      );
+
       await loadApplications({ searchText: query, jobPostId: selectedJobId });
     } catch (caughtError) {
+      setApplications(previous);
       setError(
         caughtError instanceof Error
           ? caughtError.message
@@ -366,17 +386,36 @@ export default function CandidatesPage() {
   async function runBulkReject() {
     if (!selectedIds.length) return;
 
+    const previous = applications;
+    const selectedCount = selectedIds.length;
+
     setBulkBusy(true);
     setError(null);
 
+    setApplications((current) =>
+      current.map((app) =>
+        selectedIds.includes(app.id)
+          ? { ...app, stage: "rejected" as ApplicationStage, status: "rejected" }
+          : app
+      )
+    );
+
     try {
-      await bulkRejectBusinessApplications({
+      const result = await bulkRejectBusinessApplications({
         application_ids: selectedIds,
       });
 
       setSelectedIds([]);
+
+      setError(
+        `Rejected ${result.updated || selectedCount} candidate${
+          (result.updated || selectedCount) === 1 ? "" : "s"
+        } successfully.`
+      );
+
       await loadApplications({ searchText: query, jobPostId: selectedJobId });
     } catch (caughtError) {
+      setApplications(previous);
       setError(
         caughtError instanceof Error
           ? caughtError.message
@@ -390,17 +429,33 @@ export default function CandidatesPage() {
   async function runBulkArchive() {
     if (!selectedIds.length) return;
 
+    const previous = applications;
+    const selectedCount = selectedIds.length;
+
     setBulkBusy(true);
     setError(null);
 
+    // Remove archived cards instantly from the active board
+    setApplications((current) =>
+      current.filter((app) => !selectedIds.includes(app.id))
+    );
+
     try {
-      await bulkArchiveBusinessApplications({
+      const result = await bulkArchiveBusinessApplications({
         application_ids: selectedIds,
       });
 
       setSelectedIds([]);
+
+      setError(
+        `Archived ${result.updated || selectedCount} candidate${
+          (result.updated || selectedCount) === 1 ? "" : "s"
+        } successfully.`
+      );
+
       await loadApplications({ searchText: query, jobPostId: selectedJobId });
     } catch (caughtError) {
+      setApplications(previous);
       setError(
         caughtError instanceof Error
           ? caughtError.message
