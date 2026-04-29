@@ -7,8 +7,11 @@ import {
   CalendarClock,
   CreditCard,
   Loader2,
+  Minus,
+  Plus,
   Sparkles,
   TicketPercent,
+  UsersRound,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
@@ -22,6 +25,7 @@ import {
   reactivateSubscription,
   selectStarterPlan,
   previewSubscriptionChange,
+  updateRecruiterSeats,
 } from "@/lib/business-billing";
 import type {
   BillingOverviewResponse,
@@ -93,6 +97,7 @@ export default function BillingPage() {
   const [overview, setOverview] = useState<BillingOverviewResponse | null>(null);
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [promoCode, setPromoCode] = useState("");
+  const [seatDraft, setSeatDraft] = useState(0);
   const [preview, setPreview] = useState<BillingPreviewChangeResponse | null>(null);
   const [previewPlanCode, setPreviewPlanCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,10 +132,51 @@ export default function BillingPage() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+      const extraSeats = Number(
+        overview?.overview.extra_recruiter_seats ??
+        status?.account?.extra_recruiter_seats ??
+        0
+      );
+
+      setSeatDraft(Math.max(0, extraSeats));
+    }, [overview?.overview.extra_recruiter_seats, status?.account?.extra_recruiter_seats]);
+
   const currentPlanCode = status?.account?.plan_code || "starter";
   const currentPeriodEnd = overview?.overview.current_period_end || status?.account?.subscription_current_period_end;
   const cancelAtPeriodEnd = Boolean(overview?.overview.cancel_at_period_end || status?.account?.subscription_cancel_at_period_end);
   const currentPaidSubscription = Boolean(status?.flags?.subscription_active);
+
+  const recruiterSeats = useMemo(() => {
+    const included = Number(
+      overview?.overview.included_recruiter_seats ??
+      status?.account?.included_recruiter_seats ??
+      1
+    );
+    const extra = Number(
+      overview?.overview.extra_recruiter_seats ??
+      status?.account?.extra_recruiter_seats ??
+      0
+    );
+    const total = Number(
+      overview?.overview.total_recruiter_seats ??
+      status?.account?.total_recruiter_seats ??
+      included + extra
+    );
+    const active = Number(
+      overview?.overview.active_recruiter_seats ??
+      status?.account?.active_recruiter_seats ??
+      1
+    );
+    const available = Number(
+      overview?.overview.available_recruiter_seats ??
+      status?.account?.available_recruiter_seats ??
+      Math.max(0, total - active)
+    );
+
+    return { included, extra, total, active, available };
+  }, [overview, status]);
+
   const credits = useMemo(() => {
     const monthlyTotal = Number(overview?.overview.monthly_boost_credits ?? status?.account?.monthly_boost_credits ?? 0);
     const monthlyUsed = Number(overview?.overview.monthly_boost_credits_used ?? status?.account?.monthly_boost_credits_used ?? 0);
@@ -159,6 +205,12 @@ export default function BillingPage() {
     } finally {
       setWorkingKey(null);
     }
+  }
+
+  async function handleSaveRecruiterSeats() {
+    await withAction("recruiter-seats", () => updateRecruiterSeats(seatDraft));
+    await loadAll();
+    setSuccess("Recruiter seats updated.");
   }
 
   async function handlePortal() {
@@ -358,6 +410,86 @@ export default function BillingPage() {
               </div>
             </section>
           </div>
+
+          <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-card sm:p-8">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-hier-muted">Recruiter seats</p>
+                <h2 className="mt-2 text-2xl font-semibold text-hier-text">Manage team capacity</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-hier-muted">
+                  Your plan includes recruiter seats. Extra seats increase the number of active recruiters your business can invite later.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-full bg-hier-soft px-3 py-1.5 text-sm font-semibold text-hier-primary">
+                <UsersRound className="h-4 w-4" />
+                {recruiterSeats.total} total seats
+              </span>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Included</p>
+                <p className="mt-2 text-2xl font-semibold text-hier-text">{recruiterSeats.included}</p>
+              </div>
+              <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Extra seats</p>
+                <p className="mt-2 text-2xl font-semibold text-hier-text">{recruiterSeats.extra}</p>
+              </div>
+              <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">In use</p>
+                <p className="mt-2 text-2xl font-semibold text-hier-text">{recruiterSeats.active}</p>
+              </div>
+              <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Available</p>
+                <p className="mt-2 text-2xl font-semibold text-hier-text">{recruiterSeats.available}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-[24px] border border-hier-border bg-hier-panel p-4">
+              <p className="text-sm font-semibold text-hier-text">Purchased extra recruiter seats</p>
+              <p className="mt-2 text-sm leading-6 text-hier-muted">
+                Increase or reduce extra seat capacity. You cannot reduce below the number of seats already in use.
+              </p>
+
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSeatDraft((value) => Math.max(0, value - 1))}
+                  disabled={workingKey !== null || seatDraft <= 0}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-[18px] border border-hier-border bg-white text-hier-text shadow-sm transition hover:bg-hier-soft disabled:opacity-50"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+
+                <div className="min-w-[120px] rounded-[18px] border border-hier-border bg-white px-5 py-3 text-center text-lg font-semibold text-hier-text">
+                  {seatDraft}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSeatDraft((value) => value + 1)}
+                  disabled={workingKey !== null}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-[18px] border border-hier-border bg-white text-hier-text shadow-sm transition hover:bg-hier-soft disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveRecruiterSeats}
+                  disabled={workingKey !== null || seatDraft === recruiterSeats.extra}
+                  className="inline-flex items-center gap-2 rounded-[20px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-60"
+                >
+                  {workingKey === "recruiter-seats" ? <Loader2 className="h-4 w-4 animate-spin" /> : <UsersRound className="h-4 w-4" />}
+                  Save seats
+                </button>
+              </div>
+
+              <p className="mt-4 text-xs leading-5 text-hier-muted">
+                Stripe seat quantity syncs from purchased extra seats. Team invites will use this capacity in the next step.
+              </p>
+            </div>
+          </section>
 
           <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-card sm:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4">

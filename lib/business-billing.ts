@@ -84,3 +84,10 @@ export function createPostBoost(jobPostId: number, creditsToUse: number) {
     body: JSON.stringify({ job_post_id: jobPostId, credits_to_use: creditsToUse }),
   });
 }
+
+export function updateRecruiterSeats(extraRecruiterSeats: number) {
+  return apiFetch<BillingMutationResponse>("/api/business/billing/recruiter-seats", {
+    method: "POST",
+    body: JSON.stringify({ extra_recruiter_seats: extraRecruiterSeats }),
+  });
+}

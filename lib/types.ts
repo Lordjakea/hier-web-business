@@ -347,6 +347,12 @@ export type BillingAccount = {
   boost_credits_reset_at?: string | null;
   paid_boost_credits?: number | null;
   paid_boost_credits_used?: number | null;
+  included_recruiter_seats?: number | null;
+  extra_recruiter_seats?: number | null;
+  total_recruiter_seats?: number | null;
+  active_recruiter_seats?: number | null;
+  available_recruiter_seats?: number | null;
+  stripe_seat_subscription_item_id?: string | null;
   plan?: BillingPlan | null;
   subscription?: BillingSubscription | null;
   created_at?: string | null;
@@ -394,6 +400,12 @@ export type BillingOverviewResponse = {
     boost_credits_reset_at?: string | null;
     paid_boost_credits?: number | null;
     paid_boost_credits_used?: number | null;
+    included_recruiter_seats?: number | null;
+    extra_recruiter_seats?: number | null;
+    total_recruiter_seats?: number | null;
+    active_recruiter_seats?: number | null;
+    available_recruiter_seats?: number | null;
+    stripe_seat_subscription_item_id?: string | null;
     pricing_selected_at?: string | null;
     flags?: BillingFlags;
   };
