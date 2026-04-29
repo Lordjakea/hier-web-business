@@ -56,6 +56,8 @@ export default function CandidatesPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkStage, setBulkStage] = useState<ApplicationStage>("shortlisted");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [shortlistMode, setShortlistMode] = useState<"broad" | "balanced" | "strict">("balanced");
+  const [shortlistPreviewOpen, setShortlistPreviewOpen] = useState(false);
 
   const hasAutoOpenedRef = useRef(false);
 
@@ -496,6 +498,77 @@ export default function CandidatesPage() {
     }
   }
 
+  const shortlistThresholds = {
+    broad: 15,
+    balanced: 20,
+    strict: 25,
+  };
+
+  const shortlistThreshold = shortlistThresholds[shortlistMode];
+
+  const shortlistPreview = visibleApplications.filter((app) => {
+    const score = app.hi_score ?? app.score ?? app.ai_score ?? null;
+
+    return (
+      typeof score === "number" &&
+      score >= shortlistThreshold &&
+      app.stage === "applied"
+    );
+  });
+
+  const shortlistAverageScore =
+    shortlistPreview.length > 0
+      ? shortlistPreview.reduce((sum, app) => {
+          const score = app.hi_score ?? app.score ?? app.ai_score ?? 0;
+          return sum + Number(score || 0);
+        }, 0) / shortlistPreview.length
+      : 0;
+
+  async function runAutoShortlist() {
+    const candidatesToMove = shortlistPreview.map((app) => app.id);
+
+    if (!candidatesToMove.length) {
+      showToast("No applied candidates currently match this shortlist setting.");
+      return;
+    }
+
+    const previous = applications;
+
+    setBulkBusy(true);
+    setError(null);
+    setShortlistPreviewOpen(false);
+
+    setApplications((current) =>
+      current.map((app) =>
+        candidatesToMove.includes(app.id)
+          ? { ...app, stage: "shortlisted" as ApplicationStage }
+          : app
+      )
+    );
+
+    try {
+      const result = await bulkMoveBusinessApplicationsStage({
+        application_ids: candidatesToMove,
+        stage: "shortlisted" as ApplicationStage,
+      });
+
+      showToast(
+        `Hier Intelligence shortlisted ${result.updated || candidatesToMove.length} candidate${
+          (result.updated || candidatesToMove.length) === 1 ? "" : "s"
+        }.`
+      );
+    } catch (caughtError) {
+      setApplications(previous);
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not run Hier Intelligence shortlist."
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -543,6 +616,132 @@ export default function CandidatesPage() {
         onSortChange={setSort}
       />
 
+      <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-hier-primary">
+              Hier Intelligence Shortlist
+            </p>
+            <h3 className="mt-1 text-xl font-semibold text-hier-text">
+              Find strong applicants still in Applied
+            </h3>
+            <p className="mt-1 text-sm text-hier-muted">
+              Only candidates currently in Applied are included, so nobody further down the pipeline gets moved backwards.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={shortlistMode}
+              onChange={(event) =>
+                setShortlistMode(event.target.value as "broad" | "balanced" | "strict")
+              }
+              className="h-10 rounded-2xl border border-hier-border bg-white px-3 text-sm font-semibold text-hier-text"
+            >
+              <option value="broad">Broad · HI Score 15+</option>
+              <option value="balanced">Balanced · HI Score 20+</option>
+              <option value="strict">Strict · HI Score 25+</option>
+            </select>
+
+            <button
+              type="button"
+              disabled={bulkBusy || !visibleApplications.length}
+              onClick={() => setShortlistPreviewOpen((current) => !current)}
+              className="h-10 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:opacity-50"
+            >
+              Preview shortlist
+            </button>
+
+            <button
+              type="button"
+              disabled={bulkBusy || shortlistPreview.length === 0}
+              onClick={() => void runAutoShortlist()}
+              className="h-10 rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-95 disabled:opacity-50"
+            >
+              Move {shortlistPreview.length} to Shortlisted
+            </button>
+          </div>
+        </div>
+
+        {shortlistPreviewOpen ? (
+          <div className="mt-5 rounded-[24px] border border-hier-border bg-hier-panel/60 p-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                  Matching candidates
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-hier-text">
+                  {shortlistPreview.length}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                  Threshold
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-hier-text">
+                  {shortlistThreshold}+
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                  Average HI Score
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-hier-text">
+                  {shortlistAverageScore ? shortlistAverageScore.toFixed(1) : "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              {shortlistPreview.length ? (
+                <div className="space-y-2">
+                  {shortlistPreview.slice(0, 5).map((app) => {
+                    const score = app.hi_score ?? app.score ?? app.ai_score ?? null;
+                    const name =
+                      app.user?.display_name ||
+                      app.user?.full_name ||
+                      app.user?.email ||
+                      "Candidate";
+
+                    return (
+                      <div
+                        key={app.id}
+                        className="flex items-center justify-between rounded-2xl bg-white px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-hier-text">
+                            {name}
+                          </p>
+                          <p className="text-xs text-hier-muted">
+                            {app.job_post?.title || "Application"}
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold text-hier-primary">
+                          HI {typeof score === "number" ? score.toFixed(1) : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+
+                  {shortlistPreview.length > 5 ? (
+                    <p className="pt-2 text-xs font-medium text-hier-muted">
+                      + {shortlistPreview.length - 5} more candidates will be moved.
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-sm text-hier-muted">
+                  No applied candidates match this shortlist setting yet.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       {selectedIds.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-[24px] border border-hier-border bg-white p-4 shadow-card md:flex-row md:items-center md:justify-between">
           <div>
@@ -566,6 +765,15 @@ export default function CandidatesPage() {
                 </option>
               ))}
             </select>
+
+            <button
+              type="button"
+              disabled={bulkBusy || !visibleApplications.length}
+              onClick={() => void runAutoShortlist()}
+              className="h-10 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              Auto shortlist
+            </button>
 
             <button
               type="button"
