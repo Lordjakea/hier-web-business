@@ -375,6 +375,37 @@ export default function BillingPage() {
                 </div>
               </div>
 
+              <div className="mt-6 rounded-[24px] border border-hier-border bg-hier-panel p-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                      Boost credits
+                    </p>
+                    <h3 className="mt-2 text-lg font-semibold text-hier-text">
+                      Add extra post boosts
+                    </h3>
+                    <p className="mt-1 text-sm text-hier-muted">
+                      Monthly remaining:{" "}
+                      <span className="font-semibold text-hier-text">
+                        {credits.monthlyRemaining}
+                      </span>{" "}
+                      · Extra purchased:{" "}
+                      <span className="font-semibold text-hier-text">
+                        {credits.paidRemaining}
+                      </span>
+                    </p>
+                  </div>
+
+                  <Link
+                    href="/promote"
+                    className="inline-flex items-center gap-2 rounded-[18px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Buy boost credits
+                  </Link>
+                </div>
+              </div>
+
               {cancelAtPeriodEnd ? (
                 <div className="mt-6 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
                   Your paid subscription remains active until <span className="font-semibold">{formatDate(currentPeriodEnd)}</span>, then the account returns to Starter unless you reactivate it first.
