@@ -91,3 +91,12 @@ export function updateRecruiterSeats(extraRecruiterSeats: number) {
     body: JSON.stringify({ extra_recruiter_seats: extraRecruiterSeats }),
   });
 }
+
+export async function createBoostCheckout(credits: number) {
+  const res = await apiFetch("/api/business/billing/boosts/checkout", {
+    method: "POST",
+    body: JSON.stringify({ credits }),
+  });
+
+  return res;
+}

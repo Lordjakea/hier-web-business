@@ -20,6 +20,7 @@ import {
   cancelSubscriptionAtPeriodEnd,
   changeSubscriptionPlan,
   createBillingPortal,
+  createBoostCreditCheckout,
   createSubscriptionCheckout,
   fetchBillingOverview,
   fetchBillingPlans,
@@ -236,6 +237,16 @@ export default function BillingPage() {
     setSuccess("Recruiter seats updated.");
   }
 
+  async function handleBuyBoostCredits(creditsToBuy: number) {
+    const res = await withAction(`boost-checkout-${creditsToBuy}`, () =>
+      createBoostCreditCheckout(creditsToBuy)
+    );
+
+    if (res.checkout_url) {
+      openUrl(res.checkout_url);
+    }
+  }
+
   async function handlePortal() {
     const res = await withAction("portal", () => createBillingPortal());
     if (res.portal_url) openUrl(res.portal_url);
@@ -396,13 +407,24 @@ export default function BillingPage() {
                     </p>
                   </div>
 
-                  <Link
-                    href="/promote"
-                    className="inline-flex items-center gap-2 rounded-[18px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Buy boost credits
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    {[1, 2, 3].map((creditsToBuy) => (
+                      <button
+                        key={creditsToBuy}
+                        type="button"
+                        onClick={() => handleBuyBoostCredits(creditsToBuy)}
+                        disabled={workingKey !== null}
+                        className="inline-flex items-center gap-2 rounded-[18px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-60"
+                      >
+                        {workingKey === `boost-checkout-${creditsToBuy}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" />
+                        )}
+                        Buy {creditsToBuy}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -448,13 +470,31 @@ export default function BillingPage() {
                 Reset date: <span className="font-semibold text-hier-text">{formatDate(overview?.overview.boost_credits_reset_at || status?.account?.boost_credits_reset_at)}</span>
               </div>
 
-              <div className="mt-5">
+              <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                {[1, 2, 3].map((creditsToBuy) => (
+                  <button
+                    key={creditsToBuy}
+                    type="button"
+                    onClick={() => handleBuyBoostCredits(creditsToBuy)}
+                    disabled={workingKey !== null}
+                    className="inline-flex items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-60"
+                  >
+                    {workingKey === `boost-checkout-${creditsToBuy}` ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    Buy {creditsToBuy}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-3">
                 <Link
                   href="/promote"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm font-semibold text-hier-text shadow-sm transition hover:bg-hier-soft"
                 >
-                  <Sparkles className="h-4 w-4" />
-                  Add or use post boosts
+                  Use existing credits on a post
                 </Link>
               </div>
 
