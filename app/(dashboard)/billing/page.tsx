@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
   CalendarClock,
+  ChevronDown,
   CreditCard,
   Loader2,
   Minus,
@@ -22,9 +24,9 @@ import {
   fetchBillingOverview,
   fetchBillingPlans,
   fetchBillingStatus,
+  previewSubscriptionChange,
   reactivateSubscription,
   selectStarterPlan,
-  previewSubscriptionChange,
   updateRecruiterSeats,
 } from "@/lib/business-billing";
 import type {
@@ -47,7 +49,11 @@ function formatMoney(amount?: number | null, currency?: string | null) {
 function formatMonthlyPrice(amount?: number | null, currency?: string | null) {
   if (!amount && amount !== 0) return "Custom";
   try {
-    return new Intl.NumberFormat("en-GB", { style: "currency", currency: (currency || "GBP").toUpperCase(), maximumFractionDigits: 0 }).format(Number(amount));
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: (currency || "GBP").toUpperCase(),
+      maximumFractionDigits: 0,
+    }).format(Number(amount));
   } catch {
     return `£${Number(amount).toFixed(0)}`;
   }
@@ -57,17 +63,22 @@ function formatDate(value?: string | null, includeTime = false) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", includeTime ? {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  } : {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    includeTime
+      ? {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }
+      : {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }
+  ).format(date);
 }
 
 function formatStatus(value?: string | null) {
@@ -77,7 +88,9 @@ function formatStatus(value?: string | null) {
 
 function planBullets(plan: BillingPlan) {
   return [
-    typeof plan.job_post_limit === "number" ? `${plan.job_post_limit === 0 ? "Unlimited" : plan.job_post_limit} live job posts` : null,
+    typeof plan.job_post_limit === "number"
+      ? `${plan.job_post_limit === 0 ? "Unlimited" : plan.job_post_limit} live job posts`
+      : null,
     `${Number(plan.monthly_boost_credits || 0)} monthly boost credits`,
     plan.has_pipeline_tools ? "Pipeline tools included" : null,
     plan.has_applicant_rating ? "Applicant rating included" : null,
@@ -100,6 +113,7 @@ export default function BillingPage() {
   const [seatDraft, setSeatDraft] = useState(0);
   const [preview, setPreview] = useState<BillingPreviewChangeResponse | null>(null);
   const [previewPlanCode, setPreviewPlanCode] = useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [workingKey, setWorkingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +126,7 @@ export default function BillingPage() {
       fetchBillingOverview(),
       fetchBillingPlans(),
     ]);
+
     setStatus(statusRes);
     setOverview(overviewRes);
     setPlans((plansRes.items || []).slice().sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)));
@@ -119,28 +134,34 @@ export default function BillingPage() {
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
         setLoading(true);
         await loadAll();
       } catch (caught) {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : "Could not load billing right now.");
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : "Could not load billing right now.");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-      const extraSeats = Number(
-        overview?.overview.extra_recruiter_seats ??
+    const extraSeats = Number(
+      overview?.overview.extra_recruiter_seats ??
         status?.account?.extra_recruiter_seats ??
         0
-      );
+    );
 
-      setSeatDraft(Math.max(0, extraSeats));
-    }, [overview?.overview.extra_recruiter_seats, status?.account?.extra_recruiter_seats]);
+    setSeatDraft(Math.max(0, extraSeats));
+  }, [overview?.overview.extra_recruiter_seats, status?.account?.extra_recruiter_seats]);
 
   const currentPlanCode = status?.account?.plan_code || "starter";
   const currentPeriodEnd = overview?.overview.current_period_end || status?.account?.subscription_current_period_end;
@@ -150,28 +171,28 @@ export default function BillingPage() {
   const recruiterSeats = useMemo(() => {
     const included = Number(
       overview?.overview.included_recruiter_seats ??
-      status?.account?.included_recruiter_seats ??
-      1
+        status?.account?.included_recruiter_seats ??
+        1
     );
     const extra = Number(
       overview?.overview.extra_recruiter_seats ??
-      status?.account?.extra_recruiter_seats ??
-      0
+        status?.account?.extra_recruiter_seats ??
+        0
     );
     const total = Number(
       overview?.overview.total_recruiter_seats ??
-      status?.account?.total_recruiter_seats ??
-      included + extra
+        status?.account?.total_recruiter_seats ??
+        included + extra
     );
     const active = Number(
       overview?.overview.active_recruiter_seats ??
-      status?.account?.active_recruiter_seats ??
-      1
+        status?.account?.active_recruiter_seats ??
+        1
     );
     const available = Number(
       overview?.overview.available_recruiter_seats ??
-      status?.account?.available_recruiter_seats ??
-      Math.max(0, total - active)
+        status?.account?.available_recruiter_seats ??
+        Math.max(0, total - active)
     );
 
     return { included, extra, total, active, available };
@@ -182,6 +203,7 @@ export default function BillingPage() {
     const monthlyUsed = Number(overview?.overview.monthly_boost_credits_used ?? status?.account?.monthly_boost_credits_used ?? 0);
     const paidTotal = Number(overview?.overview.paid_boost_credits ?? status?.account?.paid_boost_credits ?? 0);
     const paidUsed = Number(overview?.overview.paid_boost_credits_used ?? status?.account?.paid_boost_credits_used ?? 0);
+
     return {
       monthlyTotal,
       monthlyUsed,
@@ -196,6 +218,7 @@ export default function BillingPage() {
     setWorkingKey(key);
     setError(null);
     setSuccess(null);
+
     try {
       return await action();
     } catch (caught) {
@@ -228,12 +251,15 @@ export default function BillingPage() {
             ? `Your paid subscription will stay active until ${formatDate(currentPeriodEnd)} and then return to Starter. Continue?`
             : "Your paid subscription will remain active until the end of the current billing cycle and then return to Starter. Continue?"
         );
+
         if (!confirmed) return;
+
         await withAction(`cancel-${planCode}`, () => cancelSubscriptionAtPeriodEnd());
         await loadAll();
         setSuccess("Cancellation scheduled. Your account will return to Starter at the end of the current billing period.");
         return;
       }
+
       await withAction(`starter-${planCode}`, () => selectStarterPlan());
       await loadAll();
       setSuccess("Starter plan activated.");
@@ -253,6 +279,7 @@ export default function BillingPage() {
 
   async function applyPreviewedChange() {
     if (!previewPlanCode || !preview) return;
+
     if (preview.mode === "new_checkout") {
       const res = await withAction(`checkout-${previewPlanCode}`, () => createSubscriptionCheckout(previewPlanCode, promoCode));
       if (res.checkout_url) openUrl(res.checkout_url);
@@ -261,11 +288,13 @@ export default function BillingPage() {
 
     await withAction(`change-${previewPlanCode}`, () => changeSubscriptionPlan(previewPlanCode, promoCode));
     await loadAll();
+
     setSuccess(
       preview.mode === "scheduled_downgrade"
         ? `Downgrade scheduled for ${formatDate(preview.current_period_end)}.`
         : "Plan updated successfully."
     );
+
     setPreview(null);
     setPreviewPlanCode(null);
   }
@@ -283,7 +312,7 @@ export default function BillingPage() {
       <PageHeader
         eyebrow="Billing"
         title="Plans, subscription, and billing"
-        description="Manage your current Hier plan, upgrade or downgrade cleanly, apply promo codes, and keep track of subscription status and included boost credits."
+        description="Manage your current Hier plan, upgrade or downgrade cleanly, apply promo codes, and keep track of subscription status, recruiter seats, and boost credits."
         action={
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -304,7 +333,9 @@ export default function BillingPage() {
 
       {loading ? (
         <div className="grid gap-5 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, idx) => <div key={idx} className="h-48 animate-pulse rounded-[28px] border border-hier-border bg-white" />)}
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <div key={idx} className="h-48 animate-pulse rounded-[28px] border border-hier-border bg-white" />
+          ))}
         </div>
       ) : (
         <>
@@ -318,6 +349,7 @@ export default function BillingPage() {
                     {currentPlan ? `${formatMonthlyPrice(currentPlan.price_monthly, currentPlan.currency)} / month Ex VAT` : "Plan details unavailable right now."}
                   </p>
                 </div>
+
                 <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold ${cancelAtPeriodEnd ? "bg-amber-50 text-amber-700" : "bg-hier-soft text-hier-primary"}`}>
                   <BadgeCheck className="h-4 w-4" />
                   {cancelAtPeriodEnd ? "Ending at period end" : formatStatus(overview?.overview.subscription_status || status?.account?.subscription_status || status?.account?.status)}
@@ -349,19 +381,8 @@ export default function BillingPage() {
                 </div>
               ) : null}
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                {!cancelAtPeriodEnd && currentPaidSubscription ? (
-                  <button
-                    type="button"
-                    onClick={() => handleSelectPlan("starter")}
-                    disabled={workingKey !== null}
-                    className="inline-flex items-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 py-3 text-sm font-semibold text-hier-text shadow-sm transition hover:bg-hier-soft disabled:opacity-60"
-                  >
-                    {workingKey === "cancel-starter" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
-                    Cancel and return to Starter
-                  </button>
-                ) : null}
-                {cancelAtPeriodEnd ? (
+              {cancelAtPeriodEnd ? (
+                <div className="mt-6">
                   <button
                     type="button"
                     onClick={handleReactivate}
@@ -371,13 +392,14 @@ export default function BillingPage() {
                     {workingKey === "reactivate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     Keep subscription active
                   </button>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-card sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-hier-muted">Boost credit balance</p>
               <h2 className="mt-2 text-2xl font-semibold text-hier-text">Usage and remaining credits</h2>
+
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Monthly included</p>
@@ -390,9 +412,21 @@ export default function BillingPage() {
                   <p className="mt-2 text-sm text-hier-muted">{credits.paidUsed} used of {credits.paidTotal}</p>
                 </div>
               </div>
+
               <div className="mt-5 rounded-[24px] border border-hier-border bg-hier-soft px-4 py-4 text-sm text-hier-muted">
                 Reset date: <span className="font-semibold text-hier-text">{formatDate(overview?.overview.boost_credits_reset_at || status?.account?.boost_credits_reset_at)}</span>
               </div>
+
+              <div className="mt-5">
+                <Link
+                  href="/promote"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Add or use post boosts
+                </Link>
+              </div>
+
               <div className="mt-5 rounded-[24px] border border-hier-border bg-hier-panel p-4">
                 <p className="text-sm font-semibold text-hier-text">Promo code</p>
                 <p className="mt-2 text-sm text-hier-muted">Apply a promo code before a new paid checkout or plan change.</p>
@@ -496,50 +530,63 @@ export default function BillingPage() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-hier-muted">Available plans</p>
                 <h2 className="mt-2 text-2xl font-semibold text-hier-text">Choose the right plan for your team</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-hier-muted">Starter stays free, new paid plans go through Stripe checkout, upgrades can apply immediately, and downgrades are scheduled for your next renewal.</p>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-hier-muted">
+                  Starter stays free, new paid plans go through Stripe checkout, upgrades can apply immediately, and downgrades are scheduled for your next renewal.
+                </p>
               </div>
             </div>
 
-            <div className="mt-8 grid gap-5 xl:grid-cols-3">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
               {plans.map((plan) => {
                 const current = plan.code === currentPlanCode;
+                const isStarter = plan.code === "starter";
                 const bullets = planBullets(plan);
                 const previewOpen = previewPlanCode === plan.code && preview;
+
                 return (
-                  <article key={plan.id} className={`rounded-[28px] border p-5 shadow-sm transition ${current ? "border-hier-primary bg-hier-soft" : "border-hier-border bg-white"}`}>
+                  <article
+                    key={plan.id}
+                    className={`rounded-[24px] border p-4 shadow-sm transition ${current ? "border-hier-primary bg-hier-soft" : "border-hier-border bg-white"}`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <h3 className="text-xl font-semibold text-hier-text">{plan.name}</h3>
-                        <p className="mt-2 text-3xl font-semibold tracking-tight text-hier-text">{formatMonthlyPrice(plan.price_monthly, plan.currency)}<span className="ml-1 text-sm font-medium text-hier-muted">/ month Ex VAT</span></p>
+                        <h3 className="text-base font-semibold text-hier-text">{plan.name}</h3>
+                        <p className="mt-2 text-2xl font-semibold tracking-tight text-hier-text">
+                          {formatMonthlyPrice(plan.price_monthly, plan.currency)}
+                          <span className="ml-1 text-xs font-medium text-hier-muted">/ month Ex VAT</span>
+                        </p>
                       </div>
-                      {current ? <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-primary shadow-sm">Current</span> : null}
+                      {current ? <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-hier-primary shadow-sm">Current</span> : null}
                     </div>
 
-                    <div className="mt-5 space-y-2 text-sm text-hier-muted">
+                    <div className="mt-4 space-y-1.5 text-xs text-hier-muted">
                       {bullets.map((bullet) => (
-                        <p key={bullet} className="leading-6">• {bullet}</p>
+                        <p key={bullet} className="leading-5">• {bullet}</p>
                       ))}
                     </div>
 
-                    <div className="mt-6 flex gap-3">
-                      {!current ? (
+                    <div className="mt-5 flex gap-3">
+                      {!current && !isStarter ? (
                         <button
                           type="button"
                           onClick={() => handleSelectPlan(plan.code || "starter")}
                           disabled={workingKey !== null}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-60"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-hier-primary px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-60"
                         >
-                          {workingKey && (workingKey.includes(plan.code || "") || workingKey === `starter-${plan.code}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                          {plan.code === "starter" ? (currentPaidSubscription ? "Return to Starter" : "Choose Starter") : currentPaidSubscription ? `Switch to ${plan.name}` : `Choose ${plan.name}`}
+                          {workingKey && workingKey.includes(plan.code || "") ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                          {currentPaidSubscription ? `Switch to ${plan.name}` : `Choose ${plan.name}`}
                         </button>
                       ) : (
-                        <div className="inline-flex w-full items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm font-semibold text-hier-text">Already active</div>
+                        <div className="inline-flex w-full items-center justify-center rounded-[14px] border border-hier-border bg-white px-3 py-2.5 text-xs font-semibold text-hier-text">
+                          {current ? "Already active" : "Starter downgrade below"}
+                        </div>
                       )}
                     </div>
 
                     {previewOpen ? (
                       <div className="mt-5 rounded-[22px] border border-hier-border bg-white p-4">
                         <p className="text-sm font-semibold text-hier-text">Change preview</p>
+
                         {preview.mode === "immediate_upgrade" ? (
                           <>
                             <p className="mt-2 text-sm text-hier-muted">This upgrade applies immediately.</p>
@@ -554,11 +601,16 @@ export default function BillingPage() {
                             </div>
                           </>
                         ) : null}
+
                         {preview.mode === "scheduled_downgrade" ? (
-                          <p className="mt-2 text-sm text-hier-muted">This downgrade stays on your current paid plan until <span className="font-semibold text-hier-text">{formatDate(preview.current_period_end)}</span>, then changes at renewal.</p>
+                          <p className="mt-2 text-sm text-hier-muted">
+                            This downgrade stays on your current paid plan until <span className="font-semibold text-hier-text">{formatDate(preview.current_period_end)}</span>, then changes at renewal.
+                          </p>
                         ) : null}
+
                         {preview.mode === "no_change" ? <p className="mt-2 text-sm text-hier-muted">You are already on this plan.</p> : null}
                         {preview.message && preview.mode === "new_checkout" ? <p className="mt-2 text-sm text-hier-muted">{preview.message}</p> : null}
+
                         {preview.mode !== "no_change" ? (
                           <div className="mt-4 flex gap-3">
                             <button
@@ -570,7 +622,16 @@ export default function BillingPage() {
                               {workingKey === `change-${previewPlanCode}` || workingKey === `checkout-${previewPlanCode}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                               {preview.mode === "scheduled_downgrade" ? "Schedule downgrade" : preview.mode === "immediate_upgrade" ? "Upgrade now" : "Continue"}
                             </button>
-                            <button type="button" onClick={() => { setPreview(null); setPreviewPlanCode(null); }} className="rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm font-semibold text-hier-text">Close</button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreview(null);
+                                setPreviewPlanCode(null);
+                              }}
+                              className="rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm font-semibold text-hier-text"
+                            >
+                              Close
+                            </button>
                           </div>
                         ) : null}
                       </div>
@@ -579,6 +640,67 @@ export default function BillingPage() {
                 );
               })}
             </div>
+          </section>
+
+          <section className="rounded-[32px] border border-rose-100 bg-white shadow-card">
+            <button
+              type="button"
+              onClick={() => setCancelOpen((value) => !value)}
+              className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left sm:px-8"
+            >
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">Subscription cancellation</p>
+                <h2 className="mt-2 text-xl font-semibold text-hier-text">Return to Starter</h2>
+                <p className="mt-1 text-sm text-hier-muted">
+                  Keep cancellation controls separate from normal billing actions.
+                </p>
+              </div>
+              <ChevronDown className={`h-5 w-5 text-hier-muted transition ${cancelOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {cancelOpen ? (
+              <div className="border-t border-rose-100 px-6 pb-6 pt-5 sm:px-8">
+                <p className="max-w-3xl text-sm leading-7 text-hier-muted">
+                  Cancel your paid subscription and keep access until the end of your current billing period. After that, your account will return to Starter.
+                </p>
+
+                <div className="mt-5 rounded-[24px] border border-hier-border bg-hier-panel px-4 py-4 text-sm text-hier-muted">
+                  Current period ends: <span className="font-semibold text-hier-text">{formatDate(currentPeriodEnd)}</span>
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  {!cancelAtPeriodEnd && currentPaidSubscription ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectPlan("starter")}
+                      disabled={workingKey !== null}
+                      className="inline-flex items-center gap-2 rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 shadow-sm transition hover:bg-rose-100 disabled:opacity-60"
+                    >
+                      {workingKey === "cancel-starter" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
+                      Cancel and return to Starter
+                    </button>
+                  ) : null}
+
+                  {cancelAtPeriodEnd ? (
+                    <button
+                      type="button"
+                      onClick={handleReactivate}
+                      disabled={workingKey !== null}
+                      className="inline-flex items-center gap-2 rounded-[20px] bg-hier-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-60"
+                    >
+                      {workingKey === "reactivate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      Keep subscription active
+                    </button>
+                  ) : null}
+
+                  {!currentPaidSubscription && currentPlanCode === "starter" ? (
+                    <div className="rounded-[20px] border border-hier-border bg-hier-panel px-4 py-3 text-sm font-semibold text-hier-muted">
+                      You are already on Starter.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </section>
         </>
       )}
