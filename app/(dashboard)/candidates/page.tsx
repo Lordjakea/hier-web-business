@@ -199,9 +199,25 @@ export default function CandidatesPage() {
     applicationId: number,
     stage: ApplicationStage
   ) {
-    const existing = applications.find((item) => item.id === applicationId);
+    const idsToMove =
+      selectedIds.includes(applicationId) && selectedIds.length > 1
+        ? [...selectedIds]
+        : [applicationId];
 
-    if (!existing || existing.stage === stage) {
+    const matchingApplications = applications.filter((item) =>
+      idsToMove.includes(item.id)
+    );
+
+    if (!matchingApplications.length) {
+      setDraggingApplicationId(null);
+      return;
+    }
+
+    const idsThatNeedMoving = matchingApplications
+      .filter((item) => item.stage !== stage)
+      .map((item) => item.id);
+
+    if (!idsThatNeedMoving.length) {
       setDraggingApplicationId(null);
       return;
     }
@@ -210,22 +226,40 @@ export default function CandidatesPage() {
 
     setApplications((current) =>
       current.map((item) =>
-        item.id === applicationId ? { ...item, stage } : item
+        idsThatNeedMoving.includes(item.id) ? { ...item, stage } : item
       )
     );
+
     setDraggingApplicationId(null);
+    setError(null);
 
     try {
-      const updated = await updateBusinessApplicationStage(applicationId, stage);
-      setApplications((current) =>
-        current.map((item) =>
-          item.id === applicationId ? { ...item, ...updated } : item
-        )
-      );
+      if (idsThatNeedMoving.length === 1) {
+        const updated = await updateBusinessApplicationStage(
+          idsThatNeedMoving[0],
+          stage
+        );
 
-      if (selectedApplication?.id === applicationId) {
-        setSelectedApplication((current) =>
-          current ? { ...current, ...updated } : current
+        setApplications((current) =>
+          current.map((item) =>
+            item.id === updated.id ? { ...item, ...updated } : item
+          )
+        );
+
+        if (selectedApplication?.id === updated.id) {
+          setSelectedApplication((current) =>
+            current ? { ...current, ...updated } : current
+          );
+        }
+      } else {
+        const result = await bulkMoveBusinessApplicationsStage({
+          application_ids: idsThatNeedMoving,
+          stage,
+        });
+
+        setSelectedIds([]);
+        showToast(
+          `Moved ${result.updated || idsThatNeedMoving.length} candidates successfully.`
         );
       }
     } catch (caughtError) {
