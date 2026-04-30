@@ -94,11 +94,34 @@ function parsePositiveMoney(raw: string): number | null {
 }
 
 function acceptForFile(file: File) {
-  return file.type.startsWith("image/") || file.type.startsWith("video/");
+  const type = file.type || "";
+  const name = file.name.toLowerCase();
+
+  return (
+    type.startsWith("image/") ||
+    type.startsWith("video/") ||
+    /\.(jpg|jpeg|png|webp|heic|mp4|mov|m4v|webm)$/i.test(name)
+  );
 }
 
 function isImageFile(file: File) {
-  return file.type.startsWith("image/");
+  const type = file.type || "";
+  const name = file.name.toLowerCase();
+
+  return (
+    type.startsWith("image/") ||
+    /\.(jpg|jpeg|png|webp|heic)$/i.test(name)
+  );
+}
+
+function isVideoFile(file: File) {
+  const type = file.type || "";
+  const name = file.name.toLowerCase();
+
+  return (
+    type.startsWith("video/") ||
+    /\.(mp4|mov|m4v|webm)$/i.test(name)
+  );
 }
 
 async function readVideoMetadata(file: File): Promise<{
@@ -167,17 +190,23 @@ async function trimVideoFile(params: {
     inputName,
     "-t",
     String(params.durationSeconds),
-    "-c",
-    "copy",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "23",
+    "-c:a",
+    "aac",
+    "-movflags",
+    "+faststart",
     outputName,
   ]);
 
   const data = await ffmpeg.readFile(outputName);
   const blob = new Blob([data as BlobPart], { type: "video/mp4" });
 
-  return new File([blob], outputName, {
-    type: "video/mp4",
-  });
+  return new File([blob], outputName, { type: "video/mp4" });
 }
 
 async function cropVideoFileToFourFive(file: File): Promise<File> {
@@ -210,9 +239,7 @@ async function cropVideoFileToFourFive(file: File): Promise<File> {
   const data = await ffmpeg.readFile(outputName);
   const blob = new Blob([data as BlobPart], { type: "video/mp4" });
 
-  return new File([blob], outputName, {
-    type: "video/mp4",
-  });
+  return new File([blob], outputName, { type: "video/mp4" });
 }
 
 async function createCroppedImageFile(params: {
@@ -263,6 +290,7 @@ export default function JobsCreatePage() {
   const [contentType, setContentType] = useState<ContentType>("post");
   const [values, setValues] = useState<FormValues>(initialValues);
   const [loading, setLoading] = useState(false);
+  const [processingMedia, setProcessingMedia] = useState(false);
   const [trimming, setTrimming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -335,65 +363,78 @@ export default function JobsCreatePage() {
   }
 
   async function handleIncomingFile(file: File) {
-    if (!acceptForFile(file)) {
-      setError("Only image and video files are supported.");
-      return;
-    }
+    try {
+      console.log("[CREATE MEDIA] incoming file", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
 
-    setError(null);
-    setSuccess(null);
-
-    if (isImageFile(file)) {
-      const src = URL.createObjectURL(file);
-
-      if (pendingImageSrc) URL.revokeObjectURL(pendingImageSrc);
-
-      setPendingImageFile(file);
-      setPendingImageSrc(src);
-      setCrop({ x: 0, y: 0 });
-      setZoom(1);
-      setCroppedAreaPixels(null);
-      setCropOpen(true);
-      return;
-    }
-
-    const { width, height, duration } = await readVideoMetadata(file);
-
-    let workingVideoFile = file;
-
-    if (!aspectCloseEnough(width, height)) {
-      setLoading(true);
-      try {
-        workingVideoFile = await cropVideoFileToFourFive(file);
-      } finally {
-        setLoading(false);
+      if (!acceptForFile(file)) {
+        setError("Only image and video files are supported.");
+        return;
       }
+
+      setError(null);
+      setSuccess(null);
+
+      if (isImageFile(file)) {
+        const src = URL.createObjectURL(file);
+
+        if (pendingImageSrc) URL.revokeObjectURL(pendingImageSrc);
+
+        setPendingImageFile(file);
+        setPendingImageSrc(src);
+        setCrop({ x: 0, y: 0 });
+        setZoom(1);
+        setCroppedAreaPixels(null);
+        setCropOpen(true);
+        return;
+      }
+
+      if (!isVideoFile(file)) {
+        setError("Unsupported media file.");
+        return;
+      }
+
+      setProcessingMedia(true);
+
+      const metadata = await readVideoMetadata(file);
+
+      console.log("[CREATE MEDIA] video metadata", metadata);
+
+      if (!Number.isFinite(metadata.duration)) {
+        setError("Could not read this video's duration.");
+        return;
+      }
+
+      let workingVideoFile = file;
+      let workingDuration = metadata.duration;
+
+      if (!aspectCloseEnough(metadata.width, metadata.height)) {
+        workingVideoFile = await cropVideoFileToFourFive(file);
+
+        const croppedMetadata = await readVideoMetadata(workingVideoFile);
+        workingDuration = Number.isFinite(croppedMetadata.duration)
+          ? croppedMetadata.duration
+          : metadata.duration;
+      }
+
+      if (workingDuration > MAX_VIDEO_DURATION_SECONDS) {
+        setPendingVideoFile(workingVideoFile);
+        setPendingVideoDuration(workingDuration);
+        setVideoTrimStart(0);
+        setVideoTrimOpen(true);
+        return;
+      }
+
+      commitSelectedFile(workingVideoFile);
+    } catch (e) {
+      console.error("[CREATE MEDIA] failed", e);
+      setError(e instanceof Error ? e.message : "Could not read this file.");
+    } finally {
+      setProcessingMedia(false);
     }
-
-    if (duration > MAX_VIDEO_DURATION_SECONDS) {
-      setPendingVideoFile(workingVideoFile);
-      setPendingVideoDuration(duration);
-      setVideoTrimStart(0);
-      setVideoTrimOpen(true);
-      return;
-    }
-
-commitSelectedFile(workingVideoFile);
-
-    if (!Number.isFinite(duration)) {
-      setError("Could not read this video's duration.");
-      return;
-    }
-
-    if (duration > MAX_VIDEO_DURATION_SECONDS) {
-      setPendingVideoFile(file);
-      setPendingVideoDuration(duration);
-      setVideoTrimStart(0);
-      setVideoTrimOpen(true);
-      return;
-    }
-
-    commitSelectedFile(file);
   }
 
   function updateQuestion(index: number, text: string) {
@@ -425,7 +466,7 @@ commitSelectedFile(workingVideoFile);
     }
 
     try {
-      setLoading(true);
+      setProcessingMedia(true);
       setError(null);
 
       const cropped = await createCroppedImageFile({
@@ -443,7 +484,7 @@ commitSelectedFile(workingVideoFile);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not crop image.");
     } finally {
-      setLoading(false);
+      setProcessingMedia(false);
     }
   }
 
@@ -611,7 +652,7 @@ commitSelectedFile(workingVideoFile);
       <PageHeader
         eyebrow="Create"
         title="Create jobs and content from web"
-        description="Upload 4:5 media to match the mobile app and feed layout."
+        description="Upload media from the dashboard. Images are cropped to 4:5, videos are fitted to 4:5 and trimmed to 60 seconds when needed."
         action={
           <Link
             href="/jobs"
@@ -622,6 +663,12 @@ commitSelectedFile(workingVideoFile);
           </Link>
         }
       />
+
+      {processingMedia ? (
+        <div className="rounded-[24px] border border-hier-border bg-hier-panel px-4 py-3 text-sm font-semibold text-hier-text">
+          Preparing media... this can take a moment for video files.
+        </div>
+      ) : null}
 
       {cropOpen && pendingImageSrc ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -675,10 +722,10 @@ commitSelectedFile(workingVideoFile);
               <button
                 type="button"
                 onClick={() => void confirmCrop()}
-                disabled={loading}
+                disabled={processingMedia}
                 className="inline-flex h-11 items-center rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
               >
-                {loading ? "Cropping..." : "Use crop"}
+                {processingMedia ? "Cropping..." : "Use crop"}
               </button>
             </div>
           </div>
@@ -813,8 +860,8 @@ commitSelectedFile(workingVideoFile);
               Add media
             </h2>
             <p className="mt-2 text-sm leading-6 text-hier-muted">
-              Images are cropped to 4:5. Videos must be 4:5 and 60 seconds or
-              less.
+              Images are cropped to 4:5. Videos are automatically fitted to 4:5
+              and can be trimmed to 60 seconds.
             </p>
 
             <div
@@ -838,7 +885,7 @@ commitSelectedFile(workingVideoFile);
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,video/*"
+                accept="image/*,video/*,.mp4,.mov,.m4v,.webm,.jpg,.jpeg,.png,.webp,.heic"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -856,13 +903,14 @@ commitSelectedFile(workingVideoFile);
                     Drag and drop media here
                   </p>
                   <p className="mt-2 text-sm leading-6 text-hier-muted">
-                    Images will be cropped to 4:5. Longer videos can be trimmed
-                    before upload.
+                    Images will be cropped. Videos will be fitted to the feed and
+                    trimmed if longer than 60 seconds.
                   </p>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="mt-5 inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-semibold text-hier-text shadow-card"
+                    disabled={processingMedia}
+                    className="mt-5 inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-semibold text-hier-text shadow-card disabled:opacity-60"
                   >
                     <UploadCloud className="h-4 w-4" />
                     Upload from files
@@ -914,7 +962,8 @@ commitSelectedFile(workingVideoFile);
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex h-11 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+                    disabled={processingMedia}
+                    className="inline-flex h-11 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:opacity-60"
                   >
                     <UploadCloud className="h-4 w-4" />
                     Replace file
@@ -1276,7 +1325,7 @@ commitSelectedFile(workingVideoFile);
             <button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={loading || trimming}
+              disabled={loading || trimming || processingMedia}
               className="inline-flex h-12 items-center gap-2 rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white shadow-card disabled:opacity-60"
             >
               {loading
