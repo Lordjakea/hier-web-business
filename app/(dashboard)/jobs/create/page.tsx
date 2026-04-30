@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Cropper from "react-easy-crop";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile } from "@ffmpeg/util";
 import {
   ArrowLeft,
   BriefcaseBusiness,
@@ -11,6 +13,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+
 import { PageHeader } from "@/components/ui/page-header";
 import { ApiError } from "@/lib/api";
 import { uploadBusinessMediaFile } from "@/lib/business-media-upload";
@@ -67,6 +70,9 @@ const initialValues: FormValues = {
 
 const TARGET_ASPECT = 4 / 5;
 const VIDEO_ASPECT_TOLERANCE = 0.03;
+const MAX_VIDEO_DURATION_SECONDS = 60;
+
+let ffmpegInstance: FFmpeg | null = null;
 
 function normaliseMoneyInput(text: string) {
   return text.replace(/[£$, ]/g, "");
@@ -80,8 +86,10 @@ function isBlockedSalaryText(text: string) {
 function parsePositiveMoney(raw: string): number | null {
   const cleaned = normaliseMoneyInput(raw);
   if (!cleaned || isBlockedSalaryText(cleaned)) return null;
+
   const value = Number(cleaned);
   if (!Number.isFinite(value) || value <= 0) return null;
+
   return value;
 }
 
@@ -93,27 +101,13 @@ function isImageFile(file: File) {
   return file.type.startsWith("image/");
 }
 
-function isVideoFile(file: File) {
-  return file.type.startsWith("video/");
-}
-
-async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+async function readVideoMetadata(file: File): Promise<{
+  width: number;
+  height: number;
+  duration: number;
+}> {
   const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = reject;
-      image.src = url;
-    });
-    return { width: img.naturalWidth, height: img.naturalHeight };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
-async function readVideoDimensions(file: File): Promise<{ width: number; height: number }> {
-  const url = URL.createObjectURL(file);
   try {
     const video = await new Promise<HTMLVideoElement>((resolve, reject) => {
       const el = document.createElement("video");
@@ -122,16 +116,69 @@ async function readVideoDimensions(file: File): Promise<{ width: number; height:
       el.onerror = reject;
       el.src = url;
     });
-    return { width: video.videoWidth, height: video.videoHeight };
+
+    return {
+      width: video.videoWidth,
+      height: video.videoHeight,
+      duration: video.duration,
+    };
   } finally {
     URL.revokeObjectURL(url);
   }
 }
 
-function aspectCloseEnough(width: number, height: number, target = TARGET_ASPECT, tolerance = VIDEO_ASPECT_TOLERANCE) {
+function aspectCloseEnough(
+  width: number,
+  height: number,
+  target = TARGET_ASPECT,
+  tolerance = VIDEO_ASPECT_TOLERANCE
+) {
   if (!width || !height) return false;
   const ratio = width / height;
   return Math.abs(ratio - target) <= tolerance;
+}
+
+async function getFfmpeg() {
+  if (!ffmpegInstance) {
+    ffmpegInstance = new FFmpeg();
+    await ffmpegInstance.load();
+  }
+
+  return ffmpegInstance;
+}
+
+async function trimVideoFile(params: {
+  file: File;
+  startSeconds: number;
+  durationSeconds: number;
+}): Promise<File> {
+  const ffmpeg = await getFfmpeg();
+
+  const inputExt = params.file.name.split(".").pop() || "mp4";
+  const inputName = `input-${Date.now()}.${inputExt}`;
+  const outputName = `trimmed-${Date.now()}.mp4`;
+
+  await ffmpeg.writeFile(inputName, await fetchFile(params.file));
+
+  await ffmpeg.exec([
+    "-ss",
+    String(params.startSeconds),
+    "-i",
+    inputName,
+    "-t",
+    String(params.durationSeconds),
+    "-c",
+    "copy",
+    outputName,
+  ]);
+
+  const data = await ffmpeg.readFile(outputName);
+
+  const blob = new Blob([data as BlobPart], { type: "video/mp4" });
+
+  return new File([blob], outputName, {
+    type: "video/mp4",
+  });
 }
 
 async function createCroppedImageFile(params: {
@@ -182,6 +229,7 @@ export default function JobsCreatePage() {
   const [contentType, setContentType] = useState<ContentType>("post");
   const [values, setValues] = useState<FormValues>(initialValues);
   const [loading, setLoading] = useState(false);
+  const [trimming, setTrimming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -201,6 +249,11 @@ export default function JobsCreatePage() {
     y: number;
   } | null>(null);
 
+  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+  const [pendingVideoDuration, setPendingVideoDuration] = useState(0);
+  const [videoTrimStart, setVideoTrimStart] = useState(0);
+  const [videoTrimOpen, setVideoTrimOpen] = useState(false);
+
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -211,6 +264,7 @@ export default function JobsCreatePage() {
   const isPost = contentType === "post";
   const isJob = contentType === "job";
   const isGig = isJob && values.isGig;
+
   const selectedMediaKind =
     selectedFile?.type.startsWith("video/")
       ? "video"
@@ -239,6 +293,13 @@ export default function JobsCreatePage() {
     setPreviewUrl(URL.createObjectURL(file));
   }
 
+  function closeVideoTrimModal() {
+    setVideoTrimOpen(false);
+    setPendingVideoFile(null);
+    setPendingVideoDuration(0);
+    setVideoTrimStart(0);
+  }
+
   async function handleIncomingFile(file: File) {
     if (!acceptForFile(file)) {
       setError("Only image and video files are supported.");
@@ -246,10 +307,13 @@ export default function JobsCreatePage() {
     }
 
     setError(null);
+    setSuccess(null);
 
     if (isImageFile(file)) {
       const src = URL.createObjectURL(file);
+
       if (pendingImageSrc) URL.revokeObjectURL(pendingImageSrc);
+
       setPendingImageFile(file);
       setPendingImageSrc(src);
       setCrop({ x: 0, y: 0 });
@@ -259,9 +323,23 @@ export default function JobsCreatePage() {
       return;
     }
 
-    const { width, height } = await readVideoDimensions(file);
+    const { width, height, duration } = await readVideoMetadata(file);
+
     if (!aspectCloseEnough(width, height)) {
       setError("Videos must already be 4:5 to match the app feed.");
+      return;
+    }
+
+    if (!Number.isFinite(duration)) {
+      setError("Could not read this video's duration.");
+      return;
+    }
+
+    if (duration > MAX_VIDEO_DURATION_SECONDS) {
+      setPendingVideoFile(file);
+      setPendingVideoDuration(duration);
+      setVideoTrimStart(0);
+      setVideoTrimOpen(true);
       return;
     }
 
@@ -296,17 +374,52 @@ export default function JobsCreatePage() {
       return;
     }
 
-    const cropped = await createCroppedImageFile({
-      file: pendingImageFile,
-      imageSrc: pendingImageSrc,
-      cropPixels: croppedAreaPixels,
-    });
+    try {
+      setLoading(true);
+      setError(null);
 
-    commitSelectedFile(cropped);
-    setCropOpen(false);
-    setPendingImageFile(null);
-    if (pendingImageSrc) URL.revokeObjectURL(pendingImageSrc);
-    setPendingImageSrc(null);
+      const cropped = await createCroppedImageFile({
+        file: pendingImageFile,
+        imageSrc: pendingImageSrc,
+        cropPixels: croppedAreaPixels,
+      });
+
+      commitSelectedFile(cropped);
+      setCropOpen(false);
+      setPendingImageFile(null);
+
+      if (pendingImageSrc) URL.revokeObjectURL(pendingImageSrc);
+      setPendingImageSrc(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not crop image.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function confirmVideoTrim() {
+    if (!pendingVideoFile) {
+      setError("No video selected to trim.");
+      return;
+    }
+
+    try {
+      setTrimming(true);
+      setError(null);
+
+      const trimmed = await trimVideoFile({
+        file: pendingVideoFile,
+        startSeconds: videoTrimStart,
+        durationSeconds: MAX_VIDEO_DURATION_SECONDS,
+      });
+
+      commitSelectedFile(trimmed);
+      closeVideoTrimModal();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not trim video.");
+    } finally {
+      setTrimming(false);
+    }
   }
 
   async function handleSubmit() {
@@ -317,12 +430,16 @@ export default function JobsCreatePage() {
 
       if (isPost) {
         if (!values.description.trim() && !selectedFile) {
-          throw new Error("Add a caption or upload media before publishing a standard post.");
+          throw new Error(
+            "Add a caption or upload media before publishing a standard post."
+          );
         }
+
         const created = await createBusinessContentPost({
           caption: values.description.trim() || null,
           description: values.description.trim() || null,
         });
+
         if (selectedFile) {
           await uploadBusinessMediaFile({
             kind: "content",
@@ -330,10 +447,12 @@ export default function JobsCreatePage() {
             file: selectedFile,
           });
         }
+
         setSuccess("Content post published successfully.");
       } else {
         if (!values.title.trim()) throw new Error("Title is required.");
         if (!values.description.trim()) throw new Error("Description is required.");
+
         const currency = values.currency.trim().toUpperCase();
         if (!currency) throw new Error("Currency is required.");
 
@@ -343,28 +462,47 @@ export default function JobsCreatePage() {
 
         if (isGig) {
           budget = parsePositiveMoney(values.budget);
-          if (budget == null) throw new Error("Budget must be a number greater than 0.");
+          if (budget == null) {
+            throw new Error("Budget must be a number greater than 0.");
+          }
+        } else if (values.salaryMode === "single") {
+          const parsed = parsePositiveMoney(values.salarySingle);
+          if (parsed == null) {
+            throw new Error("Salary must be a number greater than 0.");
+          }
+
+          salaryMin = parsed;
+          salaryMax = parsed;
         } else {
-          if (values.salaryMode === "single") {
-            const parsed = parsePositiveMoney(values.salarySingle);
-            if (parsed == null) throw new Error("Salary must be a number greater than 0.");
-            salaryMin = parsed;
-            salaryMax = parsed;
-          } else {
-            salaryMin = parsePositiveMoney(values.salaryMin);
-            salaryMax = parsePositiveMoney(values.salaryMax);
-            if (salaryMin == null) throw new Error("Minimum salary must be a number greater than 0.");
-            if (salaryMax == null) throw new Error("Maximum salary must be a number greater than 0.");
-            if (salaryMin > salaryMax) throw new Error("Minimum salary cannot be greater than maximum salary.");
+          salaryMin = parsePositiveMoney(values.salaryMin);
+          salaryMax = parsePositiveMoney(values.salaryMax);
+
+          if (salaryMin == null) {
+            throw new Error("Minimum salary must be a number greater than 0.");
+          }
+
+          if (salaryMax == null) {
+            throw new Error("Maximum salary must be a number greater than 0.");
+          }
+
+          if (salaryMin > salaryMax) {
+            throw new Error("Minimum salary cannot be greater than maximum salary.");
           }
         }
 
-        const tags = values.tagsText.split(",").map((item) => item.trim()).filter(Boolean);
+        const tags = values.tagsText
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+
         const questions = values.hasScreeningQuestions
           ? values.screeningQuestions.map((item) => item.trim()).filter(Boolean)
           : [];
+
         if (values.hasScreeningQuestions && !questions.length) {
-          throw new Error("Add at least one screening question or turn the toggle off.");
+          throw new Error(
+            "Add at least one screening question or turn the toggle off."
+          );
         }
 
         const created = await createBusinessJobPost({
@@ -399,12 +537,20 @@ export default function JobsCreatePage() {
           });
         }
 
-        setSuccess(values.isGig ? "Gig published successfully." : "Job published successfully.");
+        setSuccess(
+          values.isGig ? "Gig published successfully." : "Job published successfully."
+        );
       }
 
       setTimeout(() => router.push("/jobs"), 700);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Could not publish right now.");
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+          ? e.message
+          : "Could not publish right now."
+      );
     } finally {
       setLoading(false);
     }
@@ -412,535 +558,373 @@ export default function JobsCreatePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Create"
-        title="Create jobs and content from web"
-        description="Upload 4:5 media to match the mobile app and feed layout."
-        action={
-          <Link
-            href="/jobs"
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-panel"
+  <PageHeader
+    eyebrow="Create"
+    title="Create jobs and content from web"
+    description="Upload 4:5 media to match the mobile app and feed layout."
+    action={
+      <Link
+        href="/jobs"
+        className="inline-flex h-11 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-panel"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to posts
+      </Link>
+    }
+  />
+
+  {cropOpen && pendingImageSrc ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-3xl rounded-[28px] bg-white p-4 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-hier-text">Crop image</h3>
+            <p className="text-sm text-hier-muted">
+              Use a 4:5 crop to match the app feed.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setCropOpen(false);
+              setPendingImageFile(null);
+              if (pendingImageSrc) URL.revokeObjectURL(pendingImageSrc);
+              setPendingImageSrc(null);
+            }}
+            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Back to posts
-          </Link>
-        }
-      />
-
-      {cropOpen && pendingImageSrc ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-3xl rounded-[28px] bg-white p-4 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-hier-text">Crop image</h3>
-                <p className="text-sm text-hier-muted">Use a 4:5 crop to match the app feed.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setCropOpen(false);
-                  setPendingImageFile(null);
-                  if (pendingImageSrc) URL.revokeObjectURL(pendingImageSrc);
-                  setPendingImageSrc(null);
-                }}
-                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
-              >
-                <X className="h-4 w-4" />
-                Cancel
-              </button>
-            </div>
-
-            <div className="relative h-[65vh] overflow-hidden rounded-[24px] bg-black">
-              <Cropper
-                image={pendingImageSrc}
-                crop={crop}
-                zoom={zoom}
-                aspect={TARGET_ASPECT}
-                onCropChange={setCrop}
-                onZoomChange={setZoom}
-                onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
-              />
-            </div>
-
-            <div className="mt-4 flex items-center gap-4">
-              <input
-                type="range"
-                min={1}
-                max={3}
-                step={0.01}
-                value={zoom}
-                onChange={(e) => setZoom(Number(e.target.value))}
-                className="w-full"
-              />
-              <button
-                type="button"
-                onClick={() => void confirmCrop()}
-                className="inline-flex h-11 items-center rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white"
-              >
-                Use crop
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="grid gap-6 xl:grid-cols-[1.3fr,0.7fr]">
-        <div className="space-y-6">
-          <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">Step 1</p>
-            <h2 className="mt-2 text-2xl font-semibold text-hier-text">Choose what you are creating</h2>
-            <p className="mt-2 text-sm leading-6 text-hier-muted">Posts are for engagement. Jobs are for applications.</p>
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setContentType("post");
-                  onChange("isGig", false);
-                }}
-                className={`rounded-[24px] border p-5 text-left transition ${
-                  isPost ? "border-hier-primary bg-hier-soft" : "border-hier-border bg-hier-panel hover:bg-white"
-                }`}
-              >
-                <FileText className="h-5 w-5 text-hier-primary" />
-                <p className="mt-3 text-lg font-semibold text-hier-text">Standard post</p>
-                <p className="mt-2 text-sm leading-6 text-hier-muted">Create content for updates, wins, and engagement.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setContentType("job")}
-                className={`rounded-[24px] border p-5 text-left transition ${
-                  isJob ? "border-hier-primary bg-hier-soft" : "border-hier-border bg-hier-panel hover:bg-white"
-                }`}
-              >
-                <BriefcaseBusiness className="h-5 w-5 text-hier-primary" />
-                <p className="mt-3 text-lg font-semibold text-hier-text">Job or gig</p>
-                <p className="mt-2 text-sm leading-6 text-hier-muted">Publish structured hiring roles with salary or budget.</p>
-              </button>
-            </div>
-          </section>
-
-          <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">Step 2</p>
-            <h2 className="mt-2 text-2xl font-semibold text-hier-text">Add media</h2>
-            <p className="mt-2 text-sm leading-6 text-hier-muted">
-              Images are cropped to 4:5 before upload. Videos must already be 4:5.
-            </p>
-
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragging(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) void handleIncomingFile(file);
-              }}
-              className={`mt-5 rounded-[28px] border-2 border-dashed p-6 transition ${
-                dragging ? "border-hier-primary bg-hier-soft" : "border-hier-border bg-hier-panel"
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleIncomingFile(file);
-                  e.currentTarget.value = "";
-                }}
-              />
-
-              {!selectedFile ? (
-                <div className="flex flex-col items-center justify-center text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-card">
-                    <UploadCloud className="h-6 w-6 text-hier-primary" />
-                  </div>
-                  <p className="mt-4 text-lg font-semibold text-hier-text">Drag and drop media here</p>
-                  <p className="mt-2 text-sm leading-6 text-hier-muted">
-                    Images will be cropped to 4:5. Videos must already be 4:5.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="mt-5 inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-semibold text-hier-text shadow-card"
-                  >
-                    <UploadCloud className="h-4 w-4" />
-                    Upload from files
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-hier-text">{selectedFile.name}</p>
-                      <p className="mt-1 text-sm text-hier-muted">
-                        {selectedMediaKind === "video" ? "4:5 video" : "4:5 image"} · {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={clearSelectedFile}
-                      className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
-                    >
-                      <X className="h-4 w-4" />
-                      Remove
-                    </button>
-                  </div>
-
-                  {previewUrl ? (
-                    selectedMediaKind === "image" ? (
-                      <div className="mx-auto aspect-[4/5] w-full max-w-[360px] overflow-hidden rounded-[24px] bg-hier-panel">
-                        <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
-                      </div>
-                    ) : (
-                      <div className="mx-auto aspect-[4/5] w-full max-w-[360px] overflow-hidden rounded-[24px] bg-black">
-                        <video src={previewUrl} controls className="h-full w-full object-cover" />
-                      </div>
-                    )
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex h-11 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
-                  >
-                    <UploadCloud className="h-4 w-4" />
-                    Replace file
-                  </button>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">Step 3</p>
-            <h2 className="mt-2 text-2xl font-semibold text-hier-text">Fill in the details</h2>
-            <div className="mt-5 space-y-5">
-              {isJob ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4 md:col-span-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-hier-text">Gig mode</p>
-                        <p className="mt-1 text-sm leading-6 text-hier-muted">Use budget instead of salary.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onChange("isGig", !values.isGig)}
-                        className={`inline-flex h-11 items-center rounded-2xl px-4 text-sm font-semibold ${
-                          values.isGig ? "bg-hier-primary text-white" : "border border-hier-border bg-white text-hier-text"
-                        }`}
-                      >
-                        {values.isGig ? "Gig on" : "Gig off"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <label className="space-y-2 md:col-span-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Title</span>
-                    <input
-                      value={values.title}
-                      onChange={(e) => onChange("title", e.target.value)}
-                      className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                    />
-                  </label>
-
-                  <label className="space-y-2 md:col-span-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Description</span>
-                    <textarea
-                      value={values.description}
-                      onChange={(e) => onChange("description", e.target.value)}
-                      className="min-h-[150px] w-full rounded-[22px] border border-hier-border bg-hier-panel px-4 py-3 text-sm text-hier-text outline-none focus:border-hier-primary"
-                    />
-                  </label>
-
-                  {!isGig ? (
-                    <label className="space-y-2 md:col-span-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Location</span>
-                      <input
-                        value={values.locationText}
-                        onChange={(e) => onChange("locationText", e.target.value)}
-                        className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                      />
-                    </label>
-                  ) : null}
-
-                  {!isGig ? (
-                    <label className="space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Sector</span>
-                      <input
-                        value={values.sector}
-                        onChange={(e) => onChange("sector", e.target.value)}
-                        className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                      />
-                    </label>
-                  ) : null}
-
-                  {!isGig ? (
-                    <label className="space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Employment type</span>
-                      <input
-                        value={values.employmentType}
-                        onChange={(e) => onChange("employmentType", e.target.value)}
-                        className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                      />
-                    </label>
-                  ) : null}
-
-                  {!isGig ? (
-                    <label className="space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Experience</span>
-                      <input
-                        value={values.experience}
-                        onChange={(e) => onChange("experience", e.target.value)}
-                        className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                      />
-                    </label>
-                  ) : null}
-
-                  {!isGig ? (
-                    <div className="space-y-2 md:col-span-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
-                        Work mode
-                      </span>
-
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {[
-                          { value: "office", label: "Office" },
-                          { value: "hybrid", label: "Hybrid" },
-                          { value: "remote", label: "Remote" },
-                        ].map((option) => {
-                          const active = values.workMode === option.value;
-
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() =>
-                                onChange("workMode", option.value as "office" | "hybrid" | "remote")
-                              }
-                              className={`inline-flex h-12 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition ${
-                                active
-                                  ? "bg-hier-primary text-white"
-                                  : "border border-hier-border bg-white text-hier-text hover:bg-hier-panel"
-                              }`}
-                            >
-                              {option.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Currency</span>
-                    <input
-                      value={values.currency}
-                      onChange={(e) => onChange("currency", e.target.value.toUpperCase())}
-                      className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                    />
-                  </label>
-
-                  {isGig ? (
-                    <label className="space-y-2 md:col-span-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Budget</span>
-                      <input
-                        value={values.budget}
-                        onChange={(e) => onChange("budget", e.target.value)}
-                        className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                      />
-                    </label>
-                  ) : (
-                    <>
-                      <div className="md:col-span-2 rounded-[24px] border border-hier-border bg-hier-panel p-4">
-                        <div className="flex flex-wrap gap-3">
-                          {[
-                            ["yearly", "Yearly"],
-                            ["hourly", "Hourly"],
-                            ["single", "Single value"],
-                            ["range", "Range"],
-                          ].map(([value, label]) => {
-                            const active = value === values.salaryPeriod || value === values.salaryMode;
-                            return (
-                              <button
-                                key={value}
-                                type="button"
-                                onClick={() =>
-                                  value === "yearly" || value === "hourly"
-                                    ? onChange("salaryPeriod", value as SalaryPeriod)
-                                    : onChange("salaryMode", value as SalaryMode)
-                                }
-                                className={`rounded-2xl px-4 py-2 text-sm font-semibold ${
-                                  active ? "bg-hier-primary text-white" : "border border-hier-border bg-white text-hier-text"
-                                }`}
-                              >
-                                {label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {values.salaryMode === "single" ? (
-                        <label className="space-y-2 md:col-span-2">
-                          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Salary</span>
-                          <input
-                            value={values.salarySingle}
-                            onChange={(e) => onChange("salarySingle", e.target.value)}
-                            className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                          />
-                        </label>
-                      ) : (
-                        <>
-                          <label className="space-y-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Min salary</span>
-                            <input
-                              value={values.salaryMin}
-                              onChange={(e) => onChange("salaryMin", e.target.value)}
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                            />
-                          </label>
-                          <label className="space-y-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Max salary</span>
-                            <input
-                              value={values.salaryMax}
-                              onChange={(e) => onChange("salaryMax", e.target.value)}
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                            />
-                          </label>
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  <label className="space-y-2 md:col-span-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Tags</span>
-                    <input
-                      value={values.tagsText}
-                      onChange={(e) => onChange("tagsText", e.target.value)}
-                      className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                    />
-                  </label>
-
-                  <div className="md:col-span-2 rounded-[24px] border border-hier-border bg-hier-panel p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-hier-text">Screening questions</p>
-                        <p className="mt-1 text-sm leading-6 text-hier-muted">Candidates must answer these before applying.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onChange("hasScreeningQuestions", !values.hasScreeningQuestions)}
-                        className={`inline-flex h-11 items-center rounded-2xl px-4 text-sm font-semibold ${
-                          values.hasScreeningQuestions ? "bg-hier-primary text-white" : "border border-hier-border bg-white text-hier-text"
-                        }`}
-                      >
-                        {values.hasScreeningQuestions ? "Questions on" : "Questions off"}
-                      </button>
-                    </div>
-
-                    {values.hasScreeningQuestions ? (
-                      <div className="mt-4 space-y-3">
-                        {values.screeningQuestions.map((question, index) => (
-                          <div key={index} className="rounded-[22px] border border-hier-border bg-white p-3">
-                            <div className="mb-2 flex items-center justify-between gap-3">
-                              <p className="text-sm font-semibold text-hier-text">Question {index + 1}</p>
-                              {values.screeningQuestions.length > 1 ? (
-                                <button type="button" onClick={() => removeQuestion(index)} className="text-sm font-semibold text-red-600">
-                                  Remove
-                                </button>
-                              ) : null}
-                            </div>
-                            <textarea
-                              value={question}
-                              onChange={(e) => updateQuestion(index, e.target.value)}
-                              className="min-h-[90px] w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 py-3 text-sm text-hier-text outline-none focus:border-hier-primary"
-                            />
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={addQuestion}
-                          className="inline-flex h-11 items-center rounded-2xl border border-hier-primary bg-hier-soft px-4 text-sm font-semibold text-hier-primary"
-                        >
-                          Add another question
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : (
-                <div className="grid gap-4">
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Caption</span>
-                    <textarea
-                      value={values.description}
-                      onChange={(e) => onChange("description", e.target.value)}
-                      className="min-h-[180px] w-full rounded-[22px] border border-hier-border bg-hier-panel px-4 py-3 text-sm text-hier-text outline-none focus:border-hier-primary"
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {error ? <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div> : null}
-          {success ? <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{success}</div> : null}
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              disabled={loading}
-              className="inline-flex h-12 items-center gap-2 rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white shadow-card disabled:opacity-60"
-            >
-              {loading ? "Publishing..." : isPost ? "Publish post" : isGig ? "Publish gig" : "Publish job"}
-            </button>
-            <Link href="/jobs" className="inline-flex h-12 items-center gap-2 rounded-2xl border border-hier-border bg-white px-5 text-sm font-semibold text-hier-text">
-              Cancel
-            </Link>
-          </div>
+            <X className="h-4 w-4" />
+            Cancel
+          </button>
         </div>
 
-        <aside className="space-y-6">
-          <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">Preview</p>
-            <h2 className="mt-2 text-2xl font-semibold text-hier-text">{summaryTitle}</h2>
-            <p className="mt-3 text-sm leading-6 text-hier-muted">
-              {isPost
-                ? values.description.trim() || "Add a caption so this content post feels alive before you publish it."
-                : values.description.trim() || "Your role description will show here as you build it."}
-            </p>
-            <div className="mt-5 grid gap-3">
-              {previewUrl ? (
-                selectedMediaKind === "image" ? (
-                  <div className="mx-auto aspect-[4/5] w-full max-w-[320px] overflow-hidden rounded-[24px] bg-hier-panel">
-                    <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="mx-auto aspect-[4/5] w-full max-w-[320px] overflow-hidden rounded-[24px] bg-black">
-                    <video src={previewUrl} controls className="h-full w-full object-cover" />
-                  </div>
-                )
-              ) : (
-                <div className="mx-auto flex aspect-[4/5] w-full max-w-[320px] items-center justify-center rounded-[24px] border border-dashed border-hier-border bg-hier-panel text-sm font-medium text-hier-muted">
-                  No media selected yet
-                </div>
-              )}
+        <div className="relative h-[65vh] overflow-hidden rounded-[24px] bg-black">
+          <Cropper
+            image={pendingImageSrc}
+            crop={crop}
+            zoom={zoom}
+            aspect={TARGET_ASPECT}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+          />
+        </div>
 
-              <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">Type</p>
-                <p className="mt-2 text-sm font-semibold text-hier-text">{isPost ? "Standard content post" : isGig ? "Gig job" : "Standard job"}</p>
-              </div>
-            </div>
-          </section>
-        </aside>
+        <div className="mt-4 flex items-center gap-4">
+          <input
+            type="range"
+            min={1}
+            max={3}
+            step={0.01}
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+            className="w-full"
+          />
+
+          <button
+            type="button"
+            onClick={() => void confirmCrop()}
+            disabled={loading}
+            className="inline-flex h-11 items-center rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {loading ? "Cropping..." : "Use crop"}
+          </button>
+        </div>
       </div>
     </div>
+  ) : null}
+
+  {videoTrimOpen && pendingVideoFile ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-2xl rounded-[28px] bg-white p-5 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-hier-text">Trim video</h3>
+            <p className="text-sm text-hier-muted">
+              Choose which 60 seconds to use.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={closeVideoTrimModal}
+            disabled={trimming}
+            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:opacity-60"
+          >
+            <X className="h-4 w-4" />
+            Cancel
+          </button>
+        </div>
+
+        <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
+          <p className="text-sm font-semibold text-hier-text">
+            Start at {Math.round(videoTrimStart)}s
+          </p>
+          <p className="mt-1 text-sm text-hier-muted">
+            Clip will end at{" "}
+            {Math.round(videoTrimStart + MAX_VIDEO_DURATION_SECONDS)}s.
+          </p>
+
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, pendingVideoDuration - MAX_VIDEO_DURATION_SECONDS)}
+            step={0.5}
+            value={videoTrimStart}
+            onChange={(e) => setVideoTrimStart(Number(e.target.value))}
+            className="mt-4 w-full"
+          />
+        </div>
+
+        <div className="mt-5 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={closeVideoTrimModal}
+            disabled={trimming}
+            className="inline-flex h-11 items-center rounded-2xl border border-hier-border bg-white px-5 text-sm font-semibold text-hier-text disabled:opacity-60"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void confirmVideoTrim()}
+            disabled={trimming}
+            className="inline-flex h-11 items-center rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {trimming ? "Trimming..." : "Use this 60s clip"}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null}
+
+    <div className="grid gap-6 xl:grid-cols-[1.3fr,0.7fr]">
+      <div className="space-y-6">
+        <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-panel">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+            Step 1
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-hier-text">
+            Choose what you are creating
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-hier-muted">
+            Posts are for engagement. Jobs are for applications.
+          </p>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => {
+                setContentType("post");
+                onChange("isGig", false);
+              }}
+              className={`rounded-[24px] border p-5 text-left transition ${
+                isPost
+                  ? "border-hier-primary bg-hier-soft"
+                  : "border-hier-border bg-hier-panel hover:bg-white"
+              }`}
+            >
+              <FileText className="h-5 w-5 text-hier-primary" />
+              <p className="mt-3 text-lg font-semibold text-hier-text">
+                Standard post
+              </p>
+              <p className="mt-2 text-sm leading-6 text-hier-muted">
+                Create content for updates, wins, and engagement.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setContentType("job")}
+              className={`rounded-[24px] border p-5 text-left transition ${
+                isJob
+                  ? "border-hier-primary bg-hier-soft"
+                  : "border-hier-border bg-hier-panel hover:bg-white"
+              }`}
+            >
+              <BriefcaseBusiness className="h-5 w-5 text-hier-primary" />
+              <p className="mt-3 text-lg font-semibold text-hier-text">
+                Job or gig
+              </p>
+              <p className="mt-2 text-sm leading-6 text-hier-muted">
+                Publish structured hiring roles with salary or budget.
+              </p>
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-panel">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+            Step 2
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-hier-text">Add media</h2>
+          <p className="mt-2 text-sm leading-6 text-hier-muted">
+            Images are cropped to 4:5. Videos must be 4:5 and 60 seconds or less.
+          </p>
+
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) void handleIncomingFile(file);
+            }}
+            className={`mt-5 rounded-[28px] border-2 border-dashed p-6 transition ${
+              dragging
+                ? "border-hier-primary bg-hier-soft"
+                : "border-hier-border bg-hier-panel"
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleIncomingFile(file);
+                e.currentTarget.value = "";
+              }}
+            />
+
+            {!selectedFile ? (
+              <div className="flex flex-col items-center justify-center text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-card">
+                  <UploadCloud className="h-6 w-6 text-hier-primary" />
+                </div>
+                <p className="mt-4 text-lg font-semibold text-hier-text">
+                  Drag and drop media here
+                </p>
+                <p className="mt-2 text-sm leading-6 text-hier-muted">
+                  Images will be cropped to 4:5. Longer videos can be trimmed before
+                  upload.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-5 inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-semibold text-hier-text shadow-card"
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  Upload from files
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-hier-text">
+                      {selectedFile.name}
+                    </p>
+                    <p className="mt-1 text-sm text-hier-muted">
+                      {selectedMediaKind === "video" ? "4:5 video" : "4:5 image"} ·{" "}
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={clearSelectedFile}
+                    className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+                  >
+                    <X className="h-4 w-4" />
+                    Remove
+                  </button>
+                </div>
+
+                {previewUrl ? (
+                  selectedMediaKind === "image" ? (
+                    <div className="mx-auto aspect-[4/5] w-full max-w-[360px] overflow-hidden rounded-[24px] bg-hier-panel">
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="mx-auto aspect-[4/5] w-full max-w-[360px] overflow-hidden rounded-[24px] bg-black">
+                      <video
+                        src={previewUrl}
+                        controls
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  )
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex h-11 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  Replace file
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <aside className="space-y-6">
+        <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-panel">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+            Preview
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-hier-text">
+            {summaryTitle}
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-hier-muted">
+            {isPost
+              ? values.description.trim() ||
+                "Add a caption so this content post feels alive before you publish it."
+              : values.description.trim() ||
+                "Your role description will show here as you build it."}
+          </p>
+
+          <div className="mt-5 grid gap-3">
+            {previewUrl ? (
+              selectedMediaKind === "image" ? (
+                <div className="mx-auto aspect-[4/5] w-full max-w-[320px] overflow-hidden rounded-[24px] bg-hier-panel">
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="mx-auto aspect-[4/5] w-full max-w-[320px] overflow-hidden rounded-[24px] bg-black">
+                  <video
+                    src={previewUrl}
+                    controls
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              )
+            ) : (
+              <div className="mx-auto flex aspect-[4/5] w-full max-w-[320px] items-center justify-center rounded-[24px] border border-dashed border-hier-border bg-hier-panel text-sm font-medium text-hier-muted">
+                No media selected yet
+              </div>
+            )}
+
+            <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                Type
+              </p>
+              <p className="mt-2 text-sm font-semibold text-hier-text">
+                {isPost ? "Standard content post" : isGig ? "Gig job" : "Standard job"}
+              </p>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
   );
 }
