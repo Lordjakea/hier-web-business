@@ -171,9 +171,17 @@ export async function markBusinessCvViewed(appId: number) {
 
 export async function fetchBusinessAnalyticsSummary(
   days: 7 | 30 | 90 | 365 = 30,
+  recruiterUserId?: number | null,
 ) {
+  const search = new URLSearchParams();
+  search.set("days", String(days));
+
+  if (recruiterUserId) {
+    search.set("recruiter_user_id", String(recruiterUserId));
+  }
+
   return apiFetch<AnalyticsSummaryResponse>(
-    `/api/business/analytics/summary?days=${days}`,
+    `/api/business/analytics/summary?${search.toString()}`,
   );
 }
 

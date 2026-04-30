@@ -31,6 +31,15 @@ export default function CandidatesPage() {
   const initialJobId = Number(searchParams.get("jobId") || "") || null;
   const initialApplicationId =
     Number(searchParams.get("applicationId") || "") || null;
+  const initialRecruiterId =
+    Number(searchParams.get("recruiter_id") || "") || null;
+  const initialStage = searchParams.get("stage") as ApplicationStage | null;
+  const initialViewed = searchParams.get("viewed");
+  const initialMissingRating = searchParams.get("missing_rating") === "1";
+  const initialMissingTags = searchParams.get("missing_tags") === "1";
+  const initialHasRating = searchParams.get("has_rating") === "1";
+  const initialHasTags = searchParams.get("has_tags") === "1";
+  const initialHasCvViews = searchParams.get("has_cv_views") === "1";
 
   const [applications, setApplications] = useState<BusinessApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,13 +71,18 @@ export default function CandidatesPage() {
   const hasAutoOpenedRef = useRef(false);
 
   const loadApplications = useCallback(
-    async (options?: { searchText?: string; jobPostId?: number | null }) => {
+    async (options?: {
+      searchText?: string;
+      jobPostId?: number | null;
+      recruiterId?: number | null;
+    }) => {
       setLoading(true);
       setError(null);
       try {
         const response = await fetchBusinessApplications({
           q: options?.searchText || undefined,
           job_post_id: options?.jobPostId ?? undefined,
+          recruiter_id: options?.recruiterId ?? undefined,
           per_page: 100,
         });
         setApplications(response.items || []);
@@ -87,22 +101,58 @@ export default function CandidatesPage() {
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      void loadApplications({ searchText: query, jobPostId: selectedJobId });
+      void loadApplications({
+        searchText: query,
+        jobPostId: selectedJobId,
+        recruiterId: initialRecruiterId,
+      });
     }, 250);
 
     return () => window.clearTimeout(timeout);
-  }, [loadApplications, query, selectedJobId]);
+  }, [initialRecruiterId, loadApplications, query, selectedJobId]);
 
   const visibleApplications = useMemo(() => {
-    const filtered = applications.filter(
-      (application) => application.stage !== "withdrawn"
-    );
+    const filtered = applications.filter((application) => {
+      if (application.stage === "withdrawn") return false;
+
+      const viewed =
+        Boolean((application as BusinessApplication & { is_viewed?: boolean }).is_viewed) ||
+        Boolean((application as BusinessApplication & { first_viewed_at?: string | null }).first_viewed_at) ||
+        Boolean((application as BusinessApplication & { viewed_at?: string | null }).viewed_at) ||
+        Boolean((application as BusinessApplication & { last_viewed_at?: string | null }).last_viewed_at);
+
+      const hasRating = typeof application.rating === "number";
+      const hasTags = Boolean(application.recruiter_tags?.length);
+      const hasCvViews = Number(application.cv_view_count || 0) > 0;
+
+      if (initialStage && application.stage !== initialStage) return false;
+      if (initialViewed === "1" && !viewed) return false;
+      if (initialViewed === "0" && viewed) return false;
+      if (initialMissingRating && hasRating) return false;
+      if (initialMissingTags && hasTags) return false;
+      if (initialHasRating && !hasRating) return false;
+      if (initialHasTags && !hasTags) return false;
+      if (initialHasCvViews && !hasCvViews) return false;
+
+      return true;
+    });
+
     return [...filtered].sort((a, b) => {
       const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
       const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
       return sort === "newest" ? bTime - aTime : aTime - bTime;
     });
-  }, [applications, sort]);
+  }, [
+    applications,
+    initialHasCvViews,
+    initialHasRating,
+    initialHasTags,
+    initialMissingRating,
+    initialMissingTags,
+    initialStage,
+    initialViewed,
+    sort,
+  ]);
 
   const jobOptions = useMemo(() => {
     const seen = new Map<number, string>();

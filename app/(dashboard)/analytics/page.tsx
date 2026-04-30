@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   ArrowDownRight,
@@ -15,6 +16,8 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { fetchBusinessAnalyticsSummary } from "@/lib/business-applications";
+import { fetchTeam, type BusinessTeamMember } from "@/lib/business-team";
+import { getStoredUser } from "@/lib/auth";
 import type { AnalyticsSummaryResponse } from "@/lib/types";
 
 const RANGE_OPTIONS: Array<{ label: string; value: 7 | 30 | 90 | 365 }> = [
@@ -44,6 +47,20 @@ function clampWidth(value: number | undefined | null, max: number) {
   return Math.max(6, Math.min(100, (safe / max) * 100));
 }
 
+function appendRecruiterParam(href: string, recruiterUserId: number | null) {
+  if (!recruiterUserId) return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}recruiter_id=${recruiterUserId}`;
+}
+
+function memberLabel(member: BusinessTeamMember) {
+  return (
+    member.user?.full_name ||
+    member.user?.email ||
+    (member.user_id ? `Recruiter #${member.user_id}` : "Recruiter")
+  );
+}
+
 function TrendChip({ value }: { value: number | undefined | null }) {
   const numeric = Number(value || 0);
   const positive = numeric >= 0;
@@ -66,15 +83,25 @@ function StatCard({
   subtitle,
   icon: Icon,
   trend,
+  onClick,
 }: {
   title: string;
   value: string;
   subtitle: string;
   icon: typeof Users;
   trend?: number;
+  onClick?: () => void;
 }) {
+  const Component = onClick ? "button" : "section";
+
   return (
-    <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+    <Component
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={`rounded-[28px] border border-hier-border bg-white p-5 text-left shadow-card sm:p-6 ${
+        onClick ? "transition hover:-translate-y-0.5 hover:border-hier-primary/40 hover:shadow-lg" : ""
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-hier-muted">{title}</p>
@@ -86,24 +113,80 @@ function StatCard({
         </div>
       </div>
       {typeof trend === "number" ? <div className="mt-5"><TrendChip value={trend} /></div> : null}
-    </section>
+    </Component>
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: string }) {
+function MiniMetric({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  onClick?: () => void;
+}) {
+  const Component = onClick ? "button" : "div";
+
   return (
-    <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+    <Component
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={`rounded-[22px] border border-hier-border bg-hier-panel p-4 text-left ${
+        onClick ? "transition hover:border-hier-primary/40 hover:bg-white" : ""
+      }`}
+    >
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">{label}</p>
       <p className="mt-2 text-xl font-semibold text-hier-text">{value}</p>
-    </div>
+    </Component>
   );
 }
 
 export default function AnalyticsPage() {
+  const router = useRouter();
+
   const [days, setDays] = useState<7 | 30 | 90 | 365>(30);
+  const [selectedRecruiterUserId, setSelectedRecruiterUserId] = useState<number | null>(null);
+  const [ownerUser, setOwnerUser] = useState<{ id?: number; full_name?: string | null; email?: string | null } | null>(null);
+  const [teamMembers, setTeamMembers] = useState<BusinessTeamMember[]>([]);
+  const [teamLoading, setTeamLoading] = useState(true);
   const [data, setData] = useState<AnalyticsSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  function goTo(path: string) {
+    router.push(appendRecruiterParam(path, selectedRecruiterUserId));
+  }
+
+  useEffect(() => {
+    setOwnerUser(getStoredUser());
+
+    let cancelled = false;
+
+    async function loadTeam() {
+      setTeamLoading(true);
+      try {
+        const response = await fetchTeam();
+        if (!cancelled) {
+          setTeamMembers(
+            (response.members || []).filter(
+              (member) => member.status === "active" && member.user_id,
+            ),
+          );
+        }
+      } catch {
+        if (!cancelled) setTeamMembers([]);
+      } finally {
+        if (!cancelled) setTeamLoading(false);
+      }
+    }
+
+    void loadTeam();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +194,7 @@ export default function AnalyticsPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetchBusinessAnalyticsSummary(days);
+        const response = await fetchBusinessAnalyticsSummary(days, selectedRecruiterUserId);
         if (!cancelled) setData(response);
       } catch (caughtError) {
         if (!cancelled) {
@@ -129,7 +212,7 @@ export default function AnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, selectedRecruiterUserId]);
 
   const funnelMax = useMemo(
     () => Math.max(...(data?.funnel.map((item) => item.count) || [0]), 1),
@@ -146,18 +229,21 @@ export default function AnalyticsPage() {
           )} still unviewed`,
           icon: Users,
           trend: data.trends.applicants_delta,
+          onClick: () => goTo("/candidates"),
         },
         {
           title: "Open roles",
           value: formatNumber(data.summary.active_posts),
-          subtitle: `${formatNumber(data.summary.total_posts)} total posts in this period`,
+          subtitle: `${formatNumber(data.summary.total_posts)} total posts`,
           icon: Activity,
+          onClick: () => goTo("/jobs"),
         },
         {
           title: "CV reviews",
           value: formatNumber(data.summary.cv_views),
           subtitle: `${formatPercent(data.rates.view_rate)} applicant view rate`,
           icon: Eye,
+          onClick: () => goTo("/candidates?has_cv_views=1"),
         },
         {
           title: "Followers gained",
@@ -176,27 +262,58 @@ export default function AnalyticsPage() {
         title="Recruitment analytics"
         description="Track applicant flow, recruiter activity, conversion rates, and the roles that are pulling the strongest response from your business dashboard."
         action={
-          <div className="inline-flex rounded-[22px] border border-hier-border bg-white p-1 shadow-sm">
-            {RANGE_OPTIONS.map((option) => {
-              const active = days === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setDays(option.value)}
-                  className={`rounded-[18px] px-4 py-2 text-sm font-medium transition ${
-                    active
-                      ? "bg-hier-primary text-white shadow-sm"
-                      : "text-hier-muted hover:bg-hier-soft hover:text-hier-text"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <select
+              value={selectedRecruiterUserId || "all"}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSelectedRecruiterUserId(value === "all" ? null : Number(value));
+              }}
+              className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text shadow-sm outline-none transition focus:border-hier-primary"
+            >
+              <option value="all">All recruiters</option>
+              {ownerUser?.id ? (
+                <option value={ownerUser.id}>
+                  Owner · {ownerUser.full_name || ownerUser.email || "Owner"}
+                </option>
+              ) : null}
+              {teamMembers
+                .filter((member) => member.user_id !== ownerUser?.id)
+                .map((member) => (
+                  <option key={member.id} value={member.user_id}>
+                    {memberLabel(member)}
+                  </option>
+                ))}
+            </select>
+
+            <div className="inline-flex rounded-[22px] border border-hier-border bg-white p-1 shadow-sm">
+              {RANGE_OPTIONS.map((option) => {
+                const active = days === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setDays(option.value)}
+                    className={`rounded-[18px] px-4 py-2 text-sm font-medium transition ${
+                      active
+                        ? "bg-hier-primary text-white shadow-sm"
+                        : "text-hier-muted hover:bg-hier-soft hover:text-hier-text"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         }
       />
+
+      {teamLoading ? (
+        <div className="rounded-[24px] border border-hier-border bg-white px-5 py-3 text-sm text-hier-muted">
+          Loading recruiter filters…
+        </div>
+      ) : null}
 
       {error ? (
         <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
@@ -232,7 +349,7 @@ export default function AnalyticsPage() {
                     Hiring pipeline conversion
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-7 text-hier-muted">
-                    See where applicants are flowing cleanly through the pipeline and where recruiter attention is still needed.
+                    Click a stage to open the candidate board with the matching pipeline filter.
                   </p>
                 </div>
                 <div className="rounded-[22px] border border-hier-border bg-hier-panel px-4 py-3 text-right">
@@ -247,7 +364,12 @@ export default function AnalyticsPage() {
 
               <div className="mt-8 space-y-4">
                 {data.funnel.map((item) => (
-                  <div key={item.key} className="space-y-2">
+                  <button
+                    type="button"
+                    key={item.key}
+                    onClick={() => goTo(item.key === "viewed" ? "/candidates?viewed=1" : `/candidates?stage=${item.key}`)}
+                    className="block w-full space-y-2 rounded-[20px] p-2 text-left transition hover:bg-hier-panel"
+                  >
                     <div className="flex items-center justify-between gap-4 text-sm">
                       <div className="flex items-center gap-3">
                         <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-hier-soft px-2 text-xs font-semibold text-hier-primary">
@@ -265,7 +387,7 @@ export default function AnalyticsPage() {
                         style={{ width: `${clampWidth(item.count, funnelMax)}%` }}
                       />
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </section>
@@ -278,21 +400,24 @@ export default function AnalyticsPage() {
                 Recruiter follow-up queue
               </h2>
               <p className="mt-2 text-sm leading-7 text-hier-muted">
-                These are the easiest operational wins to tighten up candidate handling across the board.
+                Click these shortcuts to open the matching candidate queue.
               </p>
 
               <div className="mt-6 grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
                 <MiniMetric
                   label="Unviewed applicants"
                   value={formatNumber(data.needs_attention.unviewed_applicants)}
+                  onClick={() => goTo("/candidates?viewed=0")}
                 />
                 <MiniMetric
                   label="Missing ratings"
                   value={formatNumber(data.needs_attention.applicants_without_rating)}
+                  onClick={() => goTo("/candidates?missing_rating=1")}
                 />
                 <MiniMetric
                   label="Missing tags"
                   value={formatNumber(data.needs_attention.applicants_without_tags)}
+                  onClick={() => goTo("/candidates?missing_tags=1")}
                 />
               </div>
 
@@ -300,14 +425,17 @@ export default function AnalyticsPage() {
                 <MiniMetric
                   label="Shortlist rate"
                   value={formatPercent(data.rates.shortlist_rate)}
+                  onClick={() => goTo("/candidates?stage=shortlisted")}
                 />
                 <MiniMetric
                   label="Offer rate"
                   value={formatPercent(data.rates.offer_rate)}
+                  onClick={() => goTo("/candidates?stage=offered")}
                 />
                 <MiniMetric
                   label="Interview rate"
                   value={formatPercent(data.rates.interview_rate)}
+                  onClick={() => goTo("/candidates?stage=interview_booked")}
                 />
                 <MiniMetric
                   label="Follower conversion"
@@ -326,17 +454,21 @@ export default function AnalyticsPage() {
                   </p>
                   <h2 className="mt-2 text-2xl font-semibold text-hier-text">Best performing roles</h2>
                   <p className="mt-2 text-sm leading-7 text-hier-muted">
-                    Your strongest job posts by applicant volume, review progress, and shortlist momentum.
+                    Click a role to open its candidates.
                   </p>
                 </div>
-                <div className="rounded-[22px] border border-hier-border bg-hier-panel px-4 py-3 text-right">
+                <button
+                  type="button"
+                  onClick={() => goTo("/jobs")}
+                  className="rounded-[22px] border border-hier-border bg-hier-panel px-4 py-3 text-right transition hover:border-hier-primary/40 hover:bg-white"
+                >
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
                     Active posts
                   </p>
                   <p className="mt-2 text-2xl font-semibold text-hier-text">
                     {formatNumber(data.summary.active_posts)}
                   </p>
-                </div>
+                </button>
               </div>
 
               <div className="mt-6 overflow-hidden rounded-[24px] border border-hier-border">
@@ -349,9 +481,11 @@ export default function AnalyticsPage() {
                 <div className="divide-y divide-hier-border">
                   {data.top_posts.length ? (
                     data.top_posts.map((post) => (
-                      <div
+                      <button
+                        type="button"
                         key={post.job_post_id}
-                        className="grid grid-cols-[minmax(0,1.6fr)_0.7fr_0.7fr_0.7fr] gap-4 px-4 py-4 text-sm"
+                        onClick={() => goTo(`/candidates?jobId=${post.job_post_id}`)}
+                        className="grid w-full grid-cols-[minmax(0,1.6fr)_0.7fr_0.7fr_0.7fr] gap-4 px-4 py-4 text-left text-sm transition hover:bg-hier-panel"
                       >
                         <div className="min-w-0">
                           <p className="truncate font-semibold text-hier-text">{post.title}</p>
@@ -362,7 +496,7 @@ export default function AnalyticsPage() {
                         <span className="font-medium text-hier-text">{formatNumber(post.applicants)}</span>
                         <span className="font-medium text-hier-text">{formatNumber(post.viewed_applicants)}</span>
                         <span className="font-medium text-hier-text">{formatNumber(post.shortlisted)}</span>
-                      </div>
+                      </button>
                     ))
                   ) : (
                     <div className="px-4 py-8 text-sm text-hier-muted">
@@ -420,7 +554,7 @@ export default function AnalyticsPage() {
                   <div>
                     <p className="text-sm font-semibold text-hier-text">Current backend fit</p>
                     <p className="mt-2 text-sm leading-7 text-hier-muted">
-                      Views, shares, and unique viewers are still intentionally limited by the backend schema, but the rest of this page is now live against your production analytics summary endpoint.
+                      Views, shares, and unique viewers are still intentionally limited by the backend schema, but the rest of this page is live against your analytics summary endpoint.
                     </p>
                   </div>
                 </div>
@@ -441,10 +575,12 @@ export default function AnalyticsPage() {
               <MiniMetric
                 label="Rated applicants"
                 value={formatNumber(data.summary.rated_applicants)}
+                onClick={() => goTo("/candidates?has_rating=1")}
               />
               <MiniMetric
                 label="Tagged applicants"
                 value={formatNumber(data.summary.tagged_applicants)}
+                onClick={() => goTo("/candidates?has_tags=1")}
               />
               <MiniMetric
                 label="Noted applicants"
@@ -457,7 +593,11 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-3">
-              <div className="rounded-[24px] border border-hier-border bg-hier-panel p-5">
+              <button
+                type="button"
+                onClick={() => goTo("/candidates?has_cv_views=1")}
+                className="rounded-[24px] border border-hier-border bg-hier-panel p-5 text-left transition hover:border-hier-primary/40 hover:bg-white"
+              >
                 <div className="flex items-center gap-3">
                   <div className="rounded-2xl bg-white p-3 text-hier-primary shadow-sm">
                     <FileText className="h-5 w-5" />
@@ -467,8 +607,13 @@ export default function AnalyticsPage() {
                     <p className="mt-1 text-sm text-hier-muted">{formatNumber(data.summary.cv_views)} views logged</p>
                   </div>
                 </div>
-              </div>
-              <div className="rounded-[24px] border border-hier-border bg-hier-panel p-5">
+              </button>
+
+              <button
+                type="button"
+                onClick={() => goTo("/candidates?viewed=1")}
+                className="rounded-[24px] border border-hier-border bg-hier-panel p-5 text-left transition hover:border-hier-primary/40 hover:bg-white"
+              >
                 <div className="flex items-center gap-3">
                   <div className="rounded-2xl bg-white p-3 text-hier-primary shadow-sm">
                     <Users className="h-5 w-5" />
@@ -478,8 +623,13 @@ export default function AnalyticsPage() {
                     <p className="mt-1 text-sm text-hier-muted">{formatNumber(data.summary.viewed_applicants)} candidates reviewed</p>
                   </div>
                 </div>
-              </div>
-              <div className="rounded-[24px] border border-hier-border bg-hier-panel p-5">
+              </button>
+
+              <button
+                type="button"
+                onClick={() => goTo("/candidates?viewed=1")}
+                className="rounded-[24px] border border-hier-border bg-hier-panel p-5 text-left transition hover:border-hier-primary/40 hover:bg-white"
+              >
                 <div className="flex items-center gap-3">
                   <div className="rounded-2xl bg-white p-3 text-hier-primary shadow-sm">
                     <Eye className="h-5 w-5" />
@@ -489,7 +639,7 @@ export default function AnalyticsPage() {
                     <p className="mt-1 text-sm text-hier-muted">{formatPercent(data.rates.view_rate)} of applicants opened</p>
                   </div>
                 </div>
-              </div>
+              </button>
             </div>
           </section>
         </>

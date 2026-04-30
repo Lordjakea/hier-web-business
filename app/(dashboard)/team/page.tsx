@@ -52,7 +52,6 @@ export default function TeamPage() {
   const [seatUsage, setSeatUsage] = useState<BusinessSeatUsage | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("recruiter");
   const [latestInviteUrl, setLatestInviteUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [workingKey, setWorkingKey] = useState<string | null>(null);
@@ -112,11 +111,10 @@ export default function TeamPage() {
     event.preventDefault();
 
     await withAction("invite", async () => {
-      const res = await inviteTeamMember(email, role);
+      const res = await inviteTeamMember(email, "recruiter");
       setLatestInviteUrl(res.invite_url || null);
       setEmail("");
-      setRole("recruiter");
-      setSuccess(res.already_exists ? "Invite already exists." : "Invite created.");
+      setSuccess(res.already_exists ? "Invite already exists." : "Recruiter invite created.");
       await loadTeam();
     });
   }
@@ -127,7 +125,7 @@ export default function TeamPage() {
 
     await withAction(`remove-${memberId}`, async () => {
       await removeTeamMember(memberId);
-      setSuccess("Team member removed.");
+      setSuccess("Recruiter removed.");
       await loadTeam();
     });
   }
@@ -151,7 +149,7 @@ export default function TeamPage() {
       <PageHeader
         eyebrow="Team"
         title="Recruiter seats and invites"
-        description="Invite recruiters into your business workspace and manage seat usage across your team."
+        description="Invite recruiters into your business workspace and manage seat usage across your hiring team."
         action={
           <button
             type="button"
@@ -180,11 +178,11 @@ export default function TeamPage() {
             <div className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
               <UsersRound className="h-5 w-5 text-hier-primary" />
               <p className="mt-4 text-3xl font-semibold text-hier-text">{seatUsage?.total_available_seats ?? 1}</p>
-              <p className="mt-1 text-sm text-hier-muted">Total seats</p>
+              <p className="mt-1 text-sm text-hier-muted">Total recruiter seats</p>
             </div>
             <div className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">In use</p>
-              <p className="mt-4 text-3xl font-semibold text-hier-text">{seatUsage?.active_recruiter_seats ?? 1}</p>
+              <p className="mt-4 text-3xl font-semibold text-hier-text">{seatUsage?.active_recruiter_seats ?? seatUsage?.active_members ?? 1}</p>
               <p className="mt-1 text-sm text-hier-muted">Owner + active recruiters</p>
             </div>
             <div className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
@@ -194,7 +192,10 @@ export default function TeamPage() {
             </div>
             <div className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Available</p>
-              <p className="mt-4 text-3xl font-semibold text-hier-text">{seatUsage?.available_seats_after_pending ?? 0}</p>
+              <p className="mt-4 text-3xl font-semibold text-hier-text">
+                {seatUsage?.available_seats_after_pending ??
+                  Math.max(0, Number(seatUsage?.total_available_seats || 1) - Number(seatUsage?.used_or_pending || 0))}
+              </p>
               <p className="mt-1 text-sm text-hier-muted">Seats left after pending invites</p>
             </div>
           </div>
@@ -203,15 +204,15 @@ export default function TeamPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-hier-muted">Invite recruiter</p>
-                <h2 className="mt-2 text-2xl font-semibold text-hier-text">Add someone to your team</h2>
+                <h2 className="mt-2 text-2xl font-semibold text-hier-text">Add a recruiter to your team</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-hier-muted">
-                  Pending invites reserve a seat. If no seats are available, buy another recruiter seat from Billing first.
+                  Pending invites reserve a recruiter seat. If no seats are available, buy another recruiter seat from Billing first.
                 </p>
               </div>
               {!isOwner ? <Badge>Owner only</Badge> : null}
             </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_220px_auto] lg:items-end">
+            <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-hier-text">Email address</span>
                 <input
@@ -224,26 +225,13 @@ export default function TeamPage() {
                 />
               </label>
 
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-hier-text">Role</span>
-                <select
-                  value={role}
-                  disabled={!isOwner || workingKey !== null}
-                  onChange={(event) => setRole(event.target.value)}
-                  className="h-13 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white disabled:opacity-60"
-                >
-                  <option value="recruiter">Recruiter</option>
-                  <option value="staff">Staff</option>
-                </select>
-              </label>
-
               <button
                 type="submit"
                 disabled={!isOwner || workingKey !== null || !email.trim()}
                 className="inline-flex h-13 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-60"
               >
                 {workingKey === "invite" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailPlus className="h-4 w-4" />}
-                Send invite
+                Send recruiter invite
               </button>
             </div>
 
@@ -265,7 +253,7 @@ export default function TeamPage() {
 
           <div className="grid gap-6 xl:grid-cols-2">
             <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-card sm:p-8">
-              <h2 className="text-xl font-semibold text-hier-text">Active team</h2>
+              <h2 className="text-xl font-semibold text-hier-text">Active recruiters</h2>
 
               <div className="mt-5 space-y-3">
                 {activeMembers.length === 0 ? (
@@ -286,8 +274,8 @@ export default function TeamPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Badge>{statusLabel(member.role || "recruiter")}</Badge>
-                        {isOwner ? (
+                        <Badge>{member.role === "owner" ? "Owner" : "Recruiter"}</Badge>
+                        {isOwner && member.role !== "owner" ? (
                           <button
                             type="button"
                             onClick={() => handleRemove(member.id)}
@@ -305,7 +293,7 @@ export default function TeamPage() {
             </section>
 
             <section className="rounded-[32px] border border-hier-border bg-white p-6 shadow-card sm:p-8">
-              <h2 className="text-xl font-semibold text-hier-text">Pending invites</h2>
+              <h2 className="text-xl font-semibold text-hier-text">Pending recruiter invites</h2>
 
               <div className="mt-5 space-y-3">
                 {invites.length === 0 ? (
@@ -319,7 +307,7 @@ export default function TeamPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-semibold text-hier-text">{invite.email}</p>
-                        <p className="mt-1 text-sm text-hier-muted">Role: {statusLabel(invite.role || "recruiter")}</p>
+                        <p className="mt-1 text-sm text-hier-muted">Recruiter invite</p>
                         <p className="mt-2 text-xs text-hier-muted">Expires {formatDate(invite.expires_at)}</p>
                       </div>
 
