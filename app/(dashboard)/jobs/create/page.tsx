@@ -180,6 +180,41 @@ async function trimVideoFile(params: {
   });
 }
 
+async function cropVideoFileToFourFive(file: File): Promise<File> {
+  const ffmpeg = await getFfmpeg();
+
+  const inputExt = file.name.split(".").pop() || "mp4";
+  const inputName = `input-crop-${Date.now()}.${inputExt}`;
+  const outputName = `cropped-${Date.now()}.mp4`;
+
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+  await ffmpeg.exec([
+    "-i",
+    inputName,
+    "-vf",
+    "crop='if(gt(iw/ih,4/5),ih*4/5,iw)':'if(gt(iw/ih,4/5),ih,iw*5/4)'",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "23",
+    "-c:a",
+    "aac",
+    "-movflags",
+    "+faststart",
+    outputName,
+  ]);
+
+  const data = await ffmpeg.readFile(outputName);
+  const blob = new Blob([data as BlobPart], { type: "video/mp4" });
+
+  return new File([blob], outputName, {
+    type: "video/mp4",
+  });
+}
+
 async function createCroppedImageFile(params: {
   file: File;
   imageSrc: string;
@@ -324,10 +359,26 @@ export default function JobsCreatePage() {
 
     const { width, height, duration } = await readVideoMetadata(file);
 
+    let workingVideoFile = file;
+
     if (!aspectCloseEnough(width, height)) {
-      setError("Videos must already be 4:5 to match the app feed.");
+      setLoading(true);
+      try {
+        workingVideoFile = await cropVideoFileToFourFive(file);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (duration > MAX_VIDEO_DURATION_SECONDS) {
+      setPendingVideoFile(workingVideoFile);
+      setPendingVideoDuration(duration);
+      setVideoTrimStart(0);
+      setVideoTrimOpen(true);
       return;
     }
+
+commitSelectedFile(workingVideoFile);
 
     if (!Number.isFinite(duration)) {
       setError("Could not read this video's duration.");
