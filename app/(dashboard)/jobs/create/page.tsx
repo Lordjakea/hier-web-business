@@ -4,8 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Cropper from "react-easy-crop";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile } from "@ffmpeg/util";
 import {
   ArrowLeft,
   BriefcaseBusiness,
@@ -47,6 +45,17 @@ type FormValues = {
   screeningQuestions: string[];
 };
 
+type VideoEditSettings = {
+  startSeconds: number;
+  endSeconds: number;
+  cropXPercent: number;
+  cropYPercent: number;
+  zoom: number;
+  originalWidth: number;
+  originalHeight: number;
+  originalDuration: number;
+};
+
 const initialValues: FormValues = {
   title: "",
   description: "",
@@ -69,10 +78,7 @@ const initialValues: FormValues = {
 };
 
 const TARGET_ASPECT = 4 / 5;
-const VIDEO_ASPECT_TOLERANCE = 0.03;
 const MAX_VIDEO_DURATION_SECONDS = 60;
-
-let ffmpegInstance: FFmpeg | null = null;
 
 function normaliseMoneyInput(text: string) {
   return text.replace(/[£$, ]/g, "");
@@ -109,8 +115,7 @@ function isImageFile(file: File) {
   const name = file.name.toLowerCase();
 
   return (
-    type.startsWith("image/") ||
-    /\.(jpg|jpeg|png|webp|heic)$/i.test(name)
+    type.startsWith("image/") || /\.(jpg|jpeg|png|webp|heic)$/i.test(name)
   );
 }
 
@@ -118,10 +123,15 @@ function isVideoFile(file: File) {
   const type = file.type || "";
   const name = file.name.toLowerCase();
 
-  return (
-    type.startsWith("video/") ||
-    /\.(mp4|mov|m4v|webm)$/i.test(name)
-  );
+  return type.startsWith("video/") || /\.(mp4|mov|m4v|webm)$/i.test(name);
+}
+
+function formatSeconds(value: number) {
+  if (!Number.isFinite(value)) return "0:00";
+  const safe = Math.max(0, Math.round(value));
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 async function readVideoMetadata(file: File): Promise<{
@@ -148,98 +158,6 @@ async function readVideoMetadata(file: File): Promise<{
   } finally {
     URL.revokeObjectURL(url);
   }
-}
-
-function aspectCloseEnough(
-  width: number,
-  height: number,
-  target = TARGET_ASPECT,
-  tolerance = VIDEO_ASPECT_TOLERANCE
-) {
-  if (!width || !height) return false;
-  const ratio = width / height;
-  return Math.abs(ratio - target) <= tolerance;
-}
-
-async function getFfmpeg() {
-  if (!ffmpegInstance) {
-    ffmpegInstance = new FFmpeg();
-    await ffmpegInstance.load();
-  }
-
-  return ffmpegInstance;
-}
-
-async function trimVideoFile(params: {
-  file: File;
-  startSeconds: number;
-  durationSeconds: number;
-}): Promise<File> {
-  const ffmpeg = await getFfmpeg();
-
-  const inputExt = params.file.name.split(".").pop() || "mp4";
-  const inputName = `input-${Date.now()}.${inputExt}`;
-  const outputName = `trimmed-${Date.now()}.mp4`;
-
-  await ffmpeg.writeFile(inputName, await fetchFile(params.file));
-
-  await ffmpeg.exec([
-    "-ss",
-    String(params.startSeconds),
-    "-i",
-    inputName,
-    "-t",
-    String(params.durationSeconds),
-    "-c:v",
-    "libx264",
-    "-preset",
-    "veryfast",
-    "-crf",
-    "23",
-    "-c:a",
-    "aac",
-    "-movflags",
-    "+faststart",
-    outputName,
-  ]);
-
-  const data = await ffmpeg.readFile(outputName);
-  const blob = new Blob([data as BlobPart], { type: "video/mp4" });
-
-  return new File([blob], outputName, { type: "video/mp4" });
-}
-
-async function cropVideoFileToFourFive(file: File): Promise<File> {
-  const ffmpeg = await getFfmpeg();
-
-  const inputExt = file.name.split(".").pop() || "mp4";
-  const inputName = `input-crop-${Date.now()}.${inputExt}`;
-  const outputName = `cropped-${Date.now()}.mp4`;
-
-  await ffmpeg.writeFile(inputName, await fetchFile(file));
-
-  await ffmpeg.exec([
-    "-i",
-    inputName,
-    "-vf",
-    "crop='if(gt(iw/ih,4/5),ih*4/5,iw)':'if(gt(iw/ih,4/5),ih,iw*5/4)'",
-    "-c:v",
-    "libx264",
-    "-preset",
-    "veryfast",
-    "-crf",
-    "23",
-    "-c:a",
-    "aac",
-    "-movflags",
-    "+faststart",
-    outputName,
-  ]);
-
-  const data = await ffmpeg.readFile(outputName);
-  const blob = new Blob([data as BlobPart], { type: "video/mp4" });
-
-  return new File([blob], outputName, { type: "video/mp4" });
 }
 
 async function createCroppedImageFile(params: {
@@ -286,19 +204,20 @@ async function createCroppedImageFile(params: {
 export default function JobsCreatePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const trimPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const videoEditorPreviewRef = useRef<HTMLVideoElement | null>(null);
 
   const [contentType, setContentType] = useState<ContentType>("post");
   const [values, setValues] = useState<FormValues>(initialValues);
   const [loading, setLoading] = useState(false);
   const [processingMedia, setProcessingMedia] = useState(false);
-  const [trimming, setTrimming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedVideoEdit, setSelectedVideoEdit] =
+    useState<VideoEditSettings | null>(null);
 
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
   const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
@@ -313,10 +232,20 @@ export default function JobsCreatePage() {
   } | null>(null);
 
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
-  const [pendingVideoDuration, setPendingVideoDuration] = useState(0);
+  const [pendingVideoPreviewUrl, setPendingVideoPreviewUrl] = useState<
+    string | null
+  >(null);
+  const [pendingVideoMetadata, setPendingVideoMetadata] = useState<{
+    width: number;
+    height: number;
+    duration: number;
+  } | null>(null);
+  const [videoEditorOpen, setVideoEditorOpen] = useState(false);
   const [videoTrimStart, setVideoTrimStart] = useState(0);
-  const [videoTrimOpen, setVideoTrimOpen] = useState(false);
-  const [pendingVideoPreviewUrl, setPendingVideoPreviewUrl] = useState<string | null>(null);
+  const [videoTrimEnd, setVideoTrimEnd] = useState(0);
+  const [videoCropX, setVideoCropX] = useState(50);
+  const [videoCropY, setVideoCropY] = useState(50);
+  const [videoZoom, setVideoZoom] = useState(1);
 
   useEffect(() => {
     return () => {
@@ -331,11 +260,13 @@ export default function JobsCreatePage() {
   const isGig = isJob && values.isGig;
 
   const selectedMediaKind =
-    selectedFile?.type.startsWith("video/")
+    selectedFile?.type.startsWith("video/") || selectedFile?.name.match(/\.(mp4|mov|m4v|webm)$/i)
       ? "video"
       : selectedFile
       ? "image"
       : "none";
+
+  const videoClipLength = Math.max(0, videoTrimEnd - videoTrimStart);
 
   const summaryTitle = useMemo(() => {
     if (isPost) return values.description.trim() || "Standard content post";
@@ -350,19 +281,25 @@ export default function JobsCreatePage() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setSelectedFile(null);
     setPreviewUrl(null);
+    setSelectedVideoEdit(null);
   }
 
-  function commitSelectedFile(file: File) {
+  function commitSelectedFile(file: File, videoEdit?: VideoEditSettings | null) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
+    setSelectedVideoEdit(videoEdit ?? null);
   }
 
-  function closeVideoTrimModal() {
-    setVideoTrimOpen(false);
+  function closeVideoEditor() {
+    setVideoEditorOpen(false);
     setPendingVideoFile(null);
-    setPendingVideoDuration(0);
+    setPendingVideoMetadata(null);
     setVideoTrimStart(0);
+    setVideoTrimEnd(0);
+    setVideoCropX(50);
+    setVideoCropY(50);
+    setVideoZoom(1);
 
     if (pendingVideoPreviewUrl) {
       URL.revokeObjectURL(pendingVideoPreviewUrl);
@@ -373,12 +310,6 @@ export default function JobsCreatePage() {
 
   async function handleIncomingFile(file: File) {
     try {
-      console.log("[CREATE MEDIA] incoming file", {
-        name: file.name,
-        type: file.type,
-        size: file.size,
-      });
-
       if (!acceptForFile(file)) {
         setError("Only image and video files are supported.");
         return;
@@ -410,45 +341,62 @@ export default function JobsCreatePage() {
 
       const metadata = await readVideoMetadata(file);
 
-      console.log("[CREATE MEDIA] video metadata", metadata);
-
       if (!Number.isFinite(metadata.duration)) {
         setError("Could not read this video's duration.");
         return;
       }
 
-      let workingVideoFile = file;
-      let workingDuration = metadata.duration;
+      const preview = URL.createObjectURL(file);
 
-      if (!aspectCloseEnough(metadata.width, metadata.height)) {
-        workingVideoFile = await cropVideoFileToFourFive(file);
-
-        const croppedMetadata = await readVideoMetadata(workingVideoFile);
-        workingDuration = Number.isFinite(croppedMetadata.duration)
-          ? croppedMetadata.duration
-          : metadata.duration;
+      if (pendingVideoPreviewUrl) {
+        URL.revokeObjectURL(pendingVideoPreviewUrl);
       }
 
-      if (workingDuration > MAX_VIDEO_DURATION_SECONDS) {
-        if (pendingVideoPreviewUrl) {
-          URL.revokeObjectURL(pendingVideoPreviewUrl);
-        }
-
-        setPendingVideoFile(workingVideoFile);
-        setPendingVideoDuration(workingDuration);
-        setVideoTrimStart(0);
-        setPendingVideoPreviewUrl(URL.createObjectURL(workingVideoFile));
-        setVideoTrimOpen(true);
-        return;
-      }
-
-      commitSelectedFile(workingVideoFile);
+      setPendingVideoFile(file);
+      setPendingVideoPreviewUrl(preview);
+      setPendingVideoMetadata(metadata);
+      setVideoTrimStart(0);
+      setVideoTrimEnd(Math.min(metadata.duration, MAX_VIDEO_DURATION_SECONDS));
+      setVideoCropX(50);
+      setVideoCropY(50);
+      setVideoZoom(1);
+      setVideoEditorOpen(true);
     } catch (e) {
-      console.error("[CREATE MEDIA] failed", e);
       setError(e instanceof Error ? e.message : "Could not read this file.");
     } finally {
       setProcessingMedia(false);
     }
+  }
+
+  function confirmVideoEdit() {
+    if (!pendingVideoFile || !pendingVideoMetadata) {
+      setError("No video selected.");
+      return;
+    }
+
+    if (videoTrimEnd <= videoTrimStart) {
+      setError("End time must be after start time.");
+      return;
+    }
+
+    if (videoClipLength > MAX_VIDEO_DURATION_SECONDS) {
+      setError("Video clips must be 60 seconds or less.");
+      return;
+    }
+
+    const editSettings: VideoEditSettings = {
+      startSeconds: videoTrimStart,
+      endSeconds: videoTrimEnd,
+      cropXPercent: videoCropX,
+      cropYPercent: videoCropY,
+      zoom: videoZoom,
+      originalWidth: pendingVideoMetadata.width,
+      originalHeight: pendingVideoMetadata.height,
+      originalDuration: pendingVideoMetadata.duration,
+    };
+
+    commitSelectedFile(pendingVideoFile, editSettings);
+    closeVideoEditor();
   }
 
   function updateQuestion(index: number, text: string) {
@@ -502,36 +450,15 @@ export default function JobsCreatePage() {
     }
   }
 
-  async function confirmVideoTrim() {
-    if (!pendingVideoFile) {
-      setError("No video selected to trim.");
-      return;
-    }
-
-    try {
-      setTrimming(true);
-      setError(null);
-
-      const trimmed = await trimVideoFile({
-        file: pendingVideoFile,
-        startSeconds: videoTrimStart,
-        durationSeconds: MAX_VIDEO_DURATION_SECONDS,
-      });
-
-      commitSelectedFile(trimmed);
-      closeVideoTrimModal();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not trim video.");
-    } finally {
-      setTrimming(false);
-    }
-  }
-
   async function handleSubmit() {
     try {
       setLoading(true);
       setError(null);
       setSuccess(null);
+
+      // selectedVideoEdit is now available here.
+      // Next backend step: pass this metadata through uploadBusinessMediaFile
+      // and process the final video server-side.
 
       if (isPost) {
         if (!values.description.trim() && !selectedFile) {
@@ -550,6 +477,7 @@ export default function JobsCreatePage() {
             kind: "content",
             postId: created.post.id,
             file: selectedFile,
+            videoEdit: selectedVideoEdit,
           });
         }
 
@@ -639,6 +567,7 @@ export default function JobsCreatePage() {
             kind: "job",
             postId: created.post.id,
             file: selectedFile,
+            videoEdit: selectedVideoEdit,
           });
         }
 
@@ -666,7 +595,7 @@ export default function JobsCreatePage() {
       <PageHeader
         eyebrow="Create"
         title="Create jobs and content from web"
-        description="Upload media from the dashboard. Images are cropped to 4:5, videos are fitted to 4:5 and trimmed to 60 seconds when needed."
+        description="Upload media from the dashboard. Images are cropped to 4:5, videos can be visually framed and trimmed before upload."
         action={
           <Link
             href="/jobs"
@@ -680,7 +609,7 @@ export default function JobsCreatePage() {
 
       {processingMedia ? (
         <div className="rounded-[24px] border border-hier-border bg-hier-panel px-4 py-3 text-sm font-semibold text-hier-text">
-          Preparing media... this can take a moment for video files.
+          Preparing media...
         </div>
       ) : null}
 
@@ -746,87 +675,169 @@ export default function JobsCreatePage() {
         </div>
       ) : null}
 
-      {videoTrimOpen && pendingVideoFile ? (
+      {videoEditorOpen && pendingVideoFile && pendingVideoPreviewUrl ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-2xl rounded-[28px] bg-white p-5 shadow-2xl">
+          <div className="w-full max-w-3xl rounded-[28px] bg-white p-5 shadow-2xl">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-hier-text">Trim video</h3>
+                <h3 className="text-lg font-semibold text-hier-text">
+                  Edit video
+                </h3>
                 <p className="text-sm text-hier-muted">
-                  Choose which 60 seconds to use.
+                  Frame the video for 4:5 and choose the exact section to upload.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={closeVideoTrimModal}
-                disabled={trimming}
-                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:opacity-60"
+                onClick={closeVideoEditor}
+                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
               >
                 <X className="h-4 w-4" />
                 Cancel
               </button>
             </div>
 
-            {pendingVideoPreviewUrl ? (
-              <div className="overflow-hidden rounded-[24px] bg-black">
+            <div className="grid gap-5 lg:grid-cols-[0.8fr,1.2fr]">
+              <div className="mx-auto aspect-[4/5] w-full max-w-[320px] overflow-hidden rounded-[28px] bg-black">
                 <video
-                  ref={trimPreviewRef}
+                  ref={videoEditorPreviewRef}
                   src={pendingVideoPreviewUrl}
                   controls
-                  className="mx-auto aspect-[4/5] max-h-[58vh] w-full object-contain"
+                  className="h-full w-full"
+                  style={{
+                    objectFit: "cover",
+                    objectPosition: `${videoCropX}% ${videoCropY}%`,
+                    transform: `scale(${videoZoom})`,
+                  }}
                 />
               </div>
-            ) : null}
 
-            <div className="mt-4 rounded-[24px] border border-hier-border bg-hier-panel p-4">
-              <div className="flex items-center justify-between gap-3 text-sm font-semibold text-hier-text">
-                <span>Start: {Math.round(videoTrimStart)}s</span>
-                <span>
-                  End: {Math.round(videoTrimStart + MAX_VIDEO_DURATION_SECONDS)}s
-                </span>
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
+                  <p className="text-sm font-semibold text-hier-text">
+                    Clip length: {formatSeconds(videoClipLength)}
+                  </p>
+                  <p className="mt-1 text-sm text-hier-muted">
+                    Start {formatSeconds(videoTrimStart)} · End{" "}
+                    {formatSeconds(videoTrimEnd)}
+                  </p>
+
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                    Start
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(0, (pendingVideoMetadata?.duration ?? 0) - 1)}
+                    step={0.5}
+                    value={videoTrimStart}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      const maxEnd = pendingVideoMetadata?.duration ?? 0;
+                      const nextEnd = Math.min(
+                        Math.max(videoTrimEnd, next + 1),
+                        Math.min(maxEnd, next + MAX_VIDEO_DURATION_SECONDS)
+                      );
+
+                      setVideoTrimStart(next);
+                      setVideoTrimEnd(nextEnd);
+
+                      if (videoEditorPreviewRef.current) {
+                        videoEditorPreviewRef.current.currentTime = next;
+                      }
+                    }}
+                    className="mt-2 w-full"
+                  />
+
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                    End
+                  </label>
+                  <input
+                    type="range"
+                    min={Math.min(
+                      pendingVideoMetadata?.duration ?? 0,
+                      videoTrimStart + 1
+                    )}
+                    max={Math.min(
+                      pendingVideoMetadata?.duration ?? 0,
+                      videoTrimStart + MAX_VIDEO_DURATION_SECONDS
+                    )}
+                    step={0.5}
+                    value={videoTrimEnd}
+                    onChange={(e) => setVideoTrimEnd(Number(e.target.value))}
+                    className="mt-2 w-full"
+                  />
+
+                  {videoClipLength > MAX_VIDEO_DURATION_SECONDS ? (
+                    <p className="mt-2 text-sm font-semibold text-red-600">
+                      Clips must be 60 seconds or less.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
+                  <p className="text-sm font-semibold text-hier-text">
+                    4:5 frame position
+                  </p>
+
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                    Horizontal position
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={videoCropX}
+                    onChange={(e) => setVideoCropX(Number(e.target.value))}
+                    className="mt-2 w-full"
+                  />
+
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                    Vertical position
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={videoCropY}
+                    onChange={(e) => setVideoCropY(Number(e.target.value))}
+                    className="mt-2 w-full"
+                  />
+
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+                    Zoom
+                  </label>
+                  <input
+                    type="range"
+                    min={1}
+                    max={1.8}
+                    step={0.01}
+                    value={videoZoom}
+                    onChange={(e) => setVideoZoom(Number(e.target.value))}
+                    className="mt-2 w-full"
+                  />
+                </div>
               </div>
-
-              <input
-                type="range"
-                min={0}
-                max={Math.max(0, pendingVideoDuration - MAX_VIDEO_DURATION_SECONDS)}
-                step={0.5}
-                value={videoTrimStart}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  setVideoTrimStart(next);
-
-                  if (trimPreviewRef.current) {
-                    trimPreviewRef.current.currentTime = next;
-                  }
-                }}
-                className="mt-4 w-full"
-              />
-
-              <p className="mt-2 text-xs text-hier-muted">
-                Move the slider to choose where your 60 second clip starts. Use the video
-                preview above to check the section before saving.
-              </p>
             </div>
 
             <div className="mt-5 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={closeVideoTrimModal}
-                disabled={trimming}
-                className="inline-flex h-11 items-center rounded-2xl border border-hier-border bg-white px-5 text-sm font-semibold text-hier-text disabled:opacity-60"
+                onClick={closeVideoEditor}
+                className="inline-flex h-11 items-center rounded-2xl border border-hier-border bg-white px-5 text-sm font-semibold text-hier-text"
               >
                 Cancel
               </button>
 
               <button
                 type="button"
-                onClick={() => void confirmVideoTrim()}
-                disabled={trimming}
-                className="inline-flex h-11 items-center rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
+                onClick={confirmVideoEdit}
+                className="inline-flex h-11 items-center rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white"
               >
-                {trimming ? "Trimming..." : "Use this 60s clip"}
+                Use video
               </button>
             </div>
           </div>
@@ -896,8 +907,8 @@ export default function JobsCreatePage() {
               Add media
             </h2>
             <p className="mt-2 text-sm leading-6 text-hier-muted">
-              Images are cropped to 4:5. Videos are automatically fitted to 4:5
-              and can be trimmed to 60 seconds.
+              Images are cropped to 4:5. Videos can be visually framed and
+              trimmed before upload.
             </p>
 
             <div
@@ -939,8 +950,8 @@ export default function JobsCreatePage() {
                     Drag and drop media here
                   </p>
                   <p className="mt-2 text-sm leading-6 text-hier-muted">
-                    Images will be cropped. Videos will be fitted to the feed and
-                    trimmed if longer than 60 seconds.
+                    Images will be cropped. Videos open in an editor so you can
+                    select the frame and clip length.
                   </p>
                   <button
                     type="button"
@@ -960,9 +971,17 @@ export default function JobsCreatePage() {
                         {selectedFile.name}
                       </p>
                       <p className="mt-1 text-sm text-hier-muted">
-                        {selectedMediaKind === "video" ? "4:5 video" : "4:5 image"} ·{" "}
+                        {selectedMediaKind === "video" ? "Video selected" : "4:5 image"} ·{" "}
                         {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                       </p>
+                      {selectedVideoEdit ? (
+                        <p className="mt-1 text-xs text-hier-muted">
+                          Clip {formatSeconds(selectedVideoEdit.startSeconds)}–
+                          {formatSeconds(selectedVideoEdit.endSeconds)} · frame{" "}
+                          {Math.round(selectedVideoEdit.cropXPercent)}% /{" "}
+                          {Math.round(selectedVideoEdit.cropYPercent)}%
+                        </p>
+                      ) : null}
                     </div>
 
                     <button
@@ -989,7 +1008,16 @@ export default function JobsCreatePage() {
                         <video
                           src={previewUrl}
                           controls
-                          className="h-full w-full object-cover"
+                          className="h-full w-full"
+                          style={{
+                            objectFit: "cover",
+                            objectPosition: selectedVideoEdit
+                              ? `${selectedVideoEdit.cropXPercent}% ${selectedVideoEdit.cropYPercent}%`
+                              : "50% 50%",
+                            transform: selectedVideoEdit
+                              ? `scale(${selectedVideoEdit.zoom})`
+                              : "scale(1)",
+                          }}
                         />
                       </div>
                     )
@@ -1361,7 +1389,7 @@ export default function JobsCreatePage() {
             <button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={loading || trimming || processingMedia}
+              disabled={loading || processingMedia}
               className="inline-flex h-12 items-center gap-2 rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white shadow-card disabled:opacity-60"
             >
               {loading
@@ -1413,7 +1441,16 @@ export default function JobsCreatePage() {
                     <video
                       src={previewUrl}
                       controls
-                      className="h-full w-full object-cover"
+                      className="h-full w-full"
+                      style={{
+                        objectFit: "cover",
+                        objectPosition: selectedVideoEdit
+                          ? `${selectedVideoEdit.cropXPercent}% ${selectedVideoEdit.cropYPercent}%`
+                          : "50% 50%",
+                        transform: selectedVideoEdit
+                          ? `scale(${selectedVideoEdit.zoom})`
+                          : "scale(1)",
+                      }}
                     />
                   </div>
                 )
