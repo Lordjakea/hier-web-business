@@ -286,6 +286,7 @@ async function createCroppedImageFile(params: {
 export default function JobsCreatePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const trimPreviewRef = useRef<HTMLVideoElement | null>(null);
 
   const [contentType, setContentType] = useState<ContentType>("post");
   const [values, setValues] = useState<FormValues>(initialValues);
@@ -315,13 +316,15 @@ export default function JobsCreatePage() {
   const [pendingVideoDuration, setPendingVideoDuration] = useState(0);
   const [videoTrimStart, setVideoTrimStart] = useState(0);
   const [videoTrimOpen, setVideoTrimOpen] = useState(false);
+  const [pendingVideoPreviewUrl, setPendingVideoPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       if (pendingImageSrc) URL.revokeObjectURL(pendingImageSrc);
+      if (pendingVideoPreviewUrl) URL.revokeObjectURL(pendingVideoPreviewUrl);
     };
-  }, [previewUrl, pendingImageSrc]);
+  }, [previewUrl, pendingImageSrc, pendingVideoPreviewUrl]);
 
   const isPost = contentType === "post";
   const isJob = contentType === "job";
@@ -360,6 +363,12 @@ export default function JobsCreatePage() {
     setPendingVideoFile(null);
     setPendingVideoDuration(0);
     setVideoTrimStart(0);
+
+    if (pendingVideoPreviewUrl) {
+      URL.revokeObjectURL(pendingVideoPreviewUrl);
+    }
+
+    setPendingVideoPreviewUrl(null);
   }
 
   async function handleIncomingFile(file: File) {
@@ -421,9 +430,14 @@ export default function JobsCreatePage() {
       }
 
       if (workingDuration > MAX_VIDEO_DURATION_SECONDS) {
+        if (pendingVideoPreviewUrl) {
+          URL.revokeObjectURL(pendingVideoPreviewUrl);
+        }
+
         setPendingVideoFile(workingVideoFile);
         setPendingVideoDuration(workingDuration);
         setVideoTrimStart(0);
+        setPendingVideoPreviewUrl(URL.createObjectURL(workingVideoFile));
         setVideoTrimOpen(true);
         return;
       }
@@ -754,14 +768,24 @@ export default function JobsCreatePage() {
               </button>
             </div>
 
-            <div className="rounded-[24px] border border-hier-border bg-hier-panel p-4">
-              <p className="text-sm font-semibold text-hier-text">
-                Start at {Math.round(videoTrimStart)}s
-              </p>
-              <p className="mt-1 text-sm text-hier-muted">
-                Clip will end at{" "}
-                {Math.round(videoTrimStart + MAX_VIDEO_DURATION_SECONDS)}s.
-              </p>
+            {pendingVideoPreviewUrl ? (
+              <div className="overflow-hidden rounded-[24px] bg-black">
+                <video
+                  ref={trimPreviewRef}
+                  src={pendingVideoPreviewUrl}
+                  controls
+                  className="mx-auto aspect-[4/5] max-h-[58vh] w-full object-contain"
+                />
+              </div>
+            ) : null}
+
+            <div className="mt-4 rounded-[24px] border border-hier-border bg-hier-panel p-4">
+              <div className="flex items-center justify-between gap-3 text-sm font-semibold text-hier-text">
+                <span>Start: {Math.round(videoTrimStart)}s</span>
+                <span>
+                  End: {Math.round(videoTrimStart + MAX_VIDEO_DURATION_SECONDS)}s
+                </span>
+              </div>
 
               <input
                 type="range"
@@ -769,9 +793,21 @@ export default function JobsCreatePage() {
                 max={Math.max(0, pendingVideoDuration - MAX_VIDEO_DURATION_SECONDS)}
                 step={0.5}
                 value={videoTrimStart}
-                onChange={(e) => setVideoTrimStart(Number(e.target.value))}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setVideoTrimStart(next);
+
+                  if (trimPreviewRef.current) {
+                    trimPreviewRef.current.currentTime = next;
+                  }
+                }}
                 className="mt-4 w-full"
               />
+
+              <p className="mt-2 text-xs text-hier-muted">
+                Move the slider to choose where your 60 second clip starts. Use the video
+                preview above to check the section before saving.
+              </p>
             </div>
 
             <div className="mt-5 flex items-center justify-end gap-3">
