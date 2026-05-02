@@ -78,7 +78,7 @@ const initialValues: FormValues = {
 };
 
 const TARGET_ASPECT = 4 / 5;
-const MAX_VIDEO_DURATION_SECONDS = 90;
+const MAX_VIDEO_DURATION_SECONDS = 180;
 
 function normaliseMoneyInput(text: string) {
   return text.replace(/[£$, ]/g, "");
