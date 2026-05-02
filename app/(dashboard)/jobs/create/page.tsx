@@ -78,7 +78,7 @@ const initialValues: FormValues = {
 };
 
 const TARGET_ASPECT = 4 / 5;
-const MAX_VIDEO_DURATION_SECONDS = 60;
+const MAX_VIDEO_DURATION_SECONDS = 180;
 
 function normaliseMoneyInput(text: string) {
   return text.replace(/[£$, ]/g, "");
@@ -380,7 +380,9 @@ export default function JobsCreatePage() {
     }
 
     if (videoClipLength > MAX_VIDEO_DURATION_SECONDS) {
-      setError("Video clips must be 60 seconds or less.");
+      setError(
+        `Video clips must be ${formatSeconds(MAX_VIDEO_DURATION_SECONDS)} or less.`
+      );
       return;
     }
 
@@ -771,7 +773,7 @@ export default function JobsCreatePage() {
 
                   {videoClipLength > MAX_VIDEO_DURATION_SECONDS ? (
                     <p className="mt-2 text-sm font-semibold text-red-600">
-                      Clips must be 60 seconds or less.
+                      Clips must be {formatSeconds(MAX_VIDEO_DURATION_SECONDS)} or less.
                     </p>
                   ) : null}
                 </div>
