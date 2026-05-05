@@ -56,6 +56,20 @@ export type ApplicationAttachment = {
   delete_url?: string | null;
 };
 
+export type ApplicantSummary = {
+  candidate_name?: string | null;
+  job_title?: string | null;
+  stage?: string | null;
+  status?: string | null;
+  has_cv?: boolean;
+  rating?: number | null;
+  recruiter_tags?: string[];
+  strengths?: string[];
+  flags?: string[];
+  recommended_next_action?: string | null;
+  summary?: string | null;
+};
+
 export type BusinessApplication = {
   id: number;
   user_id?: number | null;
@@ -81,6 +95,7 @@ export type BusinessApplication = {
   ai_score?: number | null;
   hi_score?: number | null;
   reasons?: string[] | null;
+  applicant_summary?: ApplicantSummary | null;
 
   cover_letter?: string | null;
   application_answers?: unknown;
@@ -146,6 +161,7 @@ export type BusinessCandidateProfileResponse = {
     job_post_id?: number | null;
     stage?: string | null;
     status?: string | null;
+    applicant_summary?: ApplicantSummary | null;
     created_at?: string | null;
     job?: {
       id: number;

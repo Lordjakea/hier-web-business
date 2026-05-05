@@ -47,6 +47,11 @@ export function CandidateCard({
   const avatarUrl = candidate.user?.avatar_url || null;
   const initials = getInitials(name);
   const hiScore = getHIScore(candidate);
+  const summaryText =
+    candidate.applicant_summary?.summary ||
+    candidate.applicant_summary?.strengths?.[0] ||
+    candidate.reasons?.[0] ||
+    "";
 
   return (
     <article
@@ -94,6 +99,12 @@ export function CandidateCard({
           </div>
         </div>
       </div>
+
+      {summaryText ? (
+        <p className="mt-3 line-clamp-2 rounded-2xl bg-hier-panel px-3 py-2 text-[11px] leading-5 text-hier-muted">
+          {summaryText}
+        </p>
+      ) : null}
 
       <div className="mt-3 grid grid-cols-3 gap-2">
         <button

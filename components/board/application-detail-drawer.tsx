@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Brain,
   CalendarClock,
   CheckCircle2,
   ExternalLink,
@@ -352,6 +353,7 @@ export function ApplicationDetailDrawer({
     application?.attachments?.find((item) => item.kind === "cv")?.filename ||
     candidate?.cvFileName ||
     "CV";
+  const applicantSummary = application?.applicant_summary || null;
 
   useEffect(() => {
     if (!application) return;
@@ -653,6 +655,71 @@ export function ApplicationDetailDrawer({
                 </p>
               ) : null}
             </section>
+
+            {applicantSummary ? (
+              <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-hier-text">Applicant summary</h3>
+                    {applicantSummary.summary ? (
+                      <p className="mt-2 text-sm leading-7 text-hier-muted">
+                        {applicantSummary.summary}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <span className="inline-flex items-center gap-1 rounded-full bg-hier-soft px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-primary">
+                    <Brain className="h-3.5 w-3.5" />
+                    AI
+                  </span>
+                </div>
+
+                {applicantSummary.strengths?.length ? (
+                  <div className="mt-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                      Strengths
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {applicantSummary.strengths.map((strength) => (
+                        <span
+                          key={strength}
+                          className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+                        >
+                          {strength}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {applicantSummary.flags?.length ? (
+                  <div className="mt-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                      Review notes
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {applicantSummary.flags.map((flag) => (
+                        <p
+                          key={flag}
+                          className="rounded-[18px] bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800"
+                        >
+                          {flag}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {applicantSummary.recommended_next_action ? (
+                  <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-hier-muted">
+                    Next action:{" "}
+                    <span className="text-hier-text">
+                      {applicantSummary.recommended_next_action.replaceAll("_", " ")}
+                    </span>
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
               <div className="flex items-start justify-between gap-4">

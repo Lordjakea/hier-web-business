@@ -36,6 +36,7 @@ function normalizeApplication(application: BusinessApplication): BusinessApplica
     score: resolvedScore,
     ai_score: resolvedScore,
     reasons: application.reasons || [],
+    applicant_summary: application.applicant_summary || null,
     recruiter_tags: application.recruiter_tags || [],
     attachments: application.attachments || [],
   };
