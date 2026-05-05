@@ -670,7 +670,7 @@ export function ApplicationDetailDrawer({
 
                   <span className="inline-flex items-center gap-1 rounded-full bg-hier-soft px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-primary">
                     <Brain className="h-3.5 w-3.5" />
-                    AI
+                    HI
                   </span>
                 </div>
 
