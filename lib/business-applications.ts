@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import { resolveHIScore } from "@/lib/hi-score";
 import type {
   AnalyticsSummaryResponse,
   ApplicationStage,
@@ -29,12 +30,22 @@ function normalizeApplication(application: BusinessApplication): BusinessApplica
     application.score ??
     application.ai_score ??
     null;
+  const resolvedTone = resolveHIScore({
+    ...application,
+    hi_score: resolvedScore,
+    score: resolvedScore,
+    ai_score: resolvedScore,
+  });
 
   return {
     ...application,
     hi_score: resolvedScore,
     score: resolvedScore,
     ai_score: resolvedScore,
+    score_band: application.score_band ?? resolvedTone.band,
+    score_label: application.score_label ?? resolvedTone.label,
+    score_colour: application.score_colour ?? application.score_color ?? resolvedTone.colour,
+    score_color: application.score_color ?? application.score_colour ?? resolvedTone.colour,
     reasons: application.reasons || [],
     applicant_summary: application.applicant_summary || null,
     recruiter_tags: application.recruiter_tags || [],

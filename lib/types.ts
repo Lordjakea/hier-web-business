@@ -94,6 +94,10 @@ export type BusinessApplication = {
   score?: number | null;
   ai_score?: number | null;
   hi_score?: number | null;
+  score_band?: string | null;
+  score_label?: string | null;
+  score_colour?: string | null;
+  score_color?: string | null;
   reasons?: string[] | null;
   applicant_summary?: ApplicantSummary | null;
 

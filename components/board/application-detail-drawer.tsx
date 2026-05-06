@@ -18,6 +18,7 @@ import {
 import { CVViewerModal } from "@/components/board/cv-viewer-modal";
 import { fetchOnboardingEligibility, startOnboarding } from "@/lib/business-onboarding";
 import { apiFetch } from "@/lib/api";
+import { resolveHIScore } from "@/lib/hi-score";
 import { boardColumns } from "@/lib/theme";
 import type {
   ApplicationStage,
@@ -354,6 +355,7 @@ export function ApplicationDetailDrawer({
     candidate?.cvFileName ||
     "CV";
   const applicantSummary = application?.applicant_summary || null;
+  const hiScore = resolveHIScore(application);
 
   useEffect(() => {
     if (!application) return;
@@ -668,9 +670,12 @@ export function ApplicationDetailDrawer({
                     ) : null}
                   </div>
 
-                  <span className="inline-flex items-center gap-1 rounded-full bg-hier-soft px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-primary">
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${hiScore.badgeClass}`}
+                    title={hiScore.label || "Hier Intelligence Score"}
+                  >
                     <Brain className="h-3.5 w-3.5" />
-                    HI
+                    {hiScore.score === null ? "HI" : `HI ${hiScore.score.toFixed(1)}`}
                   </span>
                 </div>
 

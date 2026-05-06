@@ -1,5 +1,6 @@
 import { Brain, CheckCircle2, Eye, XCircle } from "lucide-react";
-import type { ApplicationStage, BusinessApplication } from "@/lib/types";
+import { resolveHIScore } from "@/lib/hi-score";
+import type { BusinessApplication } from "@/lib/types";
 
 function getInitials(name: string) {
   return name
@@ -8,18 +9,6 @@ function getInitials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-}
-
-function getHIScore(candidate: BusinessApplication): number | null {
-  const rawScore = candidate.hi_score ?? candidate.score ?? candidate.ai_score ?? null;
-  return typeof rawScore === "number" && Number.isFinite(rawScore) ? rawScore : null;
-}
-
-function scoreTone(score: number | null) {
-  if (score === null) return "bg-zinc-100 text-zinc-700";
-  if (score >= 25) return "bg-emerald-50 text-emerald-700";
-  if (score >= 15) return "bg-amber-50 text-amber-700";
-  return "bg-zinc-100 text-zinc-700";
 }
 
 export function CandidateCard({
@@ -46,7 +35,7 @@ export function CandidateCard({
 
   const avatarUrl = candidate.user?.avatar_url || null;
   const initials = getInitials(name);
-  const hiScore = getHIScore(candidate);
+  const hiScore = resolveHIScore(candidate);
   const summaryText =
     candidate.applicant_summary?.summary ||
     candidate.applicant_summary?.strengths?.[0] ||
@@ -88,13 +77,11 @@ export function CandidateCard({
 
           <div className="mt-1 flex items-center gap-2">
             <span
-              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${scoreTone(
-                hiScore,
-              )}`}
-              title="Hier Intelligence Score"
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${hiScore.badgeClass}`}
+              title={hiScore.label || "Hier Intelligence Score"}
             >
               <Brain className="h-3 w-3" />
-              {hiScore === null ? "No Hi Score" : `Hi ${hiScore.toFixed(1)}`}
+              {hiScore.score === null ? "No HI Score" : `HI ${hiScore.score.toFixed(1)}`}
             </span>
           </div>
         </div>

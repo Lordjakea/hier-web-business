@@ -149,6 +149,10 @@ export type BusinessJobAIShortlistItem = {
   reasons: string[];
   recruiter_tags: string[];
   score: number;
+  score_band?: string | null;
+  score_label?: string | null;
+  score_colour?: string | null;
+  score_color?: string | null;
   stage?: string | null;
   status?: string | null;
   type?: string | null;

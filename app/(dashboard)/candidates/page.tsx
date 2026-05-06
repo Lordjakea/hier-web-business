@@ -18,6 +18,7 @@ import {
   bulkMoveBusinessApplicationsStage,
   bulkRejectBusinessApplications,
 } from "@/lib/business-applications";
+import { resolveHIScore } from "@/lib/hi-score";
 import { boardColumns } from "@/lib/theme";
 import type {
   ApplicationStage,
@@ -549,18 +550,18 @@ export default function CandidatesPage() {
   }
 
   const shortlistThresholds = {
-    broad: 15,
-    balanced: 20,
-    strict: 25,
+    broad: 38,
+    balanced: 58,
+    strict: 78,
   };
 
   const shortlistThreshold = shortlistThresholds[shortlistMode];
 
   const shortlistPreview = visibleApplications.filter((app) => {
-    const score = app.hi_score ?? app.score ?? app.ai_score ?? null;
+    const { score } = resolveHIScore(app);
 
     return (
-      typeof score === "number" &&
+      score !== null &&
       score >= shortlistThreshold &&
       app.stage === "applied"
     );
@@ -569,7 +570,7 @@ export default function CandidatesPage() {
   const shortlistAverageScore =
     shortlistPreview.length > 0
       ? shortlistPreview.reduce((sum, app) => {
-          const score = app.hi_score ?? app.score ?? app.ai_score ?? 0;
+          const { score } = resolveHIScore(app);
           return sum + Number(score || 0);
         }, 0) / shortlistPreview.length
       : 0;
@@ -688,9 +689,9 @@ export default function CandidatesPage() {
               }
               className="h-10 rounded-2xl border border-hier-border bg-white px-3 text-sm font-semibold text-hier-text"
             >
-              <option value="broad">Broad · HI Score 15+</option>
-              <option value="balanced">Balanced · HI Score 20+</option>
-              <option value="strict">Strict · HI Score 25+</option>
+              <option value="broad">Broad · HI Score 38+</option>
+              <option value="balanced">Balanced · HI Score 58+</option>
+              <option value="strict">Strict · HI Score 78+</option>
             </select>
 
             <button
@@ -748,7 +749,8 @@ export default function CandidatesPage() {
               {shortlistPreview.length ? (
                 <div className="space-y-2">
                   {shortlistPreview.slice(0, 5).map((app) => {
-                    const score = app.hi_score ?? app.score ?? app.ai_score ?? null;
+                    const scoreMeta = resolveHIScore(app);
+                    const score = scoreMeta.score;
                     const name =
                       app.user?.display_name ||
                       app.user?.full_name ||
@@ -769,7 +771,10 @@ export default function CandidatesPage() {
                           </p>
                         </div>
 
-                        <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold text-hier-primary">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${scoreMeta.badgeClass}`}
+                          title={scoreMeta.label || "Hier Intelligence Score"}
+                        >
                           HI {typeof score === "number" ? score.toFixed(1) : "—"}
                         </span>
                       </div>
