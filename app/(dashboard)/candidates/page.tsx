@@ -26,6 +26,19 @@ import type {
   BusinessCandidate,
 } from "@/lib/types";
 
+function isClosedApplication(application: BusinessApplication) {
+  const post = application.job_post;
+  return (
+    Boolean(application.is_archived) ||
+    Boolean(application.archived_at) ||
+    application.archived_reason === "role_closed" ||
+    post?.post_status === "archived" ||
+    post?.is_active === false ||
+    Boolean(post?.archived_at) ||
+    Boolean(post?.shadow_hidden)
+  );
+}
+
 export default function CandidatesPage() {
   const searchParams = useSearchParams();
 
@@ -41,6 +54,7 @@ export default function CandidatesPage() {
   const initialHasRating = searchParams.get("has_rating") === "1";
   const initialHasTags = searchParams.get("has_tags") === "1";
   const initialHasCvViews = searchParams.get("has_cv_views") === "1";
+  const initialIncludeArchived = searchParams.get("includeArchived") === "1";
 
   const [applications, setApplications] = useState<BusinessApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +98,7 @@ export default function CandidatesPage() {
           q: options?.searchText || undefined,
           job_post_id: options?.jobPostId ?? undefined,
           recruiter_id: options?.recruiterId ?? undefined,
+          include_archived: initialIncludeArchived,
           per_page: 100,
         });
         setApplications(response.items || []);
@@ -97,7 +112,7 @@ export default function CandidatesPage() {
         setLoading(false);
       }
     },
-    []
+    [initialIncludeArchived]
   );
 
   useEffect(() => {
@@ -115,6 +130,7 @@ export default function CandidatesPage() {
   const visibleApplications = useMemo(() => {
     const filtered = applications.filter((application) => {
       if (application.stage === "withdrawn") return false;
+      if (!initialIncludeArchived && isClosedApplication(application)) return false;
 
       const viewed =
         Boolean((application as BusinessApplication & { is_viewed?: boolean }).is_viewed) ||
@@ -148,6 +164,7 @@ export default function CandidatesPage() {
     initialHasCvViews,
     initialHasRating,
     initialHasTags,
+    initialIncludeArchived,
     initialMissingRating,
     initialMissingTags,
     initialStage,
@@ -160,12 +177,13 @@ export default function CandidatesPage() {
     applications.forEach((application) => {
       const id = application.job_post?.id;
       if (!id || seen.has(id)) return;
+      if (!initialIncludeArchived && isClosedApplication(application)) return;
       seen.set(id, application.job_post?.title || `Job #${id}`);
     });
     return Array.from(seen.entries())
       .map(([id, label]) => ({ id, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [applications]);
+  }, [applications, initialIncludeArchived]);
 
   const stats = useMemo(() => {
     const activeApplicants = visibleApplications.length;

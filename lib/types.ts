@@ -41,6 +41,8 @@ export type BusinessJobPost = {
   employment_type?: string | null;
   sector?: string | null;
   is_active?: boolean;
+  post_status?: "draft" | "live" | "archived" | string | null;
+  shadow_hidden?: boolean | null;
   archived_at?: string | null;
   application_questions?: RawApplicationQuestion[] | null;
   has_application_questions?: boolean | null;
@@ -90,6 +92,9 @@ export type BusinessApplication = {
   offered_at?: string | null;
   hired_at?: string | null;
   withdrawn_at?: string | null;
+  is_archived?: boolean | null;
+  archived_at?: string | null;
+  archived_reason?: string | null;
 
   score?: number | null;
   ai_score?: number | null;
