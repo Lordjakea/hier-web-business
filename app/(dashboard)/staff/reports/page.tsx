@@ -86,7 +86,8 @@ export default function StaffReportsPage() {
 
   useEffect(() => {
     void load();
-  }, [status, entityType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [status, entityType]);
 
   async function runAction(reportId: number, action: () => Promise<any>) {
     setBusyId(reportId);

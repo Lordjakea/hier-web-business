@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -63,11 +64,9 @@ function mediaUrl(post: any) {
   );
 }
 
-export default function StaffReportDetailPage({
-  params,
-}: {
-  params: { reportId: string };
-}) {
+export default function StaffReportDetailPage() {
+  const params = useParams<{ reportId: string }>();
+  const reportId = params.reportId;
   const [report, setReport] = useState<StaffReport | null>(null);
   const [post, setPost] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +78,7 @@ export default function StaffReportDetailPage({
     setError(null);
 
     try {
-      const res = await fetchStaffReport(params.reportId);
+      const res = await fetchStaffReport(reportId);
       setReport(res.report);
       setPost(res.post || res.content_post || res.job_post || null);
     } catch (caughtError) {
@@ -95,7 +94,8 @@ export default function StaffReportDetailPage({
 
   useEffect(() => {
     void load();
-  }, [params.reportId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportId]);
 
   async function runAction(action: () => Promise<any>) {
     setBusy(true);
