@@ -226,13 +226,8 @@ export default function StaffReportsPage() {
                         </span>
 
                         <a
-                            href={
-                            report.entity_type === "content_post"
-                                ? `/jobs/${report.entity_id}?kind=content`
-                                : `/jobs/${report.entity_id}?kind=job`
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        
+                            href={`/staff/reports/${report.id}`}
                             className="inline-flex items-center gap-1 rounded-full border border-hier-border bg-white px-3 py-1 text-xs font-semibold text-hier-text hover:bg-hier-soft"
                         >
                             View post

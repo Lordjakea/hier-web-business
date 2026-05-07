@@ -446,3 +446,15 @@ export async function resolveAndHideContentPost(reportId: number | string) {
     { method: "PATCH" }
   );
 }
+
+export type StaffReportDetailResponse = {
+  ok: boolean;
+  report: StaffReport;
+  post?: any | null;
+  job_post?: any | null;
+  content_post?: any | null;
+};
+
+export async function fetchStaffReport(reportId: number | string) {
+  return apiFetch<StaffReportDetailResponse>(`/api/admin/reports/${reportId}`);
+}
