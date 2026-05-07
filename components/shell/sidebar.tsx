@@ -15,6 +15,7 @@ import {
   Users,
   Mail,
   X,
+  Flag,
 } from "lucide-react";
 import clsx from "clsx";
 import { getStoredUser } from "@/lib/auth";
@@ -146,6 +147,20 @@ export function Sidebar({
           >
             <Mail className="h-4 w-4" />
             Waitlist
+          </Link>
+
+          {/* REPORTS */}
+          <Link
+            href="/staff/reports"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              pathname.startsWith("/staff/reports")
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <Flag className="h-4 w-4" />
+            Reports
           </Link>
 
           {/* TEAM */}

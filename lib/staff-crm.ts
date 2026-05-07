@@ -364,3 +364,78 @@ export async function fetchStaffWaitlist() {
 export function getStaffWaitlistExportUrl() {
   return resolveApiUrl("/api/waitlist/export.csv");
 }
+
+export type StaffReport = {
+  id: number;
+  reporter_user_id: number;
+  entity_type: "content_post" | "job_post" | string;
+  entity_id: number;
+  reason: string;
+  details?: string | null;
+  status: "open" | "reviewing" | "resolved" | "dismissed" | string;
+  admin_user_id?: number | null;
+  admin_note?: string | null;
+  resolved_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export async function fetchStaffReports(params?: {
+  status?: string;
+  entity_type?: string;
+  reason?: string;
+  page?: number;
+  per_page?: number;
+}) {
+  const search = new URLSearchParams();
+
+  if (params?.status && params.status !== "all") search.set("status", params.status);
+  if (params?.entity_type && params.entity_type !== "all") search.set("entity_type", params.entity_type);
+  if (params?.reason && params.reason !== "all") search.set("reason", params.reason);
+  if (params?.page) search.set("page", String(params.page));
+  if (params?.per_page) search.set("per_page", String(params.per_page));
+
+  const query = search.toString();
+
+  return apiFetch<{
+    items: StaffReport[];
+    page: number;
+    per_page: number;
+    total: number;
+    pages: number;
+  }>(`/api/admin/reports${query ? `?${query}` : ""}`);
+}
+
+export async function updateStaffReport(
+  reportId: number | string,
+  payload: { status?: string; admin_note?: string }
+) {
+  return apiFetch<{ ok: boolean; report: StaffReport }>(
+    `/api/admin/reports/${reportId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function resolveStaffReport(reportId: number | string) {
+  return apiFetch<{ ok: boolean; report: StaffReport }>(
+    `/api/admin/reports/${reportId}/resolve`,
+    { method: "PATCH" }
+  );
+}
+
+export async function dismissStaffReport(reportId: number | string) {
+  return apiFetch<{ ok: boolean; report: StaffReport }>(
+    `/api/admin/reports/${reportId}/dismiss`,
+    { method: "PATCH" }
+  );
+}
+
+export async function resolveAndArchiveReportedPost(reportId: number | string) {
+  return apiFetch<{ ok: boolean; report: StaffReport; post?: any }>(
+    `/api/admin/reports/${reportId}/resolve-and-archive`,
+    { method: "PATCH" }
+  );
+}
