@@ -439,3 +439,10 @@ export async function resolveAndArchiveReportedPost(reportId: number | string) {
     { method: "PATCH" }
   );
 }
+
+export async function resolveAndHideContentPost(reportId: number | string) {
+  return apiFetch<{ ok: boolean; report: StaffReport; post?: any }>(
+    `/api/admin/reports/${reportId}/resolve-and-hide-content`,
+    { method: "PATCH" }
+  );
+}

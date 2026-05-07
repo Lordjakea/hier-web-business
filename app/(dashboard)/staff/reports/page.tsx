@@ -18,6 +18,7 @@ import {
   dismissStaffReport,
   fetchStaffReports,
   resolveAndArchiveReportedPost,
+  resolveAndHideContentPost,
   resolveStaffReport,
   updateStaffReport,
   type StaffReport,
@@ -205,6 +206,7 @@ export default function StaffReportsPage() {
           items.map((report) => {
             const isBusy = busyId === report.id;
             const canArchive = report.entity_type === "job_post";
+            const canHideContent = report.entity_type === "content_post";
 
             return (
               <div
@@ -218,9 +220,24 @@ export default function StaffReportsPage() {
                         {report.status}
                       </span>
 
-                      <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold text-hier-muted">
-                        {report.entity_type.replaceAll("_", " ")} #{report.entity_id}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold text-hier-muted">
+                            {report.entity_type.replaceAll("_", " ")} #{report.entity_id}
+                        </span>
+
+                        <a
+                            href={
+                            report.entity_type === "content_post"
+                                ? `/jobs/${report.entity_id}?kind=content`
+                                : `/jobs/${report.entity_id}?kind=job`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full border border-hier-border bg-white px-3 py-1 text-xs font-semibold text-hier-text hover:bg-hier-soft"
+                        >
+                            View post
+                        </a>
+                        </div>
                     </div>
 
                     <h2 className="mt-3 text-base font-semibold text-hier-text">
@@ -295,6 +312,26 @@ export default function StaffReportsPage() {
                         Archive post
                       </button>
                     ) : null}
+                    {canHideContent ? (
+                        <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => {
+                            if (!window.confirm("Hide this reported content post?")) return;
+                            void runAction(report.id, () =>
+                                resolveAndHideContentPost(report.id)
+                            );
+                            }}
+                            className="inline-flex items-center gap-2 rounded-[18px] bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+                        >
+                            {isBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                            <Flag className="h-4 w-4" />
+                            )}
+                            Hide content
+                        </button>
+                        ) : null}
                   </div>
                 </div>
               </div>
@@ -312,3 +349,4 @@ export default function StaffReportsPage() {
     </div>
   );
 }
+
