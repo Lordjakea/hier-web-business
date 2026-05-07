@@ -29,10 +29,7 @@ import type {
 function isClosedApplication(application: BusinessApplication) {
   const post = application.job_post;
   return (
-    application.status === "archived" ||
-    application.archived_reason === "manual_bulk" ||
     post?.post_status === "archived" ||
-    post?.is_active === false ||
     Boolean(post?.archived_at) ||
     Boolean(post?.shadow_hidden)
   );
