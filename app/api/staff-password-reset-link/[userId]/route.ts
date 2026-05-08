@@ -59,42 +59,44 @@ export async function POST(request: NextRequest, context: RouteContext) {
     redirect_url: reset_url,
   };
 
-  const paths = [
-    `/api/staff/accounts/${userId}/send-password-reset-link`,
-    `/api/staff/accounts/${userId}/password-reset-link`,
-    `/api/staff/accounts/${userId}/reset-password-link`,
-    `/api/staff/accounts/${userId}/send-password-reset`,
-  ];
+  const path = `/api/staff/accounts/${userId}/send-password-reset-link`;
 
-  let lastError = "Backend reset-link endpoint was not found.";
+  try {
+    const response = await fetch(resolveApiUrl(path), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
 
-  for (const path of paths) {
-    try {
-      const response = await fetch(resolveApiUrl(path), {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-        cache: "no-store",
-      });
+    if (response.ok) {
+      const contentType = response.headers.get("content-type") || "";
+      const responsePayload = contentType.includes("application/json")
+        ? await response.json()
+        : { ok: true };
 
-      if (response.ok) {
-        const contentType = response.headers.get("content-type") || "";
-        const responsePayload = contentType.includes("application/json")
-          ? await response.json()
-          : { ok: true };
-
-        return NextResponse.json(responsePayload);
-      }
-
-      lastError = await readError(response);
-    } catch (caughtError) {
-      lastError =
-        caughtError instanceof Error ? caughtError.message : "Request failed";
+      return NextResponse.json(responsePayload);
     }
-  }
 
-  return NextResponse.json(
-    { ok: false, message: lastError },
-    { status: 502 }
-  );
+    const backendError = await readError(response);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        message:
+          response.status === 404 || response.status === 500
+            ? "Password reset link sending is not available on the backend yet."
+            : backendError,
+      },
+      { status: response.status === 401 || response.status === 403 ? response.status : 502 }
+    );
+  } catch (caughtError) {
+    const message =
+      caughtError instanceof Error ? caughtError.message : "Request failed";
+
+    return NextResponse.json(
+      { ok: false, message },
+      { status: 502 }
+    );
+  }
 }

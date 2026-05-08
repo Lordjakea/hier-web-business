@@ -18,6 +18,10 @@ function ResetPasswordPageContent() {
     () => (searchParams.get("email") || "").trim().toLowerCase(),
     [searchParams]
   );
+  const token = useMemo(
+    () => (searchParams.get("token") || "").trim(),
+    [searchParams]
+  );
 
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -31,13 +35,13 @@ function ResetPasswordPageContent() {
     setError(null);
 
     try {
-      if (!email) {
+      if (!email && !token) {
         throw new Error("Missing email. Go back and try again.");
       }
 
       const trimmedCode = code.trim();
 
-      if (!trimmedCode) {
+      if (!token && !trimmedCode) {
         throw new Error("Code is required.");
       }
 
@@ -61,7 +65,8 @@ function ResetPasswordPageContent() {
         method: "POST",
         body: JSON.stringify({
           email,
-          code: trimmedCode,
+          token,
+          code: token ? undefined : trimmedCode,
           password,
           confirm_password: confirmPassword,
         }),
@@ -94,30 +99,32 @@ function ResetPasswordPageContent() {
             Set new password
           </h1>
           <p className="text-sm leading-6 text-hier-muted">
-            Enter the code sent to{" "}
+            Choose a new password for{" "}
             <span className="font-medium text-hier-text">
-              {email || "your email"}
-            </span>{" "}
-            and choose a new password.
+              {email || "your account"}
+            </span>
+            .
           </p>
         </div>
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-hier-text">
-              Verification code
-            </span>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              value={code}
-              onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-              placeholder="123456"
-              className="h-14 w-full rounded-[22px] border border-hier-border bg-hier-panel px-4 text-center text-lg tracking-[0.35em] text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-            />
-          </label>
+          {!token ? (
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-hier-text">
+                Verification code
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={code}
+                onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                placeholder="123456"
+                className="h-14 w-full rounded-[22px] border border-hier-border bg-hier-panel px-4 text-center text-lg tracking-[0.35em] text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+              />
+            </label>
+          ) : null}
 
           <label className="block space-y-2">
             <span className="text-sm font-medium text-hier-text">

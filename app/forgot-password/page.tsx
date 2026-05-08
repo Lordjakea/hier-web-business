@@ -1,21 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Mail } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { HierBrand } from "@/components/ui/brand";
 import { apiFetch } from "@/lib/api";
 
-type RequestOtpResponse = {
+type RequestPasswordResetResponse = {
   ok?: boolean;
-  dev_code?: string;
+  dev_link?: string;
 };
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [email, setEmail] = useState("");
+  const sentEmail = useMemo(
+    () => (searchParams.get("email") || "").trim().toLowerCase(),
+    [searchParams]
+  );
+  const sent = searchParams.get("sent") === "1";
+
+  const [email, setEmail] = useState(sentEmail);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,21 +38,20 @@ export default function ForgotPasswordPage() {
         throw new Error("Email is required.");
       }
 
-      await apiFetch<RequestOtpResponse>("/request-otp", {
+      await apiFetch<RequestPasswordResetResponse>("/request-password-reset", {
         method: "POST",
         body: JSON.stringify({
-          purpose: "reset_password",
-          channel: "email",
           email: normalizedEmail,
+          reset_url: `${window.location.origin}/reset-password`,
         }),
       });
 
-      router.push(`/reset-password?email=${encodeURIComponent(normalizedEmail)}`);
+      router.push(`/forgot-password?sent=1&email=${encodeURIComponent(normalizedEmail)}`);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Could not send a reset code right now."
+          : "Could not send a reset link right now."
       );
     } finally {
       setLoading(false);
@@ -67,7 +73,7 @@ export default function ForgotPasswordPage() {
             Forgot password
           </h1>
           <p className="text-sm leading-6 text-hier-muted">
-            Enter your email and we’ll send you a one-time code to reset your password.
+            Enter your email and we will send you a secure link to reset your password.
           </p>
         </div>
 
@@ -87,8 +93,14 @@ export default function ForgotPasswordPage() {
           </label>
 
           <div className="rounded-[22px] border border-hier-border bg-hier-soft px-4 py-4 text-sm text-hier-muted">
-            We’ll send a 6-digit code to this email address.
+            We will send a password reset link to this email address.
           </div>
+
+          {sent && !error ? (
+            <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              If an account exists for that email, a reset link has been sent.
+            </div>
+          ) : null}
 
           {error ? (
             <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -101,7 +113,7 @@ export default function ForgotPasswordPage() {
             disabled={loading}
             className="inline-flex h-14 w-full items-center justify-center rounded-[22px] bg-hier-primary text-sm font-semibold text-white shadow-card transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "Sending code…" : "Send code"}
+            {loading ? "Sending link..." : "Send reset link"}
           </button>
         </form>
 
@@ -116,5 +128,13 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-login-glow" />}>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }
