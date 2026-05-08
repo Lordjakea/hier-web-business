@@ -268,18 +268,36 @@ export async function sendStaffAccountPasswordReset(
     throw new Error("This account does not have an email address for password reset.");
   }
 
-  return apiFetch<{
+  const token = getAuthToken();
+  const response = await fetch(`/api/staff-password-reset-link/${userId}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ email: normalizedEmail, reason }),
+    cache: "no-store",
+  });
+
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const message =
+      typeof payload === "string"
+        ? payload
+        : payload?.msg || payload?.error || payload?.message || "Could not send password reset link.";
+
+    throw new Error(message);
+  }
+
+  return payload as {
     ok: boolean;
     message?: string;
-    dev_code?: string;
-  }>("/request-otp", {
-    method: "POST",
-    body: JSON.stringify({
-      purpose: "reset_password",
-      channel: "email",
-      email: normalizedEmail,
-    }),
-  });
+  };
 }
 
 export async function deleteStaffAccount(
