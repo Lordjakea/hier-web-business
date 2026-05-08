@@ -73,20 +73,6 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Workspace card */}
-      <div className="rounded-[24px] border border-hier-border bg-hier-soft p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
-          Workspace
-        </p>
-        <h2 className="mt-2 text-lg font-semibold text-hier-text">
-          Business control centre
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-hier-muted">
-          Live applicant pipeline powered by your real business applications
-          endpoints.
-        </p>
-      </div>
-
       {/* Main */}
       <nav className="space-y-2">
         <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
@@ -208,16 +194,6 @@ export function Sidebar({
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="mt-auto rounded-[24px] border border-hier-border bg-hier-panel p-4">
-        <p className="text-sm font-semibold text-hier-text">
-          Clean integration layer
-        </p>
-        <p className="mt-2 text-sm leading-6 text-hier-muted">
-          Board data, detail drawer, and recruiter updates now hang off the real
-          business application routes.
-        </p>
-      </div>
     </div>
   );
 
