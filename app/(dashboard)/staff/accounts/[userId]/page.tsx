@@ -466,12 +466,8 @@ export default function StaffAccountDetailPage() {
   async function handleResendVerificationEmail() {
     if (!userId) return;
 
-    const reason = identityReason.trim();
-
-    if (reason.length < 5) {
-      setError("Please enter a reason of at least 5 characters first.");
-      return;
-    }
+    const reason =
+      identityReason.trim() || "Staff resent account verification code from CRM.";
 
     setResendingVerification(true);
     setError(null);
@@ -496,12 +492,8 @@ export default function StaffAccountDetailPage() {
   async function handleSendPasswordReset() {
     if (!userId) return;
 
-    const reason = identityReason.trim();
-
-    if (reason.length < 5) {
-      setError("Please enter a reason of at least 5 characters first.");
-      return;
-    }
+    const reason =
+      identityReason.trim() || "Staff sent password reset request from CRM.";
 
     setSendingPasswordReset(true);
     setError(null);
@@ -1275,7 +1267,7 @@ export default function StaffAccountDetailPage() {
 
               <button
                 type="button"
-                disabled={sendingPasswordReset || identityReason.trim().length < 5}
+                disabled={sendingPasswordReset}
                 onClick={handleSendPasswordReset}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1289,9 +1281,7 @@ export default function StaffAccountDetailPage() {
 
               <button
                 type="button"
-                disabled={
-                  resendingVerification || identityReason.trim().length < 5
-                }
+                disabled={resendingVerification}
                 onClick={handleResendVerificationEmail}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
               >

@@ -299,15 +299,35 @@ export async function deleteStaffAccount(
   userId: number | string,
   reason: string
 ) {
-  return apiFetch<{
-    ok: boolean;
-    deleted?: boolean;
-    account?: StaffAccountDetail["basic"];
-    note?: StaffNote;
-  }>(`/api/staff/accounts/${userId}`, {
-    method: "DELETE",
-    body: JSON.stringify({ reason }),
-  });
+  const payload = { reason };
+  const request = (path: string, method = "POST") =>
+    apiFetch<{
+      ok: boolean;
+      deleted?: boolean;
+      account?: StaffAccountDetail["basic"];
+      note?: StaffNote;
+    }>(path, {
+      method,
+      body: JSON.stringify(payload),
+    });
+
+  try {
+    return await request(`/api/staff/accounts/${userId}/delete`);
+  } catch (caughtError) {
+    if (!(caughtError instanceof ApiError) || caughtError.status !== 404) {
+      throw caughtError;
+    }
+  }
+
+  try {
+    return await request(`/api/staff/accounts/${userId}/delete-account`);
+  } catch (caughtError) {
+    if (!(caughtError instanceof ApiError) || caughtError.status !== 404) {
+      throw caughtError;
+    }
+  }
+
+  return request(`/api/staff/accounts/${userId}/remove`);
 }
 
 export async function updateStaffBusinessProfile(
