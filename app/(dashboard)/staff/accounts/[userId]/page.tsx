@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
@@ -10,23 +10,27 @@ import {
   Check,
   CheckCircle2,
   FileText,
+  KeyRound,
   Loader2,
   Mail,
   MessageSquarePlus,
   Pencil,
   StickyNote,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffAccountNote,
+  deleteStaffAccount,
   fetchStaffAccountBilling,
   fetchStaffAccountDetail,
   fetchStaffAccountPosts,
   markStaffAccountEmailVerified,
   removeStaffPost,
   resendStaffAccountVerificationEmail,
+  sendStaffAccountPasswordReset,
   updateStaffAccountBilling,
   updateStaffAccountIdentity,
   updateStaffBusinessProfile,
@@ -218,6 +222,7 @@ function StatCard({ label, value }: { label: string; value: unknown }) {
 
 export default function StaffAccountDetailPage() {
   const params = useParams<{ userId: string }>();
+  const router = useRouter();
   const userId = Number(params.userId);
 
   const [account, setAccount] = useState<StaffAccountDetail | null>(null);
@@ -254,6 +259,11 @@ export default function StaffAccountDetailPage() {
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [markingVerified, setMarkingVerified] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
+  const [sendingPasswordReset, setSendingPasswordReset] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
@@ -382,6 +392,7 @@ export default function StaffAccountDetailPage() {
 
     setSavingIdentity(true);
     setError(null);
+    setActionMessage(null);
 
     try {
       const response = await updateStaffAccountIdentity(userId, {
@@ -425,6 +436,7 @@ export default function StaffAccountDetailPage() {
 
     setMarkingVerified(true);
     setError(null);
+    setActionMessage(null);
 
     try {
       const response = await markStaffAccountEmailVerified(userId, reason);
@@ -463,9 +475,11 @@ export default function StaffAccountDetailPage() {
 
     setResendingVerification(true);
     setError(null);
+    setActionMessage(null);
 
     try {
       await resendStaffAccountVerificationEmail(userId, reason);
+      setActionMessage("Account verification code sent.");
       setIdentityReason("");
       await loadAccount();
     } catch (caughtError) {
@@ -476,6 +490,64 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setResendingVerification(false);
+    }
+  }
+
+  async function handleSendPasswordReset() {
+    if (!userId) return;
+
+    const reason = identityReason.trim();
+
+    if (reason.length < 5) {
+      setError("Please enter a reason of at least 5 characters first.");
+      return;
+    }
+
+    setSendingPasswordReset(true);
+    setError(null);
+    setActionMessage(null);
+
+    try {
+      await sendStaffAccountPasswordReset(userId, reason, account?.basic?.email);
+      setActionMessage("Password reset request sent.");
+      setIdentityReason("");
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not send password reset request."
+      );
+    } finally {
+      setSendingPasswordReset(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!userId) return;
+
+    const reason = deleteReason.trim();
+
+    if (reason.length < 10) {
+      setError("Please enter a deletion reason of at least 10 characters.");
+      return;
+    }
+
+    setDeletingAccount(true);
+    setError(null);
+    setActionMessage(null);
+
+    try {
+      await deleteStaffAccount(userId, reason);
+      router.push("/staff");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not delete this account."
+      );
+    } finally {
+      setDeletingAccount(false);
     }
   }
 
@@ -717,6 +789,13 @@ export default function StaffAccountDetailPage() {
         <div className="flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
           <p>{error}</p>
+        </div>
+      ) : null}
+
+      {actionMessage ? (
+        <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+          <p>{actionMessage}</p>
         </div>
       ) : null}
 
@@ -1131,7 +1210,7 @@ export default function StaffAccountDetailPage() {
                   Account actions
                 </h2>
                 <p className="text-sm text-hier-muted">
-                  Edit account identity details with an audit reason.
+                  Manage identity, security requests and account status with an audit reason.
                 </p>
               </div>
             </div>
@@ -1194,39 +1273,63 @@ export default function StaffAccountDetailPage() {
                 Save identity changes
               </button>
 
-              {!account.basic?.email_verified ? (
-                <>
-                  <button
-                    type="button"
-                    disabled={markingVerified || identityReason.trim().length < 5}
-                    onClick={handleMarkEmailVerified}
-                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {markingVerified ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="h-4 w-4" />
-                    )}
-                    Mark email verified
-                  </button>
+              <button
+                type="button"
+                disabled={sendingPasswordReset || identityReason.trim().length < 5}
+                onClick={handleSendPasswordReset}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingPasswordReset ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <KeyRound className="h-4 w-4" />
+                )}
+                Send password reset request
+              </button>
 
-                  <button
-                    type="button"
-                    disabled={
-                      resendingVerification || identityReason.trim().length < 5
-                    }
-                    onClick={handleResendVerificationEmail}
-                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {resendingVerification ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Mail className="h-4 w-4" />
-                    )}
-                    Resend verification email
-                  </button>
-                </>
+              <button
+                type="button"
+                disabled={
+                  resendingVerification || identityReason.trim().length < 5
+                }
+                onClick={handleResendVerificationEmail}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resendingVerification ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Mail className="h-4 w-4" />
+                )}
+                Resend account verification code
+              </button>
+
+              {!account.basic?.email_verified ? (
+                <button
+                  type="button"
+                  disabled={markingVerified || identityReason.trim().length < 5}
+                  onClick={handleMarkEmailVerified}
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {markingVerified ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  Mark email verified
+                </button>
               ) : null}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteAccount(true);
+                  setDeleteReason("");
+                }}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-800 transition hover:bg-red-100"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete account
+              </button>
             </form>
           </section>
 
@@ -1271,6 +1374,77 @@ export default function StaffAccountDetailPage() {
           </section>
         </aside>
       </section>
+
+      {showDeleteAccount ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-[32px] border border-red-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-red-950">
+                  Delete account
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-red-800">
+                  This will delete {title}. Add a clear support reason before
+                  continuing.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={deletingAccount}
+                onClick={() => {
+                  setShowDeleteAccount(false);
+                  setDeleteReason("");
+                }}
+                className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-[22px] border border-red-200 bg-red-50 p-4">
+              <label className="block text-sm font-semibold text-red-950">
+                Deletion reason
+              </label>
+              <textarea
+                value={deleteReason}
+                onChange={(event) => setDeleteReason(event.target.value)}
+                rows={5}
+                placeholder="Explain why this account is being deleted..."
+                className="mt-3 w-full resize-none rounded-[18px] border border-red-200 bg-white p-4 text-sm text-hier-text outline-none transition focus:border-red-500"
+              />
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={deletingAccount}
+                onClick={() => {
+                  setShowDeleteAccount(false);
+                  setDeleteReason("");
+                }}
+                className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={deleteReason.trim().length < 10 || deletingAccount}
+                onClick={handleDeleteAccount}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingAccount ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Delete account
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedPost ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

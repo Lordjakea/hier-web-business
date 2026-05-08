@@ -1,4 +1,4 @@
-import { apiFetch, resolveApiUrl } from "@/lib/api";
+import { ApiError, apiFetch, resolveApiUrl } from "@/lib/api";
 
 export type StaffMe = {
   id: number;
@@ -252,6 +252,60 @@ export async function resendStaffAccountVerificationEmail(
     dev_code?: string;
   }>(`/api/staff/accounts/${userId}/resend-verification-email`, {
     method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function sendStaffAccountPasswordReset(
+  userId: number | string,
+  reason: string,
+  email?: string | null
+) {
+  try {
+    return await apiFetch<{
+      ok: boolean;
+      message?: string;
+      dev_code?: string;
+    }>(`/api/staff/accounts/${userId}/send-password-reset`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  } catch (caughtError) {
+    const canUsePublicReset =
+      caughtError instanceof ApiError &&
+      (caughtError.status === 404 || caughtError.status === 405) &&
+      Boolean(email?.trim());
+
+    if (!canUsePublicReset) {
+      throw caughtError;
+    }
+
+    return apiFetch<{
+      ok: boolean;
+      message?: string;
+      dev_code?: string;
+    }>("/request-otp", {
+      method: "POST",
+      body: JSON.stringify({
+        purpose: "reset_password",
+        channel: "email",
+        email: email?.trim().toLowerCase(),
+      }),
+    });
+  }
+}
+
+export async function deleteStaffAccount(
+  userId: number | string,
+  reason: string
+) {
+  return apiFetch<{
+    ok: boolean;
+    deleted?: boolean;
+    account?: StaffAccountDetail["basic"];
+    note?: StaffNote;
+  }>(`/api/staff/accounts/${userId}`, {
+    method: "DELETE",
     body: JSON.stringify({ reason }),
   });
 }
