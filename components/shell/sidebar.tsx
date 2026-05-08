@@ -58,7 +58,7 @@ export function Sidebar({
   );
 
   const content = (
-    <div className="flex h-full flex-col gap-8 border-r border-hier-border bg-white px-4 py-5">
+    <div className="flex h-full min-h-0 flex-col gap-8 overflow-y-auto overscroll-contain border-r border-hier-border bg-white px-4 py-5 [-webkit-overflow-scrolling:touch]">
       {/* Header */}
       <div className="flex items-center justify-between lg:justify-start">
         <HierBrand />
@@ -223,11 +223,13 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="hidden w-[292px] shrink-0 lg:block">{content}</aside>
+      <aside className="sticky top-0 hidden h-screen w-[292px] shrink-0 lg:block">
+        {content}
+      </aside>
 
       {open ? (
         <div className="fixed inset-0 z-50 bg-black/35 lg:hidden">
-          <div className="h-full w-[92%] max-w-[320px] bg-white shadow-panel">
+          <div className="h-dvh w-[92%] max-w-[320px] bg-white shadow-panel">
             {content}
           </div>
         </div>
