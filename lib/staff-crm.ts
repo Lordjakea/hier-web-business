@@ -1,4 +1,5 @@
-import { ApiError, apiFetch, resolveApiUrl } from "@/lib/api";
+import { apiFetch, resolveApiUrl } from "@/lib/api";
+import { getAuthToken } from "@/lib/auth";
 
 export type StaffMe = {
   id: number;
@@ -261,73 +262,63 @@ export async function sendStaffAccountPasswordReset(
   reason: string,
   email?: string | null
 ) {
-  try {
-    return await apiFetch<{
-      ok: boolean;
-      message?: string;
-      dev_code?: string;
-    }>(`/api/staff/accounts/${userId}/send-password-reset`, {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    });
-  } catch (caughtError) {
-    const canUsePublicReset =
-      caughtError instanceof ApiError &&
-      (caughtError.status === 404 || caughtError.status === 405) &&
-      Boolean(email?.trim());
+  const normalizedEmail = email?.trim().toLowerCase();
 
-    if (!canUsePublicReset) {
-      throw caughtError;
-    }
-
-    return apiFetch<{
-      ok: boolean;
-      message?: string;
-      dev_code?: string;
-    }>("/request-otp", {
-      method: "POST",
-      body: JSON.stringify({
-        purpose: "reset_password",
-        channel: "email",
-        email: email?.trim().toLowerCase(),
-      }),
-    });
+  if (!normalizedEmail) {
+    throw new Error("This account does not have an email address for password reset.");
   }
+
+  return apiFetch<{
+    ok: boolean;
+    message?: string;
+    dev_code?: string;
+  }>("/request-otp", {
+    method: "POST",
+    body: JSON.stringify({
+      purpose: "reset_password",
+      channel: "email",
+      email: normalizedEmail,
+    }),
+  });
 }
 
 export async function deleteStaffAccount(
   userId: number | string,
   reason: string
 ) {
-  const payload = { reason };
-  const request = (path: string, method = "POST") =>
-    apiFetch<{
-      ok: boolean;
-      deleted?: boolean;
-      account?: StaffAccountDetail["basic"];
-      note?: StaffNote;
-    }>(path, {
-      method,
-      body: JSON.stringify(payload),
-    });
+  const token = getAuthToken();
 
-  try {
-    return await request(`/api/staff/accounts/${userId}/delete`);
-  } catch (caughtError) {
-    if (!(caughtError instanceof ApiError) || caughtError.status !== 404) {
-      throw caughtError;
-    }
+  const response = await fetch(`/api/staff-account-delete/${userId}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ reason }),
+    cache: "no-store",
+  });
+
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const message =
+      typeof payload === "string"
+        ? payload
+        : payload?.msg || payload?.error || payload?.message || "Could not delete this account.";
+
+    throw new Error(message);
   }
 
-  try {
-    return await request(`/api/staff/accounts/${userId}/delete-account`);
-  } catch (caughtError) {
-    if (!(caughtError instanceof ApiError) || caughtError.status !== 404) {
-      throw caughtError;
-    }
-  }
-
-  return request(`/api/staff/accounts/${userId}/remove`);
+  return payload as {
+    ok: boolean;
+    deleted?: boolean;
+    account?: StaffAccountDetail["basic"];
+    note?: StaffNote;
+  };
 }
 
 export async function updateStaffBusinessProfile(
