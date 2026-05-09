@@ -45,8 +45,17 @@ export function CandidateCard({
   return (
     <article
       draggable
+      role="button"
+      tabIndex={0}
       onDragStart={onDragStart}
-      className={`rounded-[18px] border bg-white p-3 shadow-sm transition hover:shadow-card ${
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      className={`cursor-pointer rounded-[18px] border bg-white p-3 shadow-sm transition hover:shadow-card focus:outline-none focus:ring-2 focus:ring-hier-primary/25 ${
         selected ? "border-hier-primary ring-2 ring-hier-primary/15" : "border-hier-border"
       }`}
     >
@@ -96,7 +105,10 @@ export function CandidateCard({
       <div className="mt-3 grid grid-cols-3 gap-2">
         <button
           type="button"
-          onClick={onOpen}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
           className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-hier-border bg-white px-2 text-[11px] font-semibold text-hier-text transition hover:bg-hier-soft"
         >
           <Eye className="h-3.5 w-3.5" />
@@ -105,7 +117,10 @@ export function CandidateCard({
 
         <button
           type="button"
-          onClick={onNextStage}
+          onClick={(event) => {
+            event.stopPropagation();
+            onNextStage?.();
+          }}
           disabled={!onNextStage}
           className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-hier-border bg-white px-2 text-[11px] font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -115,7 +130,10 @@ export function CandidateCard({
 
         <button
           type="button"
-          onClick={onReject}
+          onClick={(event) => {
+            event.stopPropagation();
+            onReject?.();
+          }}
           disabled={!onReject}
           className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-rose-100 bg-rose-50 px-2 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
         >

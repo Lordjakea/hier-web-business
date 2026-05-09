@@ -656,6 +656,24 @@ export function ApplicationDetailDrawer({
                   {candidate?.summary || candidate?.about}
                 </p>
               ) : null}
+
+              {application?.first_cv_download_url ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCvModal(true);
+                    onOpenCv();
+                  }}
+                  className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-[20px] border border-hier-border px-5 text-sm font-medium text-hier-ink transition hover:bg-hier-panel"
+                >
+                  {cvPreviewLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-4 w-4" />
+                  )}
+                  Open CV
+                </button>
+              ) : null}
             </section>
 
             {applicantSummary ? (
@@ -869,23 +887,6 @@ export function ApplicationDetailDrawer({
                   {saving ? "Saving…" : "Save recruiter updates"}
                 </button>
 
-                {application?.first_cv_download_url ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCvModal(true);
-                      onOpenCv();
-                    }}
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-[20px] border border-hier-border px-5 text-sm font-medium text-hier-ink transition hover:bg-hier-panel"
-                  >
-                    {cvPreviewLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ExternalLink className="h-4 w-4" />
-                    )}
-                    View CV
-                  </button>
-                ) : null}
               </div>
             </section>
 
