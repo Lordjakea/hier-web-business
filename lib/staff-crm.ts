@@ -21,6 +21,7 @@ export type StaffAccountSearchItem = {
   role?: string | null;
   is_active?: boolean | null;
   email_verified?: boolean | null;
+  marketing_opt_in?: boolean | null;
   company_name?: string | null;
   company_number?: string | null;
   business_verified?: boolean | null;
@@ -56,6 +57,8 @@ export type StaffAccountDetail = {
     is_active?: boolean | null;
     email_verified?: boolean | null;
     phone_verified?: boolean | null;
+    marketing_opt_in?: boolean | null;
+    marketing_opt_in_at?: string | null;
     created_at?: string | null;
     updated_at?: string | null;
   } | null;
@@ -133,8 +136,78 @@ export type StaffBillingResponse = {
   allowed_statuses: string[];
 };
 
+export type StaffCrmReportResponse = {
+  ok: boolean;
+  period: { from?: string | null; to?: string | null; label?: string | null };
+  summary: {
+    total_businesses: number;
+    total_candidates: number;
+    new_businesses_30d: number;
+    new_candidates_30d: number;
+    cancellations: number;
+    pending_subscriptions: number;
+    marketing_opted_in: number;
+  };
+  business_statuses: Record<string, number>;
+  subscription_statuses: Record<string, number>;
+  marketing_opted_in_customers: Array<{
+    id: number;
+    account_type: string;
+    display_name: string;
+    email?: string | null;
+    phone?: string | null;
+    company_name?: string | null;
+    marketing_opt_in_at?: string | null;
+    created_at?: string | null;
+  }>;
+};
+
 export async function fetchStaffMe() {
   return apiFetch<{ ok: boolean; staff: StaffMe }>("/api/staff/me");
+}
+
+export async function fetchStaffCrmReports() {
+  return apiFetch<StaffCrmReportResponse>("/api/staff/crm-reports");
+}
+
+export async function createStaffAccount(payload: {
+  role: "user" | "business_user";
+  email: string;
+  phone?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  full_name?: string | null;
+  company_name?: string | null;
+  company_number?: string | null;
+  address?: string | null;
+  marketing_opt_in?: boolean;
+  plan_code?: string | null;
+  billing_status?: string | null;
+  billing_email?: string | null;
+  billing_name?: string | null;
+  trial_ends_at?: string | null;
+}) {
+  return apiFetch<{
+    ok: boolean;
+    account: Partial<StaffAccountDetail> & {
+      basic?: StaffAccountDetail["basic"];
+    };
+    warnings?: string[];
+  }>("/api/staff/accounts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createStaffSupportSession(userId: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    access_token: string;
+    refresh_token: string;
+    user: any;
+  }>(`/api/staff/accounts/${userId}/support-session`, {
+    method: "POST",
+  });
 }
 
 export async function searchStaffAccounts(params?: {
@@ -213,6 +286,7 @@ export async function updateStaffAccountIdentity(
     email?: string | null;
     phone?: string | null;
     full_name?: string | null;
+    marketing_opt_in?: boolean;
     reason: string;
   }
 ) {

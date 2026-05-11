@@ -32,6 +32,7 @@ export default function BusinessSignupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -84,6 +85,7 @@ export default function BusinessSignupPage() {
           confirm_password: confirmPassword,
           accepted_terms: acceptedTerms,
           terms_version: "2026-04",
+          marketing_opt_in: marketingOptIn,
         }),
       });
 
@@ -304,6 +306,20 @@ export default function BusinessSignupPage() {
                       Terms &amp; Conditions
                     </Link>
                     .
+                  </span>
+                </label>
+              </div>
+
+              <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                <label className="flex items-start gap-3 text-sm text-hier-muted">
+                  <input
+                    type="checkbox"
+                    checked={marketingOptIn}
+                    onChange={(event) => setMarketingOptIn(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-hier-border text-hier-primary focus:ring-hier-primary"
+                  />
+                  <span className="leading-6">
+                    I would like to receive product updates, offers and marketing emails from Hier.
                   </span>
                 </label>
               </div>

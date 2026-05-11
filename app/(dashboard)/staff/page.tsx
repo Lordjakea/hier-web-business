@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   BriefcaseBusiness,
   CheckCircle2,
   Loader2,
+  Megaphone,
+  Plus,
   Search,
   ShieldCheck,
   UserRound,
@@ -14,9 +17,12 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
+  createStaffAccount,
+  fetchStaffCrmReports,
   fetchStaffMe,
   searchStaffAccounts,
   type StaffAccountSearchItem,
+  type StaffCrmReportResponse,
   type StaffMe,
 } from "@/lib/staff-crm";
 
@@ -91,6 +97,7 @@ function AccountRow({ account }: { account: StaffAccountSearchItem }) {
 }
 
 export default function StaffCrmPage() {
+  const router = useRouter();
   const [staff, setStaff] = useState<StaffMe | null>(null);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("all");
@@ -98,6 +105,25 @@ export default function StaffCrmPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [reports, setReports] = useState<StaffCrmReportResponse | null>(null);
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState({
+    role: "business_user" as "user" | "business_user",
+    email: "",
+    phone: "",
+    first_name: "",
+    last_name: "",
+    company_name: "",
+    company_number: "",
+    address: "",
+    marketing_opt_in: false,
+    plan_code: "starter",
+    billing_status: "trial",
+    billing_email: "",
+    billing_name: "",
+  });
 
   const loadAccounts = useCallback(async () => {
     setLoading(true);
@@ -123,13 +149,79 @@ export default function StaffCrmPage() {
     }
   }, [query, role]);
 
+  const loadReports = useCallback(async () => {
+    try {
+      const response = await fetchStaffCrmReports();
+      setReports(response);
+    } catch {
+      setReports(null);
+    }
+  }, []);
+
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void loadAccounts();
+      void loadReports();
     }, 250);
 
     return () => window.clearTimeout(timeout);
-  }, [loadAccounts]);
+  }, [loadAccounts, loadReports]);
+
+  async function handleCreateAccount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatingAccount(true);
+    setCreateError(null);
+
+    try {
+      const email = createForm.email.trim().toLowerCase();
+      const phone = createForm.phone.trim();
+
+      if (!email) throw new Error("Email is required.");
+
+      if (createForm.role === "user") {
+        if (!createForm.first_name.trim()) throw new Error("First name is required.");
+        if (!createForm.last_name.trim()) throw new Error("Last name is required.");
+        if (!phone) throw new Error("Phone is required.");
+      } else {
+        if (!createForm.company_name.trim()) throw new Error("Company name is required.");
+        if (!createForm.company_number.trim()) throw new Error("Company number is required.");
+        if (!createForm.address.trim()) throw new Error("Address is required.");
+      }
+
+      const response = await createStaffAccount({
+        role: createForm.role,
+        email,
+        phone: phone || null,
+        first_name: createForm.first_name.trim() || null,
+        last_name: createForm.last_name.trim() || null,
+        company_name: createForm.company_name.trim() || null,
+        company_number: createForm.company_number.trim() || null,
+        address: createForm.address.trim() || null,
+        marketing_opt_in: createForm.marketing_opt_in,
+        plan_code: createForm.role === "business_user" ? createForm.plan_code : null,
+        billing_status: createForm.role === "business_user" ? createForm.billing_status : null,
+        billing_email: createForm.billing_email.trim() || email,
+        billing_name:
+          createForm.billing_name.trim() ||
+          createForm.company_name.trim() ||
+          `${createForm.first_name} ${createForm.last_name}`.trim(),
+      });
+
+      const createdId = response.account?.basic?.id;
+      setShowCreateAccount(false);
+      await loadAccounts();
+      await loadReports();
+      if (createdId) router.push(`/staff/accounts/${createdId}`);
+    } catch (caughtError) {
+      setCreateError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not create this account."
+      );
+    } finally {
+      setCreatingAccount(false);
+    }
+  }
 
   const stats = useMemo(() => {
     const businesses = accounts.filter((account) => account.account_type === "business").length;
@@ -151,13 +243,82 @@ export default function StaffCrmPage() {
         title="Staff CRM"
         description="Search candidate and business accounts, open a full support view, and record internal notes for the Hier team."
         action={
-          staff ? (
-            <div className="rounded-full border border-hier-border bg-white px-4 py-2 text-sm font-medium text-hier-text shadow-sm">
-              {staff.email}
-            </div>
-          ) : null
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCreateAccount(true)}
+              className="inline-flex items-center gap-2 rounded-full bg-hier-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Create account
+            </button>
+            {staff ? (
+              <div className="rounded-full border border-hier-border bg-white px-4 py-2 text-sm font-medium text-hier-text shadow-sm">
+                {staff.email}
+              </div>
+            ) : null}
+          </div>
         }
       />
+
+      {reports ? (
+        <section className="grid gap-4 xl:grid-cols-[1fr_420px]">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {[
+              ["New businesses", reports.summary.new_businesses_30d],
+              ["New candidates", reports.summary.new_candidates_30d],
+              ["Pending subscriptions", reports.summary.pending_subscriptions],
+              ["Cancellations", reports.summary.cancellations],
+              ["Marketing opted in", reports.summary.marketing_opted_in],
+              ["Total businesses", reports.summary.total_businesses],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-[28px] border border-hier-border bg-white p-5 shadow-sm">
+                <p className="text-sm font-medium text-hier-muted">{label}</p>
+                <p className="mt-3 text-3xl font-semibold text-hier-text">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-[28px] border border-hier-border bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-hier-text">Marketing opt-in</h2>
+                <p className="mt-1 text-sm text-hier-muted">Latest customers available for email campaigns.</p>
+              </div>
+              <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
+                <Megaphone className="h-4 w-4" />
+              </div>
+            </div>
+            {reports.marketing_opted_in_customers.length ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const emails = reports.marketing_opted_in_customers
+                    .map((customer) => customer.email)
+                    .filter(Boolean)
+                    .join(", ");
+                  void navigator.clipboard?.writeText(emails);
+                }}
+                className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm font-semibold text-hier-text transition hover:bg-hier-soft"
+              >
+                Copy email list
+              </button>
+            ) : null}
+            <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
+              {reports.marketing_opted_in_customers.length ? (
+                reports.marketing_opted_in_customers.slice(0, 12).map((customer) => (
+                  <div key={customer.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-3">
+                    <p className="truncate text-sm font-semibold text-hier-text">{customer.display_name}</p>
+                    <p className="mt-1 truncate text-xs text-hier-muted">{customer.email || "No email"}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-hier-muted">No marketing opt-ins yet.</p>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
         <div className="grid gap-4 lg:grid-cols-[1fr_220px_auto] lg:items-end">
@@ -198,6 +359,160 @@ export default function StaffCrmPage() {
           </button>
         </div>
       </section>
+
+      {showCreateAccount ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-hier-text/40 p-4">
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[32px] border border-hier-border bg-white p-6 shadow-panel">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-hier-text">Create account</h2>
+                <p className="mt-1 text-sm text-hier-muted">
+                  Creates the account, sends email verification, and sends a password reset link.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateAccount(false)}
+                className="rounded-2xl border border-hier-border px-3 py-2 text-sm font-semibold text-hier-text"
+              >
+                Close
+              </button>
+            </div>
+
+            <form className="mt-6 space-y-4" onSubmit={handleCreateAccount}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="space-y-2 text-sm font-medium text-hier-text">
+                  Account type
+                  <select
+                    value={createForm.role}
+                    onChange={(event) =>
+                      setCreateForm((current) => ({
+                        ...current,
+                        role: event.target.value as "user" | "business_user",
+                      }))
+                    }
+                    className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
+                  >
+                    <option value="business_user">Business</option>
+                    <option value="user">Candidate</option>
+                  </select>
+                </label>
+                <label className="space-y-2 text-sm font-medium text-hier-text">
+                  Email
+                  <input
+                    type="email"
+                    value={createForm.email}
+                    onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
+                    className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
+                  />
+                </label>
+              </div>
+
+              {createForm.role === "business_user" ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {[
+                    ["Company name", "company_name"],
+                    ["Company number", "company_number"],
+                    ["Phone", "phone"],
+                    ["Billing email", "billing_email"],
+                    ["Billing name", "billing_name"],
+                  ].map(([label, field]) => (
+                    <label key={field} className="space-y-2 text-sm font-medium text-hier-text">
+                      {label}
+                      <input
+                        value={String(createForm[field as keyof typeof createForm] || "")}
+                        onChange={(event) =>
+                          setCreateForm((current) => ({ ...current, [field]: event.target.value }))
+                        }
+                        className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
+                      />
+                    </label>
+                  ))}
+                  <label className="space-y-2 text-sm font-medium text-hier-text sm:col-span-2">
+                    Address
+                    <textarea
+                      value={createForm.address}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, address: event.target.value }))}
+                      rows={3}
+                      className="w-full rounded-[18px] border border-hier-border bg-hier-panel p-4"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm font-medium text-hier-text">
+                    Plan
+                    <input
+                      value={createForm.plan_code}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, plan_code: event.target.value }))}
+                      className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm font-medium text-hier-text">
+                    Billing status
+                    <select
+                      value={createForm.billing_status}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({ ...current, billing_status: event.target.value }))
+                      }
+                      className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
+                    >
+                      <option value="trial">Trial</option>
+                      <option value="active">Active</option>
+                      <option value="past_due">Past due</option>
+                      <option value="cancelled">Cancelled</option>
+                      <option value="suspended">Suspended</option>
+                    </select>
+                  </label>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {[
+                    ["First name", "first_name"],
+                    ["Last name", "last_name"],
+                    ["Phone", "phone"],
+                  ].map(([label, field]) => (
+                    <label key={field} className="space-y-2 text-sm font-medium text-hier-text">
+                      {label}
+                      <input
+                        value={String(createForm[field as keyof typeof createForm] || "")}
+                        onChange={(event) =>
+                          setCreateForm((current) => ({ ...current, [field]: event.target.value }))
+                        }
+                        className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              <label className="flex items-start gap-3 rounded-[20px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                <input
+                  type="checkbox"
+                  checked={createForm.marketing_opt_in}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, marketing_opt_in: event.target.checked }))
+                  }
+                  className="mt-1 h-4 w-4"
+                />
+                <span>Customer has opted in to receive marketing emails from Hier.</span>
+              </label>
+
+              {createError ? (
+                <div className="rounded-[18px] border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  {createError}
+                </div>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={creatingAccount}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {creatingAccount ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create account
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50 p-4 text-sm text-red-800">

@@ -14,6 +14,7 @@ import {
   Loader2,
   Mail,
   MessageSquarePlus,
+  MonitorCog,
   Pencil,
   StickyNote,
   Trash2,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
+  createStaffSupportSession,
   createStaffAccountNote,
   deleteStaffAccount,
   fetchStaffAccountBilling,
@@ -38,6 +40,7 @@ import {
   type StaffBilling,
   type StaffBillingPlan,
 } from "@/lib/staff-crm";
+import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -255,11 +258,13 @@ export default function StaffAccountDetailPage() {
   const [identityEmail, setIdentityEmail] = useState("");
   const [identityPhone, setIdentityPhone] = useState("");
   const [identityFullName, setIdentityFullName] = useState("");
+  const [identityMarketingOptIn, setIdentityMarketingOptIn] = useState(false);
   const [identityReason, setIdentityReason] = useState("");
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [markingVerified, setMarkingVerified] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [sendingPasswordReset, setSendingPasswordReset] = useState(false);
+  const [startingSupportPath, setStartingSupportPath] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
@@ -283,6 +288,7 @@ export default function StaffAccountDetailPage() {
       setIdentityEmail(response.account.basic?.email || "");
       setIdentityPhone(response.account.basic?.phone || "");
       setIdentityFullName(response.account.basic?.full_name || "");
+      setIdentityMarketingOptIn(Boolean(response.account.basic?.marketing_opt_in));
       setIdentityReason("");
 
       if (response.account.account_type === "business") {
@@ -399,6 +405,7 @@ export default function StaffAccountDetailPage() {
         email: identityEmail,
         phone: identityPhone,
         full_name: identityFullName,
+        marketing_opt_in: identityMarketingOptIn,
         reason,
       });
 
@@ -512,6 +519,35 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setSendingPasswordReset(false);
+    }
+  }
+
+  async function handleStartSupportAccess(path: string) {
+    if (!userId) return;
+
+    setStartingSupportPath(path);
+    setError(null);
+    setActionMessage(null);
+
+    try {
+      const staffToken = getAuthToken();
+      const staffUser = getStoredUser();
+
+      if (staffToken) window.sessionStorage.setItem("hier_staff_return_token", staffToken);
+      if (staffUser) window.sessionStorage.setItem("hier_staff_return_user", JSON.stringify(staffUser));
+
+      const response = await createStaffSupportSession(userId);
+      setAuthToken(response.access_token);
+      setStoredUser(response.user);
+      router.push(path);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not start support access."
+      );
+    } finally {
+      setStartingSupportPath(null);
     }
   }
 
@@ -822,6 +858,14 @@ export default function StaffAccountDetailPage() {
             <DetailRow
               label="Phone verified"
               value={account.basic?.phone_verified}
+            />
+            <DetailRow
+              label="Marketing opt-in"
+              value={account.basic?.marketing_opt_in}
+            />
+            <DetailRow
+              label="Marketing opt-in date"
+              value={formatDate(account.basic?.marketing_opt_in_at)}
             />
             <DetailRow
               label="Created"
@@ -1241,6 +1285,16 @@ export default function StaffAccountDetailPage() {
                 />
               </div>
 
+              <label className="flex items-start gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                <input
+                  type="checkbox"
+                  checked={identityMarketingOptIn}
+                  onChange={(event) => setIdentityMarketingOptIn(event.target.checked)}
+                  className="mt-1 h-4 w-4"
+                />
+                <span>Customer has opted in to receive marketing emails from Hier.</span>
+              </label>
+
               <div>
                 <label className="text-xs font-semibold text-hier-muted">
                   Reason required
@@ -1322,6 +1376,50 @@ export default function StaffAccountDetailPage() {
               </button>
             </form>
           </section>
+
+          {account.account_type === "business" ? (
+            <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
+                  <MonitorCog className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <h2 className="text-base font-semibold text-hier-text">
+                    Support access
+                  </h2>
+                  <p className="text-sm text-hier-muted">
+                    Open the selected account's dashboard areas for technical support.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                {[
+                  ["Candidates", "/candidates"],
+                  ["Analytics", "/analytics"],
+                  ["Posts", "/jobs"],
+                  ["Promote", "/promote"],
+                  ["Billing", "/billing"],
+                  ["Onboarding", "/onboarding"],
+                  ["Employee records", "/employee-records"],
+                ].map(([label, path]) => (
+                  <button
+                    key={path}
+                    type="button"
+                    disabled={Boolean(startingSupportPath)}
+                    onClick={() => handleStartSupportAccess(path)}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] border border-hier-border bg-hier-panel px-3 text-sm font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {startingSupportPath === path ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
             <div className="flex items-center gap-3">

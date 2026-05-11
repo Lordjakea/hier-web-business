@@ -30,6 +30,7 @@ type CandidateSignupForm = {
   password: string;
   confirm_password: string;
   accepted_terms: boolean;
+  marketing_opt_in: boolean;
 };
 
 export default function CandidateSignupPage() {
@@ -43,6 +44,7 @@ export default function CandidateSignupPage() {
     password: "",
     confirm_password: "",
     accepted_terms: false,
+    marketing_opt_in: false,
   });
 
   const [loading, setLoading] = useState(false);
@@ -114,6 +116,7 @@ export default function CandidateSignupPage() {
           confirm_password: form.confirm_password,
           accepted_terms: form.accepted_terms,
           terms_version: "2026-04",
+          marketing_opt_in: form.marketing_opt_in,
         }),
       });
 
@@ -334,6 +337,22 @@ export default function CandidateSignupPage() {
                       Terms &amp; Conditions
                     </Link>
                     .
+                  </span>
+                </label>
+              </div>
+
+              <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                <label className="flex items-start gap-3 text-sm text-hier-muted">
+                  <input
+                    type="checkbox"
+                    checked={form.marketing_opt_in}
+                    onChange={(e) =>
+                      updateField("marketing_opt_in", e.target.checked)
+                    }
+                    className="mt-1 h-4 w-4 rounded border-hier-border text-hier-primary focus:ring-hier-primary"
+                  />
+                  <span className="leading-6">
+                    I would like to receive product updates, offers and marketing emails from Hier.
                   </span>
                 </label>
               </div>
