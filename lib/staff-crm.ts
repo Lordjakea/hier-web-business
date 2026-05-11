@@ -233,6 +233,35 @@ export type StaffFollowUp = {
   updated_at?: string | null;
 };
 
+export type StaffNotification = {
+  id: number;
+  user_id: number;
+  kind: string;
+  title: string;
+  body?: string | null;
+  meta?: Record<string, any> | null;
+  is_read?: boolean | null;
+  read_at?: string | null;
+  created_at?: string | null;
+};
+
+export type StaffCase = {
+  id: number;
+  account_user_id: number;
+  title: string;
+  summary?: string | null;
+  status: "open" | "pending" | "closed" | string;
+  owner_staff_user_id?: number | null;
+  created_by_staff_user_id?: number | null;
+  owner_staff_name?: string | null;
+  created_by_staff_name?: string | null;
+  account_name?: string | null;
+  closed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  thread?: StaffNote[];
+};
+
 export async function fetchStaffMe() {
   return apiFetch<{ ok: boolean; staff: StaffMe }>("/api/staff/me");
 }
@@ -465,11 +494,13 @@ export async function fetchStaffFollowUps(params?: {
   entity_type?: "lead" | "account" | string;
   entity_id?: number | string;
   status?: string;
+  assigned_staff_user_id?: number | string;
 }) {
   const search = new URLSearchParams();
   if (params?.entity_type) search.set("entity_type", params.entity_type);
   if (params?.entity_id) search.set("entity_id", String(params.entity_id));
   if (params?.status && params.status !== "all") search.set("status", params.status);
+  if (params?.assigned_staff_user_id) search.set("assigned_staff_user_id", String(params.assigned_staff_user_id));
   const query = search.toString();
   return apiFetch<{ ok: boolean; items: StaffFollowUp[] }>(
     `/api/staff/follow-ups${query ? `?${query}` : ""}`
@@ -482,6 +513,7 @@ export async function createStaffFollowUp(payload: {
   title: string;
   note?: string | null;
   due_at: string;
+  assigned_staff_user_id?: number | string | null;
 }) {
   return apiFetch<{ ok: boolean; follow_up: StaffFollowUp }>("/api/staff/follow-ups", {
     method: "POST",
@@ -491,7 +523,7 @@ export async function createStaffFollowUp(payload: {
 
 export async function updateStaffFollowUp(
   followUpId: number | string,
-  payload: Partial<Pick<StaffFollowUp, "title" | "note" | "due_at" | "status">>
+  payload: Partial<Pick<StaffFollowUp, "title" | "note" | "due_at" | "status" | "assigned_staff_user_id">>
 ) {
   return apiFetch<{ ok: boolean; follow_up: StaffFollowUp }>(
     `/api/staff/follow-ups/${followUpId}`,
@@ -504,14 +536,28 @@ export async function updateStaffFollowUp(
 
 export async function createStaffAccountNote(
   userId: number | string,
-  note: string
+  note: string,
+  mentionedStaffUserIds: Array<number | string> = []
 ) {
   return apiFetch<{ ok: boolean; note: StaffNote }>(
     `/api/staff/accounts/${userId}/notes`,
     {
       method: "POST",
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note, mentioned_staff_user_ids: mentionedStaffUserIds }),
     }
+  );
+}
+
+export async function fetchStaffNotifications() {
+  return apiFetch<{ ok: boolean; items: StaffNotification[]; unread_count: number }>(
+    "/api/staff/notifications"
+  );
+}
+
+export async function updateStaffNotification(notificationId: number | string, isRead = true) {
+  return apiFetch<{ ok: boolean; notification: StaffNotification }>(
+    `/api/staff/notifications/${notificationId}`,
+    { method: "PATCH", body: JSON.stringify({ is_read: isRead }) }
   );
 }
 
@@ -704,6 +750,10 @@ export async function fetchStaffTeam() {
   );
 }
 
+export async function fetchStaffAssignees() {
+  return apiFetch<{ ok: boolean; staff: StaffTeamUser[] }>("/api/staff/assignees");
+}
+
 export async function createStaffInvite(email: string, staffRole: string) {
   return apiFetch<{
     ok: boolean;
@@ -713,6 +763,59 @@ export async function createStaffInvite(email: string, staffRole: string) {
   }>("/api/staff/invites", {
     method: "POST",
     body: JSON.stringify({ email, staff_role: staffRole }),
+  });
+}
+
+export async function fetchStaffCases(params?: {
+  status?: string;
+  owner_staff_user_id?: number | string;
+  account_user_id?: number | string;
+}) {
+  const search = new URLSearchParams();
+  if (params?.status && params.status !== "all") search.set("status", params.status);
+  if (params?.owner_staff_user_id) search.set("owner_staff_user_id", String(params.owner_staff_user_id));
+  if (params?.account_user_id) search.set("account_user_id", String(params.account_user_id));
+  const query = search.toString();
+  return apiFetch<{ ok: boolean; items: StaffCase[] }>(
+    `/api/staff/cases${query ? `?${query}` : ""}`
+  );
+}
+
+export async function fetchStaffCase(caseId: number | string) {
+  return apiFetch<{ ok: boolean; case: StaffCase }>(`/api/staff/cases/${caseId}`);
+}
+
+export async function createStaffCase(payload: {
+  account_user_id: number | string;
+  title: string;
+  summary?: string | null;
+  status?: string;
+  owner_staff_user_id?: number | string | null;
+}) {
+  return apiFetch<{ ok: boolean; case: StaffCase }>("/api/staff/cases", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateStaffCase(
+  caseId: number | string,
+  payload: Partial<Pick<StaffCase, "title" | "summary" | "status" | "owner_staff_user_id">>
+) {
+  return apiFetch<{ ok: boolean; case: StaffCase }>(`/api/staff/cases/${caseId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createStaffCaseNote(
+  caseId: number | string,
+  note: string,
+  mentionedStaffUserIds: Array<number | string> = []
+) {
+  return apiFetch<{ ok: boolean; note: StaffNote }>(`/api/staff/cases/${caseId}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ note, mentioned_staff_user_ids: mentionedStaffUserIds }),
   });
 }
 

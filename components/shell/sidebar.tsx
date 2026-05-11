@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Bell,
   BriefcaseBusiness,
   CreditCard,
   LayoutGrid,
@@ -180,6 +181,19 @@ export function Sidebar({
               Staff team
             </Link>
           ) : null}
+
+          <Link
+            href="/staff/notifications"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              pathname.startsWith("/staff/notifications")
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <Bell className="h-4 w-4" />
+            Notifications
+          </Link>
         </nav>
       ) : null}
 
@@ -249,6 +263,19 @@ export function Sidebar({
           >
             <CalendarClock className="h-4 w-4" />
             Follow-ups
+          </Link>
+
+          <Link
+            href="/staff/cases"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              pathname.startsWith("/staff/cases")
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <BriefcaseBusiness className="h-4 w-4" />
+            Cases
           </Link>
         </nav>
       ) : null}

@@ -5,10 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, CalendarClock, Check, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
+  fetchStaffAssignees,
   fetchStaffFollowUps,
   updateStaffFollowUp,
   type StaffFollowUp,
+  type StaffTeamUser,
 } from "@/lib/staff-crm";
+import { getStoredUser } from "@/lib/auth";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "-";
@@ -26,8 +29,12 @@ function formatDateTime(value?: string | null) {
 }
 
 export default function StaffFollowUpsPage() {
+  const storedUser = getStoredUser();
+  const canFilterStaff = ["admin", "owner"].includes(String(storedUser?.staff_role || "").toLowerCase());
   const [items, setItems] = useState<StaffFollowUp[]>([]);
+  const [staffUsers, setStaffUsers] = useState<StaffTeamUser[]>([]);
   const [status, setStatus] = useState("scheduled");
+  const [ownerId, setOwnerId] = useState("all");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,14 +43,18 @@ export default function StaffFollowUpsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchStaffFollowUps({ status });
-      setItems(response.items || []);
+      const [followUpsResponse, staffResponse] = await Promise.all([
+        fetchStaffFollowUps({ status, assigned_staff_user_id: canFilterStaff ? ownerId : undefined }),
+        fetchStaffAssignees(),
+      ]);
+      setItems(followUpsResponse.items || []);
+      setStaffUsers(staffResponse.staff || []);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Could not load follow-ups.");
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [canFilterStaff, ownerId, status]);
 
   useEffect(() => {
     void loadItems();
@@ -138,6 +149,20 @@ export default function StaffFollowUpsPage() {
             {value}
           </button>
         ))}
+        {canFilterStaff ? (
+          <select
+            value={ownerId}
+            onChange={(event) => setOwnerId(event.target.value)}
+            className="h-10 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none"
+          >
+            <option value="all">All staff</option>
+            {staffUsers.map((staff) => (
+              <option key={staff.id} value={staff.id}>
+                {staff.full_name || staff.email}
+              </option>
+            ))}
+          </select>
+        ) : null}
       </section>
 
       {loading ? (

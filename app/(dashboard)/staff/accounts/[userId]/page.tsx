@@ -28,10 +28,13 @@ import {
   createStaffBillingCheckout,
   createStaffBillingCredit,
   createStaffBillingPortal,
+  createStaffCase,
   createStaffFollowUp,
   deleteStaffAccount,
+  fetchStaffAssignees,
   fetchStaffAccountBilling,
   fetchStaffAccountDetail,
+  fetchStaffCases,
   fetchStaffFollowUps,
   markStaffAccountEmailVerified,
   resendStaffAccountVerificationEmail,
@@ -46,7 +49,9 @@ import {
   type StaffBilling,
   type StaffBillingPreview,
   type StaffBillingPlan,
+  type StaffCase,
   type StaffFollowUp,
+  type StaffTeamUser,
 } from "@/lib/staff-crm";
 import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
 
@@ -266,16 +271,26 @@ export default function StaffAccountDetailPage() {
   });
   const [savingGoodwillCredit, setSavingGoodwillCredit] = useState(false);
   const [followUps, setFollowUps] = useState<StaffFollowUp[]>([]);
+  const [staffUsers, setStaffUsers] = useState<StaffTeamUser[]>([]);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [followUpForm, setFollowUpForm] = useState({
     title: "Customer call back",
     due_at: "",
     note: "",
+    assigned_staff_user_id: "",
+  });
+  const [cases, setCases] = useState<StaffCase[]>([]);
+  const [savingCase, setSavingCase] = useState(false);
+  const [caseForm, setCaseForm] = useState({
+    title: "",
+    summary: "",
+    owner_staff_user_id: "",
   });
 
   const [loading, setLoading] = useState(true);
   const [savingNote, setSavingNote] = useState(false);
   const [note, setNote] = useState("");
+  const [mentionedStaffUserIds, setMentionedStaffUserIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [identityEmail, setIdentityEmail] = useState("");
@@ -317,6 +332,17 @@ export default function StaffAccountDetailPage() {
       setIdentityFullName(response.account.basic?.full_name || "");
       setIdentityMarketingOptIn(Boolean(response.account.basic?.marketing_opt_in));
       setIdentityReason("");
+      const assigneesResponse = await fetchStaffAssignees();
+      setStaffUsers(assigneesResponse.staff || []);
+
+      const followUpResponse = await fetchStaffFollowUps({
+        entity_type: "account",
+        entity_id: userId,
+      });
+      setFollowUps(followUpResponse.items || []);
+
+      const casesResponse = await fetchStaffCases({ account_user_id: userId });
+      setCases(casesResponse.items || []);
 
       if (response.account.account_type === "business") {
         const billingResponse = await fetchStaffAccountBilling(userId);
@@ -330,18 +356,11 @@ export default function StaffAccountDetailPage() {
           reason: "",
         });
 
-        const followUpResponse = await fetchStaffFollowUps({
-          entity_type: "account",
-          entity_id: userId,
-        });
-        setFollowUps(followUpResponse.items || []);
-
       } else {
         setBilling(null);
         setBillingPlans([]);
         setSelectedBillingPlan("");
         setBillingPreview(null);
-        setFollowUps([]);
       }
     } catch (caughtError) {
       setError(
@@ -381,7 +400,7 @@ export default function StaffAccountDetailPage() {
     setError(null);
 
     try {
-      const response = await createStaffAccountNote(userId, trimmed);
+      const response = await createStaffAccountNote(userId, trimmed, mentionedStaffUserIds);
 
       setAccount((current) =>
         current
@@ -393,6 +412,7 @@ export default function StaffAccountDetailPage() {
       );
 
       setNote("");
+      setMentionedStaffUserIds([]);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -854,9 +874,10 @@ export default function StaffAccountDetailPage() {
         title: followUpForm.title.trim(),
         due_at: new Date(followUpForm.due_at).toISOString(),
         note: followUpForm.note.trim() || null,
+        assigned_staff_user_id: followUpForm.assigned_staff_user_id || null,
       });
       setFollowUps((current) => [response.follow_up, ...current]);
-      setFollowUpForm({ title: "Customer call back", due_at: "", note: "" });
+      setFollowUpForm({ title: "Customer call back", due_at: "", note: "", assigned_staff_user_id: "" });
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -865,6 +886,33 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setSavingFollowUp(false);
+    }
+  }
+
+  async function handleCreateCase(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId || !caseForm.title.trim()) return;
+
+    setSavingCase(true);
+    setError(null);
+
+    try {
+      const response = await createStaffCase({
+        account_user_id: userId,
+        title: caseForm.title.trim(),
+        summary: caseForm.summary.trim() || null,
+        owner_staff_user_id: caseForm.owner_staff_user_id || null,
+      });
+      setCases((current) => [response.case, ...current]);
+      setCaseForm({ title: "", summary: "", owner_staff_user_id: "" });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not create case."
+      );
+    } finally {
+      setSavingCase(false);
     }
   }
 
@@ -1692,6 +1740,23 @@ export default function StaffAccountDetailPage() {
                 }
                 className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
               />
+              <select
+                value={followUpForm.assigned_staff_user_id}
+                onChange={(event) =>
+                  setFollowUpForm((current) => ({
+                    ...current,
+                    assigned_staff_user_id: event.target.value,
+                  }))
+                }
+                className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+              >
+                <option value="">Assign to me</option>
+                {staffUsers.map((staff) => (
+                  <option key={staff.id} value={staff.id}>
+                    {staff.full_name || staff.email}
+                  </option>
+                ))}
+              </select>
               <textarea
                 value={followUpForm.note}
                 onChange={(event) =>
@@ -1757,6 +1822,75 @@ export default function StaffAccountDetailPage() {
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
+                <BriefcaseBusiness className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-hier-text">Cases</h2>
+                <p className="text-sm text-hier-muted">
+                  Track investigations for this account.
+                </p>
+              </div>
+            </div>
+
+            <form className="mt-5 space-y-3" onSubmit={handleCreateCase}>
+              <input
+                value={caseForm.title}
+                onChange={(event) => setCaseForm((current) => ({ ...current, title: event.target.value }))}
+                placeholder="Case title"
+                className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+              />
+              <select
+                value={caseForm.owner_staff_user_id}
+                onChange={(event) => setCaseForm((current) => ({ ...current, owner_staff_user_id: event.target.value }))}
+                className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+              >
+                <option value="">Owner: me</option>
+                {staffUsers.map((staff) => (
+                  <option key={staff.id} value={staff.id}>
+                    {staff.full_name || staff.email}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                value={caseForm.summary}
+                onChange={(event) => setCaseForm((current) => ({ ...current, summary: event.target.value }))}
+                placeholder="Case summary"
+                rows={3}
+                className="w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+              />
+              <button
+                type="submit"
+                disabled={savingCase || !caseForm.title.trim()}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingCase ? <Loader2 className="h-4 w-4 animate-spin" /> : <BriefcaseBusiness className="h-4 w-4" />}
+                Create case
+              </button>
+            </form>
+
+            <div className="mt-5 space-y-2">
+              {cases.length ? (
+                cases.slice(0, 5).map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/staff/cases/${item.id}`}
+                    className="block rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm transition hover:border-hier-primary"
+                  >
+                    <p className="font-semibold text-hier-text">#{item.id} {item.title}</p>
+                    <p className="mt-1 text-hier-muted">{item.status} / {item.owner_staff_name || "Unassigned"}</p>
+                  </Link>
+                ))
+              ) : (
+                <p className="rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                  No cases yet.
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
                 <MessageSquarePlus className="h-5 w-5" />
               </div>
 
@@ -1778,6 +1912,22 @@ export default function StaffAccountDetailPage() {
                 rows={5}
                 className="w-full resize-none rounded-[22px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
               />
+              <select
+                multiple
+                value={mentionedStaffUserIds}
+                onChange={(event) =>
+                  setMentionedStaffUserIds(
+                    Array.from(event.target.selectedOptions).map((option) => option.value)
+                  )
+                }
+                className="min-h-24 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 py-3 text-sm outline-none focus:border-hier-primary focus:bg-white"
+              >
+                {staffUsers.map((staff) => (
+                  <option key={staff.id} value={staff.id}>
+                    @{staff.full_name || staff.email}
+                  </option>
+                ))}
+              </select>
 
               <button
                 type="submit"
