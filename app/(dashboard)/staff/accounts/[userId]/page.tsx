@@ -7,6 +7,7 @@ import {
   AlertCircle,
   ArrowLeft,
   BriefcaseBusiness,
+  CalendarClock,
   Check,
   CheckCircle2,
   FileText,
@@ -25,21 +26,26 @@ import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffSupportSession,
   createStaffAccountNote,
+  createStaffBillingCheckout,
+  createStaffBillingPortal,
+  createStaffFollowUp,
   deleteStaffAccount,
   fetchStaffAccountBilling,
   fetchStaffAccountDetail,
+  fetchStaffFollowUps,
   fetchStaffAccountPosts,
   markStaffAccountEmailVerified,
   removeStaffPost,
   resendStaffAccountVerificationEmail,
   sendStaffAccountPasswordReset,
-  updateStaffAccountBilling,
+  updateStaffFollowUp,
   updateStaffAccountIdentity,
   updateStaffBusinessProfile,
   verifyStaffAccountEmailCode,
   type StaffAccountDetail,
   type StaffBilling,
   type StaffBillingPlan,
+  type StaffFollowUp,
 } from "@/lib/staff-crm";
 import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
 
@@ -232,17 +238,14 @@ export default function StaffAccountDetailPage() {
   const [account, setAccount] = useState<StaffAccountDetail | null>(null);
   const [billing, setBilling] = useState<StaffBilling | null>(null);
   const [billingPlans, setBillingPlans] = useState<StaffBillingPlan[]>([]);
-  const [billingStatuses, setBillingStatuses] = useState<string[]>([]);
-  const [savingBilling, setSavingBilling] = useState(false);
-  const [billingReason, setBillingReason] = useState("");
-  const [billingForm, setBillingForm] = useState({
-    plan_code: "",
-    status: "",
-    trial_ends_at: "",
-    monthly_boost_credits: "0",
-    monthly_boost_credits_used: "0",
-    paid_boost_credits: "0",
-    paid_boost_credits_used: "0",
+  const [selectedBillingPlan, setSelectedBillingPlan] = useState("");
+  const [billingAction, setBillingAction] = useState<"checkout" | "portal" | null>(null);
+  const [followUps, setFollowUps] = useState<StaffFollowUp[]>([]);
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [followUpForm, setFollowUpForm] = useState({
+    title: "Customer call back",
+    due_at: "",
+    note: "",
   });
 
   const [loading, setLoading] = useState(true);
@@ -299,32 +302,13 @@ export default function StaffAccountDetailPage() {
 
         setBilling(billingResponse.billing);
         setBillingPlans(billingResponse.plans || []);
-        setBillingStatuses(billingResponse.allowed_statuses || []);
+        setSelectedBillingPlan(billingResponse.billing.plan_code || "");
 
-        const trialSource =
-          billingResponse.billing.trial_ends_at ||
-          billingResponse.billing.subscription?.trial_end ||
-          billingResponse.billing.subscription_current_period_end;
-
-        setBillingForm({
-          plan_code: billingResponse.billing.plan_code || "",
-          status: billingResponse.billing.status || "",
-          trial_ends_at: trialSource
-            ? new Date(trialSource).toISOString().slice(0, 16)
-            : "",
-          monthly_boost_credits: String(
-            billingResponse.billing.monthly_boost_credits ?? 0
-          ),
-          monthly_boost_credits_used: String(
-            billingResponse.billing.monthly_boost_credits_used ?? 0
-          ),
-          paid_boost_credits: String(
-            billingResponse.billing.paid_boost_credits ?? 0
-          ),
-          paid_boost_credits_used: String(
-            billingResponse.billing.paid_boost_credits_used ?? 0
-          ),
+        const followUpResponse = await fetchStaffFollowUps({
+          entity_type: "account",
+          entity_id: userId,
         });
+        setFollowUps(followUpResponse.items || []);
 
         setLoadingPosts(true);
         try {
@@ -336,7 +320,8 @@ export default function StaffAccountDetailPage() {
       } else {
         setBilling(null);
         setBillingPlans([]);
-        setBillingStatuses([]);
+        setSelectedBillingPlan("");
+        setFollowUps([]);
         setPosts([]);
       }
     } catch (caughtError) {
@@ -703,48 +688,93 @@ export default function StaffAccountDetailPage() {
     }
   }
 
-  async function handleSaveBilling(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleOpenBillingCheckout() {
+    if (!userId || !selectedBillingPlan) return;
 
-    if (!userId) return;
-
-    const reason = billingReason.trim();
-
-    if (reason.length < 10) {
-      setError("Please enter a billing reason of at least 10 characters.");
-      return;
-    }
-
-    setSavingBilling(true);
+    setBillingAction("checkout");
     setError(null);
 
     try {
-      const response = await updateStaffAccountBilling(userId, {
-        plan_code: billingForm.plan_code,
-        status: billingForm.status,
-        trial_ends_at: billingForm.trial_ends_at
-          ? new Date(billingForm.trial_ends_at).toISOString()
-          : null,
-        monthly_boost_credits: Number(billingForm.monthly_boost_credits || 0),
-        monthly_boost_credits_used: Number(
-          billingForm.monthly_boost_credits_used || 0
-        ),
-        paid_boost_credits: Number(billingForm.paid_boost_credits || 0),
-        paid_boost_credits_used: Number(billingForm.paid_boost_credits_used || 0),
-        reason,
-      });
-
-      setBilling(response.billing);
-      setBillingReason("");
-      await loadAccount();
+      const response = await createStaffBillingCheckout(userId, selectedBillingPlan);
+      if (response.billing) setBilling(response.billing);
+      if (response.checkout_url) window.open(response.checkout_url, "_blank", "noopener,noreferrer");
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Could not update billing controls."
+          : "Could not open Stripe checkout."
       );
     } finally {
-      setSavingBilling(false);
+      setBillingAction(null);
+    }
+  }
+
+  async function handleOpenBillingPortal() {
+    if (!userId) return;
+
+    setBillingAction("portal");
+    setError(null);
+
+    try {
+      const response = await createStaffBillingPortal(userId);
+      if (response.billing) setBilling(response.billing);
+      if (response.portal_url) window.open(response.portal_url, "_blank", "noopener,noreferrer");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not open Stripe billing portal."
+      );
+    } finally {
+      setBillingAction(null);
+    }
+  }
+
+  async function handleCreateAccountFollowUp(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId || !followUpForm.title.trim() || !followUpForm.due_at) return;
+
+    setSavingFollowUp(true);
+    setError(null);
+
+    try {
+      const response = await createStaffFollowUp({
+        entity_type: "account",
+        entity_id: userId,
+        title: followUpForm.title.trim(),
+        due_at: new Date(followUpForm.due_at).toISOString(),
+        note: followUpForm.note.trim() || null,
+      });
+      setFollowUps((current) => [response.follow_up, ...current]);
+      setFollowUpForm({ title: "Customer call back", due_at: "", note: "" });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not schedule account follow-up."
+      );
+    } finally {
+      setSavingFollowUp(false);
+    }
+  }
+
+  async function handleCompleteAccountFollowUp(followUpId: number) {
+    setSavingFollowUp(true);
+    setError(null);
+
+    try {
+      const response = await updateStaffFollowUp(followUpId, { status: "completed" });
+      setFollowUps((current) =>
+        current.map((item) => (item.id === followUpId ? response.follow_up : item))
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not complete follow-up."
+      );
+    } finally {
+      setSavingFollowUp(false);
     }
   }
 
@@ -804,6 +834,14 @@ export default function StaffAccountDetailPage() {
       `User #${account.basic.id}`
     );
   }, [account]);
+  const billingProvider = String(
+    billing?.billing_provider || billing?.subscription?.provider || ""
+  ).toLowerCase();
+  const isAppleManagedBilling = billingProvider === "apple";
+  const canUseStripeBilling =
+    Boolean(billing) &&
+    !isAppleManagedBilling &&
+    billing?.stripe_management_available !== false;
 
   if (loading) {
     return (
@@ -1000,10 +1038,14 @@ export default function StaffAccountDetailPage() {
           {account.account_type === "business" ? (
             <InfoCard title="Billing controls">
               {billing ? (
-                <form className="space-y-4" onSubmit={handleSaveBilling}>
+                <div className="space-y-4">
                   <DetailRow
                     label="Stripe customer"
                     value={billing.stripe_customer_id}
+                  />
+                  <DetailRow
+                    label="Billing provider"
+                    value={billingProvider || "Not set"}
                   />
                   <DetailRow
                     label="Subscription status"
@@ -1018,146 +1060,66 @@ export default function StaffAccountDetailPage() {
                     value={billing.subscription_cancel_at_period_end}
                   />
 
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  {isAppleManagedBilling ? (
+                    <div className="rounded-[22px] border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-sm font-semibold text-amber-950">
+                        Apple-managed subscription
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-amber-800">
+                        This customer subscribed through Apple in-app purchase. Stripe
+                        checkout and portal controls are unavailable here; billing changes
+                        need to be handled through Apple subscriptions.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
                     <div>
                       <label className="text-xs font-semibold text-hier-muted">
-                        Plan
+                        New plan
                       </label>
                       <select
-                        value={billingForm.plan_code}
-                        onChange={(event) =>
-                          setBillingForm((current) => ({
-                            ...current,
-                            plan_code: event.target.value,
-                          }))
-                        }
+                        value={selectedBillingPlan}
+                        onChange={(event) => setSelectedBillingPlan(event.target.value)}
                         className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
                       >
                         {billingPlans.map((plan) => (
                           <option key={plan.code} value={plan.code}>
                             {plan.name || plan.code}
+                            {plan.price_monthly ? ` - GBP ${plan.price_monthly}/mo` : ""}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    <div>
-                      <label className="text-xs font-semibold text-hier-muted">
-                        Status
-                      </label>
-                      <select
-                        value={billingForm.status}
-                        onChange={(event) =>
-                          setBillingForm((current) => ({
-                            ...current,
-                            status: event.target.value,
-                          }))
-                        }
-                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                      >
-                        {billingStatuses.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">
-                      Manual trial override
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={billingForm.trial_ends_at}
-                      onChange={(event) =>
-                        setBillingForm((current) => ({
-                          ...current,
-                          trial_ends_at: event.target.value,
-                        }))
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenBillingCheckout()}
+                      disabled={
+                        billingAction !== null ||
+                        !canUseStripeBilling ||
+                        !selectedBillingPlan ||
+                        selectedBillingPlan === "starter"
                       }
-                      className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                    />
-                    
-                    <p className="mt-2 text-xs text-hier-muted">
-                      Leave blank unless you want to manually comp or extend trial access. Stripe
-                      subscriptions usually use current period end instead.
-                    </p>
-                  </div>
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {billingAction === "checkout" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      Open Stripe checkout
+                    </button>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="text-xs font-semibold text-hier-muted">
-                        Monthly boost credits
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={billingForm.monthly_boost_credits}
-                        onChange={(event) =>
-                          setBillingForm((current) => ({
-                            ...current,
-                            monthly_boost_credits: event.target.value,
-                          }))
-                        }
-                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-semibold text-hier-muted">
-                        Monthly credits used
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={billingForm.monthly_boost_credits_used}
-                        onChange={(event) =>
-                          setBillingForm((current) => ({
-                            ...current,
-                            monthly_boost_credits_used: event.target.value,
-                          }))
-                        }
-                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-semibold text-hier-muted">
-                        Extra Boost Credits
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={billingForm.paid_boost_credits}
-                        onChange={(event) =>
-                          setBillingForm((current) => ({
-                            ...current,
-                            paid_boost_credits: event.target.value,
-                          }))
-                        }
-                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-semibold text-hier-muted">
-                        Extra Credits Used
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={billingForm.paid_boost_credits_used}
-                        onChange={(event) =>
-                          setBillingForm((current) => ({
-                            ...current,
-                            paid_boost_credits_used: event.target.value,
-                          }))
-                        }
-                        className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenBillingPortal()}
+                      disabled={billingAction !== null || !canUseStripeBilling}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {billingAction === "portal" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      Manage in Stripe
+                    </button>
                   </div>
 
                   <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
@@ -1165,35 +1127,36 @@ export default function StaffAccountDetailPage() {
                       Credit remaining
                     </p>
                     <p className="mt-2 text-sm text-hier-muted">
-                      Monthly: {billing.monthly_boost_credits_remaining ?? 0} ·
+                      Monthly: {billing.monthly_boost_credits_remaining ?? 0} /
                       Extra: {billing.paid_boost_credits_remaining ?? 0}
                     </p>
                   </div>
 
-                  <div>
-                    <label className="text-xs font-semibold text-hier-muted">
-                      Reason required
-                    </label>
-                    <textarea
-                      value={billingReason}
-                      onChange={(event) => setBillingReason(event.target.value)}
-                      rows={4}
-                      placeholder="Why is this billing change being made?"
-                      className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                    />
+                  <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                    <p className="text-sm font-semibold text-hier-text">
+                      Coupons used
+                    </p>
+                    {billing.coupons?.length ? (
+                      <div className="mt-3 space-y-2">
+                        {billing.coupons.map((coupon, index) => (
+                          <div
+                            key={`${coupon.code || coupon.coupon_id || index}`}
+                            className="rounded-[16px] border border-hier-border bg-white p-3 text-sm"
+                          >
+                            <p className="font-semibold text-hier-text">
+                              {coupon.code || coupon.coupon_id || coupon.promotion_code_id}
+                            </p>
+                            <p className="mt-1 text-xs text-hier-muted">
+                              {coupon.source || "Stripe"} / {formatDate(coupon.created_at)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-hier-muted">No coupons recorded yet.</p>
+                    )}
                   </div>
-
-                  <button
-                    type="submit"
-                    disabled={savingBilling || billingReason.trim().length < 10}
-                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingBilling ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : null}
-                    Save billing changes
-                  </button>
-                </form>
+                </div>
               ) : (
                 <p className="text-sm text-hier-muted">
                   Billing controls unavailable.
@@ -1506,6 +1469,101 @@ export default function StaffAccountDetailPage() {
               </div>
             </section>
           ) : null}
+
+          <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
+                <CalendarClock className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h2 className="text-base font-semibold text-hier-text">
+                  Follow-ups
+                </h2>
+                <p className="text-sm text-hier-muted">
+                  Schedule call backs and support reminders for this account.
+                </p>
+              </div>
+            </div>
+
+            <form className="mt-5 space-y-3" onSubmit={handleCreateAccountFollowUp}>
+              <input
+                value={followUpForm.title}
+                onChange={(event) =>
+                  setFollowUpForm((current) => ({ ...current, title: event.target.value }))
+                }
+                placeholder="Follow-up title"
+                className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+              />
+              <input
+                type="datetime-local"
+                value={followUpForm.due_at}
+                onChange={(event) =>
+                  setFollowUpForm((current) => ({ ...current, due_at: event.target.value }))
+                }
+                className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+              />
+              <textarea
+                value={followUpForm.note}
+                onChange={(event) =>
+                  setFollowUpForm((current) => ({ ...current, note: event.target.value }))
+                }
+                placeholder="Call notes"
+                rows={3}
+                className="w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+              />
+              <button
+                type="submit"
+                disabled={
+                  savingFollowUp ||
+                  !followUpForm.title.trim() ||
+                  !followUpForm.due_at
+                }
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingFollowUp ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CalendarClock className="h-4 w-4" />
+                )}
+                Schedule follow-up
+              </button>
+            </form>
+
+            <div className="mt-5 space-y-2">
+              {followUps.length ? (
+                followUps.slice(0, 5).map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-hier-text">{item.title}</p>
+                        <p className="mt-1 text-hier-muted">{formatDate(item.due_at)}</p>
+                      </div>
+                      {item.status !== "completed" ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleCompleteAccountFollowUp(item.id)}
+                          disabled={savingFollowUp}
+                          className="rounded-full bg-white p-2 text-hier-primary disabled:opacity-50"
+                          aria-label="Complete follow-up"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
+                    {item.note ? <p className="mt-2 text-hier-muted">{item.note}</p> : null}
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                  No follow-ups scheduled.
+                </p>
+              )}
+            </div>
+          </section>
 
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
             <div className="flex items-center gap-3">

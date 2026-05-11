@@ -112,6 +112,8 @@ export type StaffBillingPlan = {
 export type StaffBilling = {
   id: number;
   owner_user_id: number;
+  billing_provider?: string | null;
+  stripe_management_available?: boolean | null;
   status?: string | null;
   plan_code?: string | null;
   trial_ends_at?: string | null;
@@ -126,6 +128,13 @@ export type StaffBilling = {
   paid_boost_credits_used?: number | null;
   paid_boost_credits_remaining?: number | null;
   boost_credits_reset_at?: string | null;
+  coupons?: Array<{
+    code?: string | null;
+    promotion_code_id?: string | null;
+    coupon_id?: string | null;
+    source?: string | null;
+    created_at?: string | null;
+  }>;
   subscription?: Record<string, any> | null;
 };
 
@@ -162,6 +171,43 @@ export type StaffCrmReportResponse = {
     marketing_opt_in_at?: string | null;
     created_at?: string | null;
   }>;
+};
+
+export type StaffLead = {
+  id: number;
+  name: string;
+  phone?: string | null;
+  email: string;
+  business_name?: string | null;
+  address?: string | null;
+  marketing_opt_in?: boolean | null;
+  marketing_opt_in_at?: string | null;
+  status?: string | null;
+  source?: string | null;
+  owner_staff_user_id?: number | null;
+  created_by_staff_user_id?: number | null;
+  converted_user_id?: number | null;
+  notes?: StaffNote[];
+  follow_ups?: StaffFollowUp[];
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type StaffFollowUp = {
+  id: number;
+  entity_type: "lead" | "account" | string;
+  entity_id: number;
+  title: string;
+  note?: string | null;
+  due_at?: string | null;
+  status?: "scheduled" | "completed" | "cancelled" | string;
+  assigned_staff_user_id?: number | null;
+  created_by_staff_user_id?: number | null;
+  assigned_staff_name?: string | null;
+  created_by_staff_name?: string | null;
+  completed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 export async function fetchStaffMe() {
@@ -223,6 +269,16 @@ export async function createStaffBillingCheckout(
   }>(`/api/staff/accounts/${userId}/billing-checkout`, {
     method: "POST",
     body: JSON.stringify({ plan_code: planCode }),
+  });
+}
+
+export async function createStaffBillingPortal(userId: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    portal_url?: string;
+    billing?: StaffBilling;
+  }>(`/api/staff/accounts/${userId}/billing-portal`, {
+    method: "POST",
   });
 }
 
@@ -294,6 +350,88 @@ export async function updateStaffAccountBilling(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchStaffLeads(params?: { q?: string; status?: string }) {
+  const search = new URLSearchParams();
+  if (params?.q?.trim()) search.set("q", params.q.trim());
+  if (params?.status && params.status !== "all") search.set("status", params.status);
+  const query = search.toString();
+  return apiFetch<{ ok: boolean; items: StaffLead[] }>(
+    `/api/staff/leads${query ? `?${query}` : ""}`
+  );
+}
+
+export async function createStaffLead(payload: {
+  name: string;
+  phone?: string | null;
+  email: string;
+  business_name?: string | null;
+  address?: string | null;
+  marketing_opt_in?: boolean;
+}) {
+  return apiFetch<{ ok: boolean; lead: StaffLead }>("/api/staff/leads", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateStaffLead(
+  leadId: number | string,
+  payload: Partial<Pick<StaffLead, "name" | "phone" | "email" | "business_name" | "address" | "marketing_opt_in" | "status">>
+) {
+  return apiFetch<{ ok: boolean; lead: StaffLead }>(`/api/staff/leads/${leadId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createStaffLeadNote(leadId: number | string, note: string) {
+  return apiFetch<{ ok: boolean; note: StaffNote }>(`/api/staff/leads/${leadId}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export async function fetchStaffFollowUps(params?: {
+  entity_type?: "lead" | "account" | string;
+  entity_id?: number | string;
+  status?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params?.entity_type) search.set("entity_type", params.entity_type);
+  if (params?.entity_id) search.set("entity_id", String(params.entity_id));
+  if (params?.status && params.status !== "all") search.set("status", params.status);
+  const query = search.toString();
+  return apiFetch<{ ok: boolean; items: StaffFollowUp[] }>(
+    `/api/staff/follow-ups${query ? `?${query}` : ""}`
+  );
+}
+
+export async function createStaffFollowUp(payload: {
+  entity_type: "lead" | "account" | string;
+  entity_id: number | string;
+  title: string;
+  note?: string | null;
+  due_at: string;
+}) {
+  return apiFetch<{ ok: boolean; follow_up: StaffFollowUp }>("/api/staff/follow-ups", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateStaffFollowUp(
+  followUpId: number | string,
+  payload: Partial<Pick<StaffFollowUp, "title" | "note" | "due_at" | "status">>
+) {
+  return apiFetch<{ ok: boolean; follow_up: StaffFollowUp }>(
+    `/api/staff/follow-ups/${followUpId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  );
 }
 
 export async function createStaffAccountNote(

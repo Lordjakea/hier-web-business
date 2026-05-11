@@ -16,6 +16,8 @@ import {
   Mail,
   X,
   Flag,
+  PhoneCall,
+  CalendarClock,
 } from "lucide-react";
 import clsx from "clsx";
 import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
@@ -131,12 +133,6 @@ export function Sidebar({
       {/* STAFF SECTION */}
       {isStaff ? (
         <nav className="space-y-2">
-          {supportTarget ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold text-amber-900">
-              Support target: {supportTarget.name}
-            </div>
-          ) : null}
-
           <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
             Hier Staff
           </p>
@@ -218,6 +214,41 @@ export function Sidebar({
           >
             <Flag className="h-4 w-4" />
             Content reports
+          </Link>
+        </nav>
+      ) : null}
+
+      {/* LEADS SECTION */}
+      {isStaff ? (
+        <nav className="space-y-2">
+          <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+            Leads
+          </p>
+
+          <Link
+            href="/staff/leads"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              pathname.startsWith("/staff/leads")
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <PhoneCall className="h-4 w-4" />
+            Leads
+          </Link>
+
+          <Link
+            href="/staff/follow-ups"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              pathname.startsWith("/staff/follow-ups")
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <CalendarClock className="h-4 w-4" />
+            Follow-ups
           </Link>
         </nav>
       ) : null}

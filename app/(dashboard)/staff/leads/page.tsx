@@ -1,0 +1,430 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, CalendarClock, Check, Loader2, MessageSquarePlus, Plus, Search } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import {
+  createStaffFollowUp,
+  createStaffLead,
+  createStaffLeadNote,
+  fetchStaffLeads,
+  updateStaffFollowUp,
+  updateStaffLead,
+  type StaffLead,
+} from "@/lib/staff-crm";
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "-";
+  }
+}
+
+function blankLeadForm() {
+  return {
+    name: "",
+    phone: "",
+    email: "",
+    business_name: "",
+    address: "",
+    marketing_opt_in: false,
+  };
+}
+
+export default function StaffLeadsPage() {
+  const [leads, setLeads] = useState<StaffLead[]>([]);
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [leadForm, setLeadForm] = useState(blankLeadForm);
+  const [note, setNote] = useState("");
+  const [followUp, setFollowUp] = useState({
+    title: "Call back",
+    due_at: "",
+    note: "",
+  });
+
+  const selectedLead = useMemo(
+    () => leads.find((lead) => lead.id === selectedLeadId) || leads[0] || null,
+    [leads, selectedLeadId]
+  );
+
+  const loadLeads = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetchStaffLeads({ q: query, status });
+      setLeads(response.items || []);
+      setSelectedLeadId((current) => {
+        if (current && response.items?.some((lead) => lead.id === current)) return current;
+        return response.items?.[0]?.id || null;
+      });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not load leads.");
+    } finally {
+      setLoading(false);
+    }
+  }, [query, status]);
+
+  useEffect(() => {
+    void loadLeads();
+  }, [loadLeads]);
+
+  async function handleCreateLead(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await createStaffLead(leadForm);
+      setLeads((current) => [response.lead, ...current]);
+      setSelectedLeadId(response.lead.id);
+      setLeadForm(blankLeadForm());
+      setShowCreate(false);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not create lead.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleStatusChange(lead: StaffLead, nextStatus: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await updateStaffLead(lead.id, { status: nextStatus });
+      setLeads((current) => current.map((item) => (item.id === lead.id ? response.lead : item)));
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not update lead.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAddNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedLead || !note.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await createStaffLeadNote(selectedLead.id, note.trim());
+      setLeads((current) =>
+        current.map((lead) =>
+          lead.id === selectedLead.id ? { ...lead, notes: [response.note, ...(lead.notes || [])] } : lead
+        )
+      );
+      setNote("");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not add note.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAddFollowUp(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedLead || !followUp.title.trim() || !followUp.due_at) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await createStaffFollowUp({
+        entity_type: "lead",
+        entity_id: selectedLead.id,
+        title: followUp.title.trim(),
+        due_at: new Date(followUp.due_at).toISOString(),
+        note: followUp.note.trim() || null,
+      });
+      setLeads((current) =>
+        current.map((lead) =>
+          lead.id === selectedLead.id
+            ? { ...lead, follow_ups: [response.follow_up, ...(lead.follow_ups || [])] }
+            : lead
+        )
+      );
+      setFollowUp({ title: "Call back", due_at: "", note: "" });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not schedule follow-up.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markFollowUpDone(followUpId: number) {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await updateStaffFollowUp(followUpId, { status: "completed" });
+      setLeads((current) =>
+        current.map((lead) => ({
+          ...lead,
+          follow_ups: (lead.follow_ups || []).map((item) =>
+            item.id === followUpId ? response.follow_up : item
+          ),
+        }))
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not complete follow-up.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="Hier staff"
+        title="Leads"
+        description="Create leads, keep notes and schedule staff follow-ups."
+      />
+
+      {error ? (
+        <div className="flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{error}</p>
+        </div>
+      ) : null}
+
+      <section className="grid gap-4 rounded-[28px] border border-hier-border bg-white p-4 shadow-card lg:grid-cols-[1fr_180px_auto]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-hier-muted" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search leads"
+            className="h-12 w-full rounded-[20px] border border-hier-border bg-hier-panel pl-11 pr-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+          />
+        </div>
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+          className="h-12 rounded-[20px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+        >
+          <option value="all">All statuses</option>
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="qualified">Qualified</option>
+          <option value="closed">Closed</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-5 text-sm font-semibold text-white shadow-card"
+        >
+          <Plus className="h-4 w-4" />
+          Create lead
+        </button>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1fr_440px]">
+        <div className="space-y-3">
+          {loading ? (
+            <div className="rounded-[28px] border border-hier-border bg-white p-8 text-sm text-hier-muted">
+              Loading leads...
+            </div>
+          ) : leads.length ? (
+            leads.map((lead) => (
+              <button
+                key={lead.id}
+                type="button"
+                onClick={() => setSelectedLeadId(lead.id)}
+                className={`w-full rounded-[24px] border p-4 text-left shadow-sm transition ${
+                  selectedLead?.id === lead.id
+                    ? "border-hier-primary bg-white shadow-card"
+                    : "border-hier-border bg-white hover:border-hier-primary"
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-hier-text">{lead.name}</p>
+                    <p className="mt-1 text-sm text-hier-muted">{lead.email}</p>
+                    <p className="mt-1 text-sm text-hier-muted">{lead.phone || lead.business_name || "-"}</p>
+                  </div>
+                  <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                    {lead.status || "new"}
+                  </span>
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="rounded-[28px] border border-hier-border bg-white p-8 text-sm text-hier-muted">
+              No leads yet.
+            </div>
+          )}
+        </div>
+
+        <aside className="space-y-4">
+          {selectedLead ? (
+            <>
+              <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-hier-text">{selectedLead.name}</h2>
+                    <p className="mt-1 text-sm text-hier-muted">{selectedLead.email}</p>
+                  </div>
+                  <select
+                    value={selectedLead.status || "new"}
+                    onChange={(event) => void handleStatusChange(selectedLead, event.target.value)}
+                    disabled={saving}
+                    className="h-10 rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm outline-none"
+                  >
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="qualified">Qualified</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </div>
+                <div className="mt-5 space-y-3 text-sm">
+                  <p><span className="font-semibold text-hier-text">Phone:</span> {selectedLead.phone || "-"}</p>
+                  <p><span className="font-semibold text-hier-text">Business:</span> {selectedLead.business_name || "-"}</p>
+                  <p><span className="font-semibold text-hier-text">Address:</span> {selectedLead.address || "-"}</p>
+                  <p><span className="font-semibold text-hier-text">Marketing opt in:</span> {selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
+                </div>
+              </section>
+
+              <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-hier-text">
+                  <CalendarClock className="h-4 w-4" />
+                  Follow-ups
+                </h2>
+                <form className="mt-4 space-y-3" onSubmit={handleAddFollowUp}>
+                  <input
+                    value={followUp.title}
+                    onChange={(event) => setFollowUp((current) => ({ ...current, title: event.target.value }))}
+                    className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    placeholder="Follow-up title"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={followUp.due_at}
+                    onChange={(event) => setFollowUp((current) => ({ ...current, due_at: event.target.value }))}
+                    className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                  />
+                  <textarea
+                    value={followUp.note}
+                    onChange={(event) => setFollowUp((current) => ({ ...current, note: event.target.value }))}
+                    rows={3}
+                    className="w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    placeholder="Call notes"
+                  />
+                  <button
+                    type="submit"
+                    disabled={saving || !followUp.title.trim() || !followUp.due_at}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    Schedule follow-up
+                  </button>
+                </form>
+                <div className="mt-4 space-y-2">
+                  {(selectedLead.follow_ups || []).map((item) => (
+                    <div key={item.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-hier-text">{item.title}</p>
+                          <p className="text-hier-muted">{formatDateTime(item.due_at)}</p>
+                        </div>
+                        {item.status !== "completed" ? (
+                          <button
+                            type="button"
+                            onClick={() => void markFollowUpDone(item.id)}
+                            className="rounded-full bg-white p-2 text-hier-primary"
+                            aria-label="Complete follow-up"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
+                      {item.note ? <p className="mt-2 text-hier-muted">{item.note}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-hier-text">
+                  <MessageSquarePlus className="h-4 w-4" />
+                  Notes
+                </h2>
+                <form className="mt-4 space-y-3" onSubmit={handleAddNote}>
+                  <textarea
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    rows={4}
+                    className="w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    placeholder="Add lead note"
+                  />
+                  <button
+                    type="submit"
+                    disabled={saving || !note.trim()}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    Add note
+                  </button>
+                </form>
+                <div className="mt-4 space-y-2">
+                  {(selectedLead.notes || []).map((item) => (
+                    <div key={item.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-muted">
+                      <p>{item.note}</p>
+                      <p className="mt-2 text-xs">{formatDateTime(item.created_at)}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </>
+          ) : null}
+        </aside>
+      </section>
+
+      {showCreate ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form className="w-full max-w-2xl rounded-[32px] bg-white p-6 shadow-panel" onSubmit={handleCreateLead}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-hier-text">Create lead</h2>
+                <p className="mt-1 text-sm text-hier-muted">Add contact details and opt-in status.</p>
+              </div>
+              <button type="button" onClick={() => setShowCreate(false)} className="text-sm font-semibold text-hier-muted">
+                Close
+              </button>
+            </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <input required value={leadForm.name} onChange={(event) => setLeadForm((current) => ({ ...current, name: event.target.value }))} placeholder="Name" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input required type="email" value={leadForm.email} onChange={(event) => setLeadForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.phone} onChange={(event) => setLeadForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Number" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.business_name} onChange={(event) => setLeadForm((current) => ({ ...current, business_name: event.target.value }))} placeholder="Business name (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <textarea value={leadForm.address} onChange={(event) => setLeadForm((current) => ({ ...current, address: event.target.value }))} placeholder="Address" rows={3} className="sm:col-span-2 resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+            </div>
+            <label className="mt-4 flex items-start gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text">
+              <input
+                type="checkbox"
+                checked={leadForm.marketing_opt_in}
+                onChange={(event) => setLeadForm((current) => ({ ...current, marketing_opt_in: event.target.checked }))}
+                className="mt-1"
+              />
+              Marketing opt in
+            </label>
+            <button
+              type="submit"
+              disabled={saving}
+              className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Create lead
+            </button>
+          </form>
+        </div>
+      ) : null}
+    </div>
+  );
+}
