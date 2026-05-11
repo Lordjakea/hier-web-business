@@ -67,6 +67,16 @@ export default function StaffCustomerReportsPage() {
   }
 
   const summary = reports?.summary;
+  const summaryTiles = summary
+    ? [
+        { label: "New businesses", value: summary.new_businesses_30d, filter: "new_businesses" },
+        { label: "New candidates", value: summary.new_candidates_30d, filter: "new_candidates" },
+        { label: "Pending subscriptions", value: summary.pending_subscriptions, filter: "pending_subscriptions" },
+        { label: "Cancellations", value: summary.cancellations, filter: "cancellations" },
+        { label: "Marketing opted in", value: summary.marketing_opted_in, filter: "marketing_opt_ins" },
+        { label: "Total businesses", value: summary.total_businesses, filter: "all" },
+      ]
+    : [];
 
   return (
     <div className="space-y-8">
@@ -104,18 +114,20 @@ export default function StaffCustomerReportsPage() {
       {summary ? (
         <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {[
-              ["New businesses", summary.new_businesses_30d],
-              ["New candidates", summary.new_candidates_30d],
-              ["Pending subscriptions", summary.pending_subscriptions],
-              ["Cancellations", summary.cancellations],
-              ["Marketing opted in", summary.marketing_opted_in],
-              ["Total businesses", summary.total_businesses],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-[28px] border border-hier-border bg-white p-5 shadow-sm">
+            {summaryTiles.map(({ label, value, filter }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setReportFilter(filter)}
+                className={`rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-hier-primary ${
+                  reportFilter === filter
+                    ? "border-hier-primary bg-hier-soft"
+                    : "border-hier-border bg-white"
+                }`}
+              >
                 <p className="text-sm font-medium text-hier-muted">{label}</p>
                 <p className="mt-3 text-3xl font-semibold text-hier-text">{value}</p>
-              </div>
+              </button>
             ))}
           </div>
 
