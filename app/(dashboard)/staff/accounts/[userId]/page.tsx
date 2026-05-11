@@ -1389,7 +1389,7 @@ export default function StaffAccountDetailPage() {
                     Support access
                   </h2>
                   <p className="text-sm text-hier-muted">
-                    Open the selected account's dashboard areas for technical support.
+                    Open the selected account&apos;s dashboard areas for technical support.
                   </p>
                 </div>
               </div>
