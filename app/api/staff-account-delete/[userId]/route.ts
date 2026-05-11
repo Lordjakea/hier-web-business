@@ -30,6 +30,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { userId } = await context.params;
   const body = await request.json().catch(() => ({}));
   const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  const confirmDelete = body?.confirm_delete === true;
+  const cancelStripeSubscription = body?.cancel_stripe_subscription === true;
 
   if (reason.length < 10) {
     return NextResponse.json(
@@ -61,7 +63,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       const response = await fetch(resolveApiUrl(path), {
         method: "POST",
         headers,
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({
+          reason,
+          confirm_delete: confirmDelete,
+          cancel_stripe_subscription: cancelStripeSubscription,
+        }),
         cache: "no-store",
       });
 
