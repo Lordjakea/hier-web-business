@@ -145,6 +145,29 @@ export type StaffBillingResponse = {
   allowed_statuses: string[];
 };
 
+export type StaffBillingPreview = {
+  ok: boolean;
+  mode: string;
+  direction?: string | null;
+  current_plan_code?: string | null;
+  target_plan_code?: string | null;
+  message?: string | null;
+  currency?: string | null;
+  amount_due_now?: number | null;
+  total?: number | null;
+  subtotal?: number | null;
+  current_period_end?: string | null;
+  lines?: Array<{
+    id?: string | null;
+    description?: string | null;
+    amount?: number | null;
+    currency?: string | null;
+    proration?: boolean | null;
+    type?: string | null;
+    period?: Record<string, any>;
+  }>;
+};
+
 export type StaffCrmReportResponse = {
   ok: boolean;
   period: { from?: string | null; to?: string | null; label?: string | null };
@@ -279,6 +302,30 @@ export async function createStaffBillingPortal(userId: number | string) {
     billing?: StaffBilling;
   }>(`/api/staff/accounts/${userId}/billing-portal`, {
     method: "POST",
+  });
+}
+
+export async function previewStaffBillingChange(
+  userId: number | string,
+  planCode: string
+) {
+  return apiFetch<StaffBillingPreview>(`/api/staff/accounts/${userId}/billing-preview`, {
+    method: "POST",
+    body: JSON.stringify({ plan_code: planCode }),
+  });
+}
+
+export async function createStaffBillingCredit(
+  userId: number | string,
+  payload: { amount: number; currency?: string; reason: string }
+) {
+  return apiFetch<{
+    ok: boolean;
+    transaction?: Record<string, any>;
+    billing?: StaffBilling;
+  }>(`/api/staff/accounts/${userId}/billing-credit`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

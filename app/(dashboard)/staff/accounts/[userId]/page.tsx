@@ -27,6 +27,7 @@ import {
   createStaffSupportSession,
   createStaffAccountNote,
   createStaffBillingCheckout,
+  createStaffBillingCredit,
   createStaffBillingPortal,
   createStaffFollowUp,
   deleteStaffAccount,
@@ -38,12 +39,15 @@ import {
   removeStaffPost,
   resendStaffAccountVerificationEmail,
   sendStaffAccountPasswordReset,
+  previewStaffBillingChange,
   updateStaffFollowUp,
+  updateStaffAccountBilling,
   updateStaffAccountIdentity,
   updateStaffBusinessProfile,
   verifyStaffAccountEmailCode,
   type StaffAccountDetail,
   type StaffBilling,
+  type StaffBillingPreview,
   type StaffBillingPlan,
   type StaffFollowUp,
 } from "@/lib/staff-crm";
@@ -69,6 +73,18 @@ function displayValue(value: unknown) {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
+}
+
+function formatMoneyFromMinor(value?: number | null, currency = "GBP") {
+  if (value === null || value === undefined) return "—";
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: currency || "GBP",
+    }).format(value / 100);
+  } catch {
+    return `${currency || "GBP"} ${(value / 100).toFixed(2)}`;
+  }
 }
 
 function InfoCard({
@@ -240,6 +256,18 @@ export default function StaffAccountDetailPage() {
   const [billingPlans, setBillingPlans] = useState<StaffBillingPlan[]>([]);
   const [selectedBillingPlan, setSelectedBillingPlan] = useState("");
   const [billingAction, setBillingAction] = useState<"checkout" | "portal" | null>(null);
+  const [billingPreview, setBillingPreview] = useState<StaffBillingPreview | null>(null);
+  const [previewingBilling, setPreviewingBilling] = useState(false);
+  const [extraBoostForm, setExtraBoostForm] = useState({
+    paid_boost_credits: "0",
+    reason: "",
+  });
+  const [savingExtraBoost, setSavingExtraBoost] = useState(false);
+  const [goodwillCreditForm, setGoodwillCreditForm] = useState({
+    amount: "",
+    reason: "",
+  });
+  const [savingGoodwillCredit, setSavingGoodwillCredit] = useState(false);
   const [followUps, setFollowUps] = useState<StaffFollowUp[]>([]);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [followUpForm, setFollowUpForm] = useState({
@@ -303,6 +331,11 @@ export default function StaffAccountDetailPage() {
         setBilling(billingResponse.billing);
         setBillingPlans(billingResponse.plans || []);
         setSelectedBillingPlan(billingResponse.billing.plan_code || "");
+        setBillingPreview(null);
+        setExtraBoostForm({
+          paid_boost_credits: String(billingResponse.billing.paid_boost_credits ?? 0),
+          reason: "",
+        });
 
         const followUpResponse = await fetchStaffFollowUps({
           entity_type: "account",
@@ -321,6 +354,7 @@ export default function StaffAccountDetailPage() {
         setBilling(null);
         setBillingPlans([]);
         setSelectedBillingPlan("");
+        setBillingPreview(null);
         setFollowUps([]);
         setPosts([]);
       }
@@ -730,6 +764,94 @@ export default function StaffAccountDetailPage() {
     }
   }
 
+  async function handlePreviewBillingChange() {
+    if (!userId || !selectedBillingPlan) return;
+
+    setPreviewingBilling(true);
+    setError(null);
+
+    try {
+      const response = await previewStaffBillingChange(userId, selectedBillingPlan);
+      setBillingPreview(response);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not preview Stripe billing change."
+      );
+    } finally {
+      setPreviewingBilling(false);
+    }
+  }
+
+  async function handleSaveExtraBoostCredits(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId) return;
+
+    const reason = extraBoostForm.reason.trim();
+    if (reason.length < 10) {
+      setError("Please enter a reason of at least 10 characters.");
+      return;
+    }
+
+    setSavingExtraBoost(true);
+    setError(null);
+
+    try {
+      const response = await updateStaffAccountBilling(userId, {
+        paid_boost_credits: Number(extraBoostForm.paid_boost_credits || 0),
+        reason,
+      });
+      setBilling(response.billing);
+      setExtraBoostForm((current) => ({ ...current, reason: "" }));
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update extra boost credits."
+      );
+    } finally {
+      setSavingExtraBoost(false);
+    }
+  }
+
+  async function handleCreateGoodwillCredit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId) return;
+
+    const reason = goodwillCreditForm.reason.trim();
+    const amount = Number(goodwillCreditForm.amount || 0);
+    if (!amount || amount <= 0) {
+      setError("Please enter a goodwill credit amount above zero.");
+      return;
+    }
+    if (reason.length < 10) {
+      setError("Please enter a goodwill credit reason of at least 10 characters.");
+      return;
+    }
+
+    setSavingGoodwillCredit(true);
+    setError(null);
+
+    try {
+      const response = await createStaffBillingCredit(userId, {
+        amount,
+        currency: "gbp",
+        reason,
+      });
+      if (response.billing) setBilling(response.billing);
+      setGoodwillCreditForm({ amount: "", reason: "" });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not create Stripe goodwill credit."
+      );
+    } finally {
+      setSavingGoodwillCredit(false);
+    }
+  }
+
   async function handleCreateAccountFollowUp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!userId || !followUpForm.title.trim() || !followUpForm.due_at) return;
@@ -1080,7 +1202,10 @@ export default function StaffAccountDetailPage() {
                       </label>
                       <select
                         value={selectedBillingPlan}
-                        onChange={(event) => setSelectedBillingPlan(event.target.value)}
+                        onChange={(event) => {
+                          setSelectedBillingPlan(event.target.value);
+                          setBillingPreview(null);
+                        }}
                         className="mt-1 h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
                       >
                         {billingPlans.map((plan) => (
@@ -1091,6 +1216,23 @@ export default function StaffAccountDetailPage() {
                         ))}
                       </select>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handlePreviewBillingChange()}
+                      disabled={
+                        previewingBilling ||
+                        !canUseStripeBilling ||
+                        !selectedBillingPlan ||
+                        selectedBillingPlan === "starter"
+                      }
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {previewingBilling ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      Preview proration
+                    </button>
 
                     <button
                       type="button"
@@ -1108,7 +1250,9 @@ export default function StaffAccountDetailPage() {
                       ) : null}
                       Open Stripe checkout
                     </button>
+                  </div>
 
+                  <div className="flex justify-end">
                     <button
                       type="button"
                       onClick={() => void handleOpenBillingPortal()}
@@ -1122,6 +1266,72 @@ export default function StaffAccountDetailPage() {
                     </button>
                   </div>
 
+                  {billingPreview ? (
+                    <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                      <p className="text-sm font-semibold text-hier-text">
+                        Pro-rata preview
+                      </p>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-[16px] bg-white p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                            Mode
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-hier-text">
+                            {billingPreview.mode}
+                          </p>
+                        </div>
+                        <div className="rounded-[16px] bg-white p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                            Due now
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-hier-text">
+                            {formatMoneyFromMinor(
+                              billingPreview.amount_due_now,
+                              billingPreview.currency || "GBP"
+                            )}
+                          </p>
+                        </div>
+                        <div className="rounded-[16px] bg-white p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                            Direction
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-hier-text">
+                            {billingPreview.direction || "-"}
+                          </p>
+                        </div>
+                      </div>
+                      {billingPreview.message ? (
+                        <p className="mt-3 text-sm text-hier-muted">
+                          {billingPreview.message}
+                        </p>
+                      ) : null}
+                      {billingPreview.lines?.length ? (
+                        <div className="mt-3 space-y-2">
+                          {billingPreview.lines.slice(0, 4).map((line, index) => (
+                            <div
+                              key={line.id || index}
+                              className="flex items-start justify-between gap-3 rounded-[16px] bg-white p-3 text-sm"
+                            >
+                              <div>
+                                <p className="font-semibold text-hier-text">
+                                  {line.description || "Stripe line item"}
+                                </p>
+                                {line.proration ? (
+                                  <p className="mt-1 text-xs font-semibold text-hier-primary">
+                                    Proration
+                                  </p>
+                                ) : null}
+                              </div>
+                              <p className="font-semibold text-hier-text">
+                                {formatMoneyFromMinor(line.amount, line.currency || billingPreview.currency || "GBP")}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
                     <p className="text-sm font-semibold text-hier-text">
                       Credit remaining
@@ -1131,6 +1341,102 @@ export default function StaffAccountDetailPage() {
                       Extra: {billing.paid_boost_credits_remaining ?? 0}
                     </p>
                   </div>
+
+                  <form
+                    className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                    onSubmit={handleSaveExtraBoostCredits}
+                  >
+                    <p className="text-sm font-semibold text-hier-text">
+                      Extra boost credits
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-[160px_1fr]">
+                      <input
+                        type="number"
+                        min="0"
+                        value={extraBoostForm.paid_boost_credits}
+                        onChange={(event) =>
+                          setExtraBoostForm((current) => ({
+                            ...current,
+                            paid_boost_credits: event.target.value,
+                          }))
+                        }
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary"
+                      />
+                      <input
+                        value={extraBoostForm.reason}
+                        onChange={(event) =>
+                          setExtraBoostForm((current) => ({
+                            ...current,
+                            reason: event.target.value,
+                          }))
+                        }
+                        placeholder="Reason for changing extra boost credits"
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={savingExtraBoost || extraBoostForm.reason.trim().length < 10}
+                      className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {savingExtraBoost ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save extra boost credits
+                    </button>
+                  </form>
+
+                  <form
+                    className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                    onSubmit={handleCreateGoodwillCredit}
+                  >
+                    <p className="text-sm font-semibold text-hier-text">
+                      Stripe goodwill credit
+                    </p>
+                    <p className="mt-2 text-sm text-hier-muted">
+                      Adds credit to the customer&apos;s Stripe balance for a future invoice.
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-[160px_1fr]">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={goodwillCreditForm.amount}
+                        onChange={(event) =>
+                          setGoodwillCreditForm((current) => ({
+                            ...current,
+                            amount: event.target.value,
+                          }))
+                        }
+                        placeholder="20.00"
+                        disabled={!canUseStripeBilling}
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary disabled:opacity-50"
+                      />
+                      <input
+                        value={goodwillCreditForm.reason}
+                        onChange={(event) =>
+                          setGoodwillCreditForm((current) => ({
+                            ...current,
+                            reason: event.target.value,
+                          }))
+                        }
+                        placeholder="Reason for goodwill credit"
+                        disabled={!canUseStripeBilling}
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary disabled:opacity-50"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={
+                        savingGoodwillCredit ||
+                        !canUseStripeBilling ||
+                        !goodwillCreditForm.amount ||
+                        goodwillCreditForm.reason.trim().length < 10
+                      }
+                      className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {savingGoodwillCredit ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Add Stripe credit
+                    </button>
+                  </form>
 
                   <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
                     <p className="text-sm font-semibold text-hier-text">
@@ -1173,56 +1479,54 @@ export default function StaffAccountDetailPage() {
                   Loading posts...
                 </div>
               ) : posts.length ? (
-                posts.map((post) => {
-                  const removed =
-                    !post.is_active || post.archived_at || post.shadow_hidden;
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {posts.map((post) => {
+                    const removed =
+                      !post.is_active || post.archived_at || post.shadow_hidden;
 
-                  return (
-                    <div
-                      key={post.id}
-                      className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
-                    >
-                      {post.image_url ? (
-                        <div className="mb-4 overflow-hidden rounded-[20px] border border-hier-border bg-white">
+                    return (
+                      <button
+                        key={post.id}
+                        type="button"
+                        disabled={removed}
+                        onClick={() => {
+                          setSelectedPost(post);
+                          setRemoveReason("");
+                        }}
+                        className="group overflow-hidden rounded-[22px] border border-hier-border bg-hier-panel text-left shadow-sm transition hover:-translate-y-0.5 hover:border-hier-primary hover:shadow-card disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {post.image_url ? (
                           <img
                             src={post.image_url}
                             alt={post.title || "Job post image"}
-                            className="h-48 w-full object-cover"
+                            className="aspect-[4/3] w-full object-cover"
                           />
-                        </div>
-                      ) : (
-                        <div className="mb-4 flex h-32 items-center justify-center rounded-[20px] border border-dashed border-hier-border bg-white text-sm text-hier-muted">
-                          No post image
-                        </div>
-                      )}
+                        ) : (
+                          <div className="flex aspect-[4/3] w-full items-center justify-center border-b border-dashed border-hier-border bg-white text-xs text-hier-muted">
+                            No post image
+                          </div>
+                        )}
 
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-hier-text">
-                            {post.title || `Post #${post.id}`}
+                        <div className="p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="min-h-[40px] overflow-hidden text-sm font-semibold text-hier-text">
+                              {post.title || `Post #${post.id}`}
+                            </p>
+                            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-hier-muted group-hover:text-hier-primary" />
+                          </div>
+                          <p className="mt-1 truncate text-xs text-hier-muted">
+                            {post.location || post.sector || "-"}
                           </p>
-                          <p className="mt-1 text-sm text-hier-muted">
-                            {post.location || post.sector || "—"}
-                          </p>
+                          {removed ? (
+                            <span className="mt-3 inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                              Removed
+                            </span>
+                          ) : null}
                         </div>
-
-                        <button
-                          type="button"
-                          disabled={removed}
-                          onClick={() => {
-                            setSelectedPost(post);
-                            setRemoveReason("");
-                          }}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-hier-border bg-white px-3 py-2 text-xs font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <FileText className="h-3.5 w-3.5" />
-                          Review
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
+                      </button>
+                    );
+                  })}
+                </div>              ) : (
                 <p className="text-sm text-hier-muted">No posts found.</p>
               )}
             </InfoCard>
@@ -1833,3 +2137,4 @@ export default function StaffAccountDetailPage() {
     </div>
   );
 }
+
