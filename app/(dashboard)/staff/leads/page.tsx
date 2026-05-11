@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CalendarClock, Check, Download, Loader2, MessageSquarePlus, Plus, Search, Upload } from "lucide-react";
+import { AlertCircle, CalendarClock, Check, Download, Loader2, MessageSquarePlus, Pencil, Plus, Search, Upload } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   convertStaffLead,
@@ -123,6 +123,8 @@ export default function StaffLeadsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [leadForm, setLeadForm] = useState(blankLeadForm);
+  const [editingLead, setEditingLead] = useState(false);
+  const [leadEditForm, setLeadEditForm] = useState(blankLeadForm);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
   const [importRows, setImportRows] = useState<string[][]>([]);
   const [importMapping, setImportMapping] = useState<Record<string, string>>({});
@@ -162,6 +164,24 @@ export default function StaffLeadsPage() {
     void loadLeads();
   }, [loadLeads]);
 
+  useEffect(() => {
+    if (!selectedLead) {
+      setEditingLead(false);
+      setLeadEditForm(blankLeadForm());
+      return;
+    }
+
+    setEditingLead(false);
+    setLeadEditForm({
+      name: selectedLead.name || "",
+      phone: selectedLead.phone || "",
+      email: selectedLead.email || "",
+      business_name: selectedLead.business_name || "",
+      address: selectedLead.address || "",
+      marketing_opt_in: Boolean(selectedLead.marketing_opt_in),
+    });
+  }, [selectedLead]);
+
   async function handleCreateLead(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -185,6 +205,25 @@ export default function StaffLeadsPage() {
     try {
       const response = await updateStaffLead(lead.id, { status: nextStatus });
       setLeads((current) => current.map((item) => (item.id === lead.id ? response.lead : item)));
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not update lead.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveLeadEdit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedLead) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await updateStaffLead(selectedLead.id, leadEditForm);
+      setLeads((current) =>
+        current.map((lead) => (lead.id === selectedLead.id ? response.lead : lead))
+      );
+      setEditingLead(false);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Could not update lead.");
     } finally {
@@ -532,49 +571,132 @@ export default function StaffLeadsPage() {
                     <h2 className="text-lg font-semibold text-hier-text">{selectedLead.name}</h2>
                     <p className="mt-1 text-sm text-hier-muted">{selectedLead.email}</p>
                   </div>
-                  <select
-                    value={selectedLead.status || "new"}
-                    onChange={(event) => void handleStatusChange(selectedLead, event.target.value)}
-                    disabled={saving}
-                    className="h-10 rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm outline-none"
-                  >
-                    <option value="new">New</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="qualified">Qualified</option>
-                    <option value="closed">Closed</option>
-                  </select>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <select
+                      value={selectedLead.status || "new"}
+                      onChange={(event) => void handleStatusChange(selectedLead, event.target.value)}
+                      disabled={saving}
+                      className="h-10 rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm outline-none"
+                    >
+                      <option value="new">New</option>
+                      <option value="contacted">Contacted</option>
+                      <option value="qualified">Qualified</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setEditingLead((current) => !current)}
+                      disabled={saving}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border border-hier-border bg-white px-3 text-sm font-semibold text-hier-text disabled:opacity-50"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      {editingLead ? "Cancel edit" : "Edit lead"}
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-5 space-y-3 text-sm">
-                  <p><span className="font-semibold text-hier-text">Phone:</span> {selectedLead.phone || "-"}</p>
-                  <p><span className="font-semibold text-hier-text">Business:</span> {selectedLead.business_name || "-"}</p>
-                  <p><span className="font-semibold text-hier-text">Address:</span> {selectedLead.address || "-"}</p>
-                  <p><span className="font-semibold text-hier-text">Marketing opt in:</span> {selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
-                </div>
-                <label className="mt-4 flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(selectedLead.marketing_opt_in)}
-                    disabled={saving}
-                    onChange={(event) =>
-                      void updateStaffLead(selectedLead.id, {
-                        marketing_opt_in: event.target.checked,
-                      }).then((response) => {
-                        setLeads((current) =>
-                          current.map((lead) =>
-                            lead.id === selectedLead.id ? response.lead : lead
-                          )
-                        );
-                      }).catch((caughtError) => {
-                        setError(
-                          caughtError instanceof Error
-                            ? caughtError.message
-                            : "Could not update marketing opt-in."
-                        );
-                      })
-                    }
-                  />
-                  Marketing opt in
-                </label>
+                {editingLead ? (
+                  <form className="mt-5 grid gap-3" onSubmit={handleSaveLeadEdit}>
+                    <input
+                      value={leadEditForm.name}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({ ...current, name: event.target.value }))
+                      }
+                      placeholder="Name"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={leadEditForm.email}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({ ...current, email: event.target.value }))
+                      }
+                      placeholder="Email"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={leadEditForm.phone}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({ ...current, phone: event.target.value }))
+                      }
+                      placeholder="Number"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={leadEditForm.business_name}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({
+                          ...current,
+                          business_name: event.target.value,
+                        }))
+                      }
+                      placeholder="Business name"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <textarea
+                      value={leadEditForm.address}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({ ...current, address: event.target.value }))
+                      }
+                      placeholder="Address"
+                      rows={3}
+                      className="resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <label className="flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
+                      <input
+                        type="checkbox"
+                        checked={leadEditForm.marketing_opt_in}
+                        onChange={(event) =>
+                          setLeadEditForm((current) => ({
+                            ...current,
+                            marketing_opt_in: event.target.checked,
+                          }))
+                        }
+                      />
+                      Marketing opt in
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      Save lead
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <div className="mt-5 space-y-3 text-sm">
+                      <p><span className="font-semibold text-hier-text">Phone:</span> {selectedLead.phone || "-"}</p>
+                      <p><span className="font-semibold text-hier-text">Business:</span> {selectedLead.business_name || "-"}</p>
+                      <p><span className="font-semibold text-hier-text">Address:</span> {selectedLead.address || "-"}</p>
+                      <p><span className="font-semibold text-hier-text">Marketing opt in:</span> {selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
+                    </div>
+                    <label className="mt-4 flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selectedLead.marketing_opt_in)}
+                        disabled={saving}
+                        onChange={(event) =>
+                          void updateStaffLead(selectedLead.id, {
+                            marketing_opt_in: event.target.checked,
+                          }).then((response) => {
+                            setLeads((current) =>
+                              current.map((lead) =>
+                                lead.id === selectedLead.id ? response.lead : lead
+                              )
+                            );
+                          }).catch((caughtError) => {
+                            setError(
+                              caughtError instanceof Error
+                                ? caughtError.message
+                                : "Could not update marketing opt-in."
+                            );
+                          })
+                        }
+                      />
+                      Marketing opt in
+                    </label>
+                  </>
+                )}
                 <div className="mt-4 grid gap-2">
                   <select
                     value={convertRole}
