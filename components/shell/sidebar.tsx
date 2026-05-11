@@ -42,6 +42,24 @@ const secondaryLinks = [
   { label: "Policies", href: "/settings/policies", icon: Shield },
 ];
 
+const staffLinks = [
+  { label: "Staff CRM", href: "/staff", icon: LifeBuoy, match: (path: string) => path === "/staff" || path.startsWith("/staff/accounts") },
+  { label: "Notifications", href: "/staff/notifications", icon: Bell, match: (path: string) => path.startsWith("/staff/notifications") },
+  { label: "Waitlist", href: "/staff/waitlist", icon: Mail, match: (path: string) => path.startsWith("/staff/waitlist") },
+  { label: "Leads", href: "/staff/leads", icon: PhoneCall, match: (path: string) => path.startsWith("/staff/leads") },
+  { label: "Follow-ups", href: "/staff/follow-ups", icon: CalendarClock, match: (path: string) => path.startsWith("/staff/follow-ups") },
+  { label: "Cases", href: "/staff/cases", icon: BriefcaseBusiness, match: (path: string) => path.startsWith("/staff/cases") },
+];
+
+const staffReportingLinks = [
+  { label: "Customer reporting", href: "/staff/customer-reports", icon: BarChart3 },
+  { label: "Content reports", href: "/staff/reports", icon: Flag },
+];
+
+const staffPolicyLinks = [
+  { label: "Policies", href: "/settings/policies", icon: Shield },
+];
+
 export function Sidebar({
   open,
   onClose,
@@ -57,10 +75,6 @@ export function Sidebar({
     storedUser?.role === "staff" &&
       storedUser?.email_verified &&
       storedUser?.email?.toLowerCase().endsWith("@hierapp.co.uk")
-  );
-
-  const canManageStaff = ["admin", "owner"].includes(
-    String(storedUser?.staff_role || "").toLowerCase()
   );
 
   useEffect(() => {
@@ -103,33 +117,34 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Main */}
-      <nav className="space-y-2">
-        <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
-          Main
-        </p>
+      {!isStaff ? (
+        <nav className="space-y-2">
+          <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+            Main
+          </p>
 
-        {primaryLinks.map(({ label, href, icon: Icon }) => {
-          const active = pathname.startsWith(href);
+          {primaryLinks.map(({ label, href, icon: Icon }) => {
+            const active = pathname.startsWith(href);
 
-          return (
-            <Link
-              key={label}
-              href={href}
-              onClick={(event) => void openSupportLink(event, href)}
-              className={clsx(
-                "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-                active
-                  ? "bg-hier-primary text-white shadow-card"
-                  : "text-hier-ink hover:bg-hier-panel"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
-          );
-        })}
-      </nav>
+            return (
+              <Link
+                key={label}
+                href={href}
+                onClick={(event) => void openSupportLink(event, href)}
+                className={clsx(
+                  "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+                  active
+                    ? "bg-hier-primary text-white shadow-card"
+                    : "text-hier-ink hover:bg-hier-panel"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+      ) : null}
 
       {/* STAFF SECTION */}
       {isStaff ? (
@@ -138,62 +153,21 @@ export function Sidebar({
             Hier Staff
           </p>
 
-          {/* CRM */}
-          <Link
-            href="/staff"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname === "/staff" || pathname.startsWith("/staff/accounts")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <LifeBuoy className="h-4 w-4" />
-            Staff CRM
-          </Link>
-
-          {/* WAITLIST */}
-          <Link
-            href="/staff/waitlist"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname.startsWith("/staff/waitlist")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <Mail className="h-4 w-4" />
-            Waitlist
-          </Link>
-
-          {/* TEAM */}
-          {canManageStaff ? (
+          {staffLinks.map(({ label, href, icon: Icon, match }) => (
             <Link
-              href="/staff/team"
+              key={label}
+              href={href}
               className={clsx(
                 "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-                pathname.startsWith("/staff/team")
+                match(pathname)
                   ? "bg-hier-primary text-white shadow-card"
                   : "text-hier-ink hover:bg-hier-panel"
               )}
             >
-              <Users className="h-4 w-4" />
-              Staff team
+              <Icon className="h-4 w-4" />
+              {label}
             </Link>
-          ) : null}
-
-          <Link
-            href="/staff/notifications"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname.startsWith("/staff/notifications")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <Bell className="h-4 w-4" />
-            Notifications
-          </Link>
+          ))}
         </nav>
       ) : null}
 
@@ -204,89 +178,35 @@ export function Sidebar({
             Reporting
           </p>
 
-          <Link
-            href="/staff/customer-reports"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname.startsWith("/staff/customer-reports")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <BarChart3 className="h-4 w-4" />
-            Customer reporting
-          </Link>
+          {staffReportingLinks.map(({ label, href, icon: Icon }) => {
+            const active = pathname.startsWith(href);
 
-          <Link
-            href="/staff/reports"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname.startsWith("/staff/reports")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <Flag className="h-4 w-4" />
-            Content reports
-          </Link>
-        </nav>
-      ) : null}
-
-      {/* LEADS SECTION */}
-      {isStaff ? (
-        <nav className="space-y-2">
-          <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
-            Leads
-          </p>
-
-          <Link
-            href="/staff/leads"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname.startsWith("/staff/leads")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <PhoneCall className="h-4 w-4" />
-            Leads
-          </Link>
-
-          <Link
-            href="/staff/follow-ups"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname.startsWith("/staff/follow-ups")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <CalendarClock className="h-4 w-4" />
-            Follow-ups
-          </Link>
-
-          <Link
-            href="/staff/cases"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname.startsWith("/staff/cases")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <BriefcaseBusiness className="h-4 w-4" />
-            Cases
-          </Link>
+            return (
+              <Link
+                key={label}
+                href={href}
+                className={clsx(
+                  "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+                  active
+                    ? "bg-hier-primary text-white shadow-card"
+                    : "text-hier-ink hover:bg-hier-panel"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </Link>
+            );
+          })}
         </nav>
       ) : null}
 
       {/* Account */}
       <nav className="space-y-2">
         <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
-          Account
+          {isStaff ? "Legal" : "Account"}
         </p>
 
-        {secondaryLinks.map(({ label, href, icon: Icon }) => {
+        {(isStaff ? staffPolicyLinks : secondaryLinks).map(({ label, href, icon: Icon }) => {
           const active = pathname.startsWith(href);
 
           return (

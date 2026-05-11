@@ -262,8 +262,31 @@ export type StaffCase = {
   thread?: StaffNote[];
 };
 
+export type StaffPolicyLink = {
+  key: string;
+  title: string;
+  description: string;
+  href: string;
+};
+
 export async function fetchStaffMe() {
   return apiFetch<{ ok: boolean; staff: StaffMe }>("/api/staff/me");
+}
+
+export async function fetchPolicyLinks() {
+  return apiFetch<{ ok: boolean; policies: Record<string, StaffPolicyLink> }>(
+    "/api/staff/policies"
+  );
+}
+
+export async function updatePolicyLinks(policies: Record<string, { href: string }>) {
+  return apiFetch<{ ok: boolean; policies: Record<string, StaffPolicyLink> }>(
+    "/api/staff/policies",
+    {
+      method: "PATCH",
+      body: JSON.stringify({ policies }),
+    }
+  );
 }
 
 export async function fetchStaffCrmReports() {
