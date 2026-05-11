@@ -38,6 +38,7 @@ import {
   fetchStaffFollowUps,
   markStaffAccountEmailVerified,
   resendStaffAccountVerificationEmail,
+  resumeStaffBillingSubscription,
   sendStaffAccountPasswordReset,
   previewStaffBillingChange,
   updateStaffFollowUp,
@@ -257,7 +258,7 @@ export default function StaffAccountDetailPage() {
   const [billing, setBilling] = useState<StaffBilling | null>(null);
   const [billingPlans, setBillingPlans] = useState<StaffBillingPlan[]>([]);
   const [selectedBillingPlan, setSelectedBillingPlan] = useState("");
-  const [billingAction, setBillingAction] = useState<"checkout" | "portal" | null>(null);
+  const [billingAction, setBillingAction] = useState<"checkout" | "portal" | "resume" | null>(null);
   const [billingPreview, setBillingPreview] = useState<StaffBillingPreview | null>(null);
   const [previewingBilling, setPreviewingBilling] = useState(false);
   const [extraBoostForm, setExtraBoostForm] = useState({
@@ -772,6 +773,28 @@ export default function StaffAccountDetailPage() {
     }
   }
 
+  async function handleResumeBillingSubscription() {
+    if (!userId) return;
+
+    setBillingAction("resume");
+    setError(null);
+    setActionMessage(null);
+
+    try {
+      const response = await resumeStaffBillingSubscription(userId);
+      if (response.billing) setBilling(response.billing);
+      setActionMessage(response.message || "Subscription will continue renewing.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not resume the Stripe subscription."
+      );
+    } finally {
+      setBillingAction(null);
+    }
+  }
+
   async function handlePreviewBillingChange() {
     if (!userId || !selectedBillingPlan) return;
 
@@ -954,6 +977,13 @@ export default function StaffAccountDetailPage() {
     Boolean(billing) &&
     !isAppleManagedBilling &&
     billing?.stripe_management_available !== false;
+  const canResumeStripeSubscription =
+    canUseStripeBilling &&
+    Boolean(billing?.subscription?.provider_subscription_id) &&
+    Boolean(billing?.subscription_cancel_at_period_end);
+  const isEndedStripeSubscription =
+    canUseStripeBilling &&
+    String(billing?.subscription_status || "").toLowerCase() === "canceled";
 
   if (loading) {
     return (
@@ -1180,6 +1210,40 @@ export default function StaffAccountDetailPage() {
                         This customer subscribed through Apple in-app purchase. Stripe
                         checkout and portal controls are unavailable here; billing changes
                         need to be handled through Apple subscriptions.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {canResumeStripeSubscription ? (
+                    <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 p-4">
+                      <p className="text-sm font-semibold text-emerald-950">
+                        Cancellation scheduled
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-emerald-800">
+                        This Stripe subscription is due to stop at the end of the current
+                        billing period. Resume it if the customer has changed their mind.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleResumeBillingSubscription()}
+                        disabled={billingAction !== null}
+                        className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {billingAction === "resume" ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : null}
+                        Resume Stripe subscription
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {isEndedStripeSubscription ? (
+                    <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                      <p className="text-sm font-semibold text-hier-text">
+                        Subscription has ended
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-hier-muted">
+                        Stripe subscriptions that have fully ended need a new checkout link.
                       </p>
                     </div>
                   ) : null}

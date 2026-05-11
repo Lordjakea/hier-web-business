@@ -43,7 +43,7 @@ const secondaryLinks = [
 ];
 
 const staffLinks = [
-  { label: "Staff CRM", href: "/staff", icon: LifeBuoy, match: (path: string) => path === "/staff" || path.startsWith("/staff/accounts") },
+  { label: "CRM", href: "/staff", icon: LifeBuoy, match: (path: string) => path === "/staff" || path.startsWith("/staff/accounts") },
   { label: "Notifications", href: "/staff/notifications", icon: Bell, match: (path: string) => path.startsWith("/staff/notifications") },
   { label: "Waitlist", href: "/staff/waitlist", icon: Mail, match: (path: string) => path.startsWith("/staff/waitlist") },
   { label: "Leads", href: "/staff/leads", icon: PhoneCall, match: (path: string) => path.startsWith("/staff/leads") },

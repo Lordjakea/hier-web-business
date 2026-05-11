@@ -357,6 +357,16 @@ export async function createStaffBillingPortal(userId: number | string) {
   });
 }
 
+export async function resumeStaffBillingSubscription(userId: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    message?: string;
+    billing?: StaffBilling;
+  }>(`/api/staff/accounts/${userId}/billing-resume`, {
+    method: "POST",
+  });
+}
+
 export async function previewStaffBillingChange(
   userId: number | string,
   planCode: string
