@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CalendarClock, Check, Loader2, MessageSquarePlus, Plus, Search } from "lucide-react";
+import { AlertCircle, CalendarClock, Check, Download, Loader2, MessageSquarePlus, Plus, Search, Upload } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   convertStaffLead,
@@ -42,6 +42,75 @@ function blankLeadForm() {
   };
 }
 
+const leadImportFields = [
+  { key: "ignore", label: "Do not import" },
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Number" },
+  { key: "business_name", label: "Business name" },
+  { key: "address", label: "Address" },
+  { key: "marketing_opt_in", label: "Marketing opt in" },
+] as const;
+
+function normaliseHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === "," && !inQuotes) {
+      row.push(current.trim());
+      current = "";
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(current.trim());
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+      row = [];
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  row.push(current.trim());
+  if (row.some((cell) => cell.length > 0)) rows.push(row);
+  return rows;
+}
+
+function escapeCsv(value: unknown) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function parseBoolean(value: string | undefined) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["yes", "y", "true", "1", "opt in", "opted in", "marketing"].includes(normalized);
+}
+
+function guessLeadField(header: string) {
+  const normalized = normaliseHeader(header);
+  if (["name", "full_name", "contact_name", "lead_name"].includes(normalized)) return "name";
+  if (["email", "email_address", "contact_email"].includes(normalized)) return "email";
+  if (["phone", "number", "mobile", "telephone", "contact_number"].includes(normalized)) return "phone";
+  if (["business", "business_name", "company", "company_name"].includes(normalized)) return "business_name";
+  if (["address", "postcode", "full_address"].includes(normalized)) return "address";
+  if (["marketing", "marketing_opt_in", "opt_in", "marketing_consent"].includes(normalized)) return "marketing_opt_in";
+  return "ignore";
+}
+
 export default function StaffLeadsPage() {
   const router = useRouter();
   const [leads, setLeads] = useState<StaffLead[]>([]);
@@ -52,7 +121,12 @@ export default function StaffLeadsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [leadForm, setLeadForm] = useState(blankLeadForm);
+  const [importHeaders, setImportHeaders] = useState<string[]>([]);
+  const [importRows, setImportRows] = useState<string[][]>([]);
+  const [importMapping, setImportMapping] = useState<Record<string, string>>({});
+  const [importing, setImporting] = useState(false);
   const [convertRole, setConvertRole] = useState<"business_user" | "user">("business_user");
   const [convertCompanyNumber, setConvertCompanyNumber] = useState("");
   const [note, setNote] = useState("");
@@ -226,6 +300,127 @@ export default function StaffLeadsPage() {
     }
   }
 
+  function handleExportCsv() {
+    const headers = [
+      "name",
+      "email",
+      "phone",
+      "business_name",
+      "address",
+      "marketing_opt_in",
+      "status",
+      "created_at",
+    ];
+    const lines = [
+      headers.join(","),
+      ...leads.map((lead) =>
+        headers
+          .map((header) => {
+            if (header === "marketing_opt_in") return escapeCsv(lead.marketing_opt_in ? "yes" : "no");
+            return escapeCsv((lead as Record<string, unknown>)[header]);
+          })
+          .join(",")
+      ),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `hier-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setError(null);
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      if (parsed.length < 2) {
+        setError("CSV needs a header row and at least one lead row.");
+        return;
+      }
+
+      const headers = parsed[0].map((header) => header.trim());
+      const rows = parsed.slice(1).filter((row) => row.some((cell) => cell.trim()));
+      const mapping = headers.reduce<Record<string, string>>((current, header) => {
+        current[header] = guessLeadField(header);
+        return current;
+      }, {});
+
+      setImportHeaders(headers);
+      setImportRows(rows);
+      setImportMapping(mapping);
+    } catch {
+      setError("Could not read that CSV file.");
+    }
+  }
+
+  function resetImport() {
+    setShowImport(false);
+    setImportHeaders([]);
+    setImportRows([]);
+    setImportMapping({});
+  }
+
+  function buildImportLead(row: string[]) {
+    const mapped: Record<string, string> = {};
+
+    importHeaders.forEach((header, index) => {
+      const field = importMapping[header];
+      if (!field || field === "ignore") return;
+      mapped[field] = row[index] || "";
+    });
+
+    return {
+      name: (mapped.name || "").trim(),
+      email: (mapped.email || "").trim(),
+      phone: (mapped.phone || "").trim() || null,
+      business_name: (mapped.business_name || "").trim() || null,
+      address: (mapped.address || "").trim() || null,
+      marketing_opt_in: parseBoolean(mapped.marketing_opt_in),
+    };
+  }
+
+  async function handleSubmitImport() {
+    const mappedFields = new Set(Object.values(importMapping));
+    if (!mappedFields.has("name") || !mappedFields.has("email")) {
+      setError("Please map CSV columns for at least name and email.");
+      return;
+    }
+
+    const leadsToImport = importRows.map(buildImportLead).filter((lead) => lead.name && lead.email);
+    if (!leadsToImport.length) {
+      setError("No valid lead rows found. Each imported lead needs a name and email.");
+      return;
+    }
+
+    setImporting(true);
+    setError(null);
+    try {
+      const created: StaffLead[] = [];
+      for (const lead of leadsToImport) {
+        const response = await createStaffLead(lead);
+        created.push(response.lead);
+      }
+      setLeads((current) => [...created, ...current]);
+      setSelectedLeadId(created[0]?.id || null);
+      resetImport();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not import leads.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  const importPreview = importRows.slice(0, 5).map(buildImportLead);
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -241,7 +436,7 @@ export default function StaffLeadsPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 rounded-[28px] border border-hier-border bg-white p-4 shadow-card lg:grid-cols-[1fr_180px_auto]">
+      <section className="grid gap-4 rounded-[28px] border border-hier-border bg-white p-4 shadow-card lg:grid-cols-[1fr_180px_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-hier-muted" />
           <input
@@ -262,6 +457,25 @@ export default function StaffLeadsPage() {
           <option value="qualified">Qualified</option>
           <option value="closed">Closed</option>
         </select>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={!leads.length}
+            className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[20px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+          >
+            <Upload className="h-4 w-4" />
+            Import CSV
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => setShowCreate(true)}
@@ -490,6 +704,134 @@ export default function StaffLeadsPage() {
           ) : null}
         </aside>
       </section>
+
+      {showImport ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-[32px] bg-white p-6 shadow-panel">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-hier-text">Import leads</h2>
+                <p className="mt-1 text-sm text-hier-muted">
+                  Upload a CSV, match the columns to lead details and submit.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetImport}
+                disabled={importing}
+                className="text-sm font-semibold text-hier-muted disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <label className="mt-6 flex cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed border-hier-border bg-hier-panel p-8 text-center text-sm text-hier-muted transition hover:border-hier-primary hover:bg-white">
+              <Upload className="mb-3 h-6 w-6 text-hier-primary" />
+              Choose CSV file
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleImportFile}
+                className="hidden"
+              />
+            </label>
+
+            {importHeaders.length ? (
+              <>
+                <div className="mt-6 rounded-[24px] border border-hier-border">
+                  <div className="grid gap-3 border-b border-hier-border bg-hier-panel p-4 text-sm font-semibold text-hier-text sm:grid-cols-2">
+                    <span>CSV column</span>
+                    <span>Lead detail</span>
+                  </div>
+                  <div className="divide-y divide-hier-border">
+                    {importHeaders.map((header) => (
+                      <div key={header} className="grid gap-3 p-4 sm:grid-cols-2">
+                        <div className="rounded-[16px] bg-hier-panel px-3 py-2 text-sm font-semibold text-hier-text">
+                          {header || "Untitled column"}
+                        </div>
+                        <select
+                          value={importMapping[header] || "ignore"}
+                          onChange={(event) =>
+                            setImportMapping((current) => ({
+                              ...current,
+                              [header]: event.target.value,
+                            }))
+                          }
+                          disabled={importing}
+                          className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary disabled:opacity-50"
+                        >
+                          {leadImportFields.map((field) => (
+                            <option key={field.key} value={field.key}>
+                              {field.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-6 rounded-[24px] border border-hier-border bg-hier-panel p-4">
+                  <p className="text-sm font-semibold text-hier-text">
+                    Preview first rows
+                  </p>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-xs uppercase text-hier-muted">
+                        <tr>
+                          <th className="px-3 py-2">Name</th>
+                          <th className="px-3 py-2">Email</th>
+                          <th className="px-3 py-2">Number</th>
+                          <th className="px-3 py-2">Business</th>
+                          <th className="px-3 py-2">Marketing</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-hier-border bg-white">
+                        {importPreview.map((lead, index) => (
+                          <tr key={`${lead.email}-${index}`}>
+                            <td className="px-3 py-2">{lead.name || "-"}</td>
+                            <td className="px-3 py-2">{lead.email || "-"}</td>
+                            <td className="px-3 py-2">{lead.phone || "-"}</td>
+                            <td className="px-3 py-2">{lead.business_name || "-"}</td>
+                            <td className="px-3 py-2">{lead.marketing_opt_in ? "Yes" : "No"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-3 text-xs text-hier-muted">
+                    {importRows.length} rows ready to review.
+                  </p>
+                </div>
+
+                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={resetImport}
+                    disabled={importing}
+                    className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmitImport}
+                    disabled={
+                      importing ||
+                      !Object.values(importMapping).includes("name") ||
+                      !Object.values(importMapping).includes("email")
+                    }
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    Import leads
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {showCreate ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
