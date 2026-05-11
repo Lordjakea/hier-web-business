@@ -76,6 +76,9 @@ export function Sidebar({
       storedUser?.email_verified &&
       storedUser?.email?.toLowerCase().endsWith("@hierapp.co.uk")
   );
+  const canManageStaff = ["admin", "owner"].includes(
+    String(storedUser?.staff_role || "").toLowerCase()
+  );
 
   useEffect(() => {
     const id = window.sessionStorage.getItem("hier_staff_selected_account_id");
@@ -168,6 +171,21 @@ export function Sidebar({
               {label}
             </Link>
           ))}
+
+          {canManageStaff ? (
+            <Link
+              href="/staff/team"
+              className={clsx(
+                "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+                pathname.startsWith("/staff/team")
+                  ? "bg-hier-primary text-white shadow-card"
+                  : "text-hier-ink hover:bg-hier-panel"
+              )}
+            >
+              <Users className="h-4 w-4" />
+              Staff team
+            </Link>
+          ) : null}
         </nav>
       ) : null}
 
