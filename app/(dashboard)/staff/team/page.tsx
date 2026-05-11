@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MailPlus, RefreshCw, ShieldCheck, Users } from "lucide-react";
+import { Check, MailPlus, PauseCircle, Pencil, PlayCircle, RefreshCw, ShieldCheck, Trash2, Users } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { createStaffInvite, fetchStaffTeam, type StaffInvite, type StaffTeamUser } from "@/lib/staff-crm";
+import {
+  createStaffInvite,
+  deleteStaffTeamMember,
+  fetchStaffTeam,
+  updateStaffTeamMember,
+  type StaffInvite,
+  type StaffTeamUser,
+} from "@/lib/staff-crm";
 
 const roleOptions = [
   { value: "viewer", label: "Viewer" },
@@ -39,10 +46,17 @@ function StatusBadge({ value }: { value?: string | null }) {
 export default function StaffTeamPage() {
   const [staff, setStaff] = useState<StaffTeamUser[]>([]);
   const [invites, setInvites] = useState<StaffInvite[]>([]);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({
+    full_name: "",
+    staff_role: "support",
+    is_active: true,
+  });
   const [email, setEmail] = useState("");
   const [staffRole, setStaffRole] = useState("support");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [savingUserId, setSavingUserId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [devInviteUrl, setDevInviteUrl] = useState<string | null>(null);
@@ -88,6 +102,83 @@ export default function StaffTeamPage() {
       setError(caughtError instanceof Error ? caughtError.message : "Could not send invite.");
     } finally {
       setSending(false);
+    }
+  }
+
+  function startEdit(user: StaffTeamUser) {
+    setEditingUserId(user.id);
+    setEditForm({
+      full_name: user.full_name || "",
+      staff_role: user.staff_role || "support",
+      is_active: user.is_active !== false,
+    });
+    setError(null);
+    setSuccess(null);
+  }
+
+  async function handleSaveTeamMember(user: StaffTeamUser) {
+    setSavingUserId(user.id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await updateStaffTeamMember(user.id, editForm);
+      setStaff((current) =>
+        current.map((item) => (item.id === user.id ? response.staff : item))
+      );
+      setEditingUserId(null);
+      setSuccess("Team member updated.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not update team member.");
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
+  async function handleRemoveAccess(user: StaffTeamUser) {
+    if (!window.confirm(`Remove dashboard access for ${user.full_name || user.email}?`)) return;
+
+    setSavingUserId(user.id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await deleteStaffTeamMember(user.id);
+      setStaff((current) =>
+        current.map((item) => (item.id === user.id ? response.staff : item))
+      );
+      setEditingUserId(null);
+      setSuccess("Team member access removed.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not remove team member access.");
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
+  async function handleTogglePaused(user: StaffTeamUser) {
+    const nextActive = user.is_active === false;
+    const action = nextActive ? "resume access for" : "pause access for";
+    if (!window.confirm(`${action[0].toUpperCase()}${action.slice(1)} ${user.full_name || user.email}?`)) return;
+
+    setSavingUserId(user.id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await updateStaffTeamMember(user.id, {
+        full_name: user.full_name || "",
+        staff_role: user.staff_role || "support",
+        is_active: nextActive,
+      });
+      setStaff((current) =>
+        current.map((item) => (item.id === user.id ? response.staff : item))
+      );
+      setSuccess(nextActive ? "Team member access resumed." : "Team member access paused.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not update team member access.");
+    } finally {
+      setSavingUserId(null);
     }
   }
 
@@ -181,8 +272,116 @@ export default function StaffTeamPage() {
                     <p className="font-semibold text-hier-text">{user.full_name || user.email}</p>
                     <p className="mt-1 text-sm text-hier-muted">{user.email}</p>
                   </div>
-                  <StatusBadge value={user.staff_role} />
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <StatusBadge value={user.is_active === false ? "inactive" : user.staff_role} />
+                    <button
+                      type="button"
+                      onClick={() => startEdit(user)}
+                      disabled={savingUserId === user.id}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleTogglePaused(user)}
+                      disabled={savingUserId === user.id}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                    >
+                      {user.is_active === false ? (
+                        <PlayCircle className="h-3.5 w-3.5" />
+                      ) : (
+                        <PauseCircle className="h-3.5 w-3.5" />
+                      )}
+                      {user.is_active === false ? "Resume" : "Pause"}
+                    </button>
+                  </div>
                 </div>
+
+                {editingUserId === user.id ? (
+                  <div className="mt-4 space-y-3 rounded-2xl border border-hier-border bg-white p-4">
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold text-hier-muted">Name</span>
+                      <input
+                        value={editForm.full_name}
+                        onChange={(event) =>
+                          setEditForm((current) => ({
+                            ...current,
+                            full_name: event.target.value,
+                          }))
+                        }
+                        className="h-11 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                      />
+                    </label>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-2">
+                        <span className="text-xs font-semibold text-hier-muted">Permission</span>
+                        <select
+                          value={editForm.staff_role}
+                          onChange={(event) =>
+                            setEditForm((current) => ({
+                              ...current,
+                              staff_role: event.target.value,
+                            }))
+                          }
+                          className="h-11 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                        >
+                          {roleOptions.map((role) => (
+                            <option key={role.value} value={role.value}>
+                              {role.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="flex items-center gap-3 rounded-2xl border border-hier-border bg-hier-panel px-4 py-3 text-sm font-semibold text-hier-text">
+                        <input
+                          type="checkbox"
+                          checked={editForm.is_active}
+                          onChange={(event) =>
+                            setEditForm((current) => ({
+                              ...current,
+                              is_active: event.target.checked,
+                            }))
+                          }
+                        />
+                        Active access
+                      </label>
+                    </div>
+
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setEditingUserId(null)}
+                        disabled={savingUserId === user.id}
+                        className="inline-flex h-10 items-center justify-center rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveAccess(user)}
+                        disabled={savingUserId === user.id || user.is_active === false}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-800 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Remove access
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveTeamMember(user)}
+                        disabled={savingUserId === user.id}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        <Check className="h-4 w-4" />
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <p className="mt-3 text-xs text-hier-muted">Created {formatDate(user.created_at)}</p>
               </div>
             ))}

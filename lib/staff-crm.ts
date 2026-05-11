@@ -716,6 +716,26 @@ export async function createStaffInvite(email: string, staffRole: string) {
   });
 }
 
+export async function updateStaffTeamMember(
+  staffUserId: number | string,
+  payload: { full_name?: string | null; staff_role?: string; is_active?: boolean }
+) {
+  return apiFetch<{ ok: boolean; staff: StaffTeamUser }>(
+    `/api/staff/team/${staffUserId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function deleteStaffTeamMember(staffUserId: number | string) {
+  return apiFetch<{ ok: boolean; removed: boolean; staff: StaffTeamUser }>(
+    `/api/staff/team/${staffUserId}`,
+    { method: "DELETE" }
+  );
+}
+
 export async function inspectStaffInvite(token: string) {
   return apiFetch<{
     ok: boolean;
