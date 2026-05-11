@@ -8,7 +8,6 @@ import {
   BriefcaseBusiness,
   CheckCircle2,
   Loader2,
-  Megaphone,
   Plus,
   Search,
   ShieldCheck,
@@ -19,17 +18,14 @@ import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffAccount,
   createStaffBillingCheckout,
-  fetchFilteredStaffCrmReports,
   fetchStaffCrmReports,
   fetchStaffMe,
-  getMarketingOptInsCsvUrl,
   searchStaffAccounts,
   type StaffAccountSearchItem,
-  type StaffCrmReportResponse,
+  type StaffBillingPlan,
   type StaffMe,
 } from "@/lib/staff-crm";
 import { searchAddresses, type AddressOption } from "@/lib/address-lookup";
-import { getAuthToken } from "@/lib/auth";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -110,8 +106,7 @@ export default function StaffCrmPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [reports, setReports] = useState<StaffCrmReportResponse | null>(null);
-  const [reportFilter, setReportFilter] = useState("all");
+  const [billingPlans, setBillingPlans] = useState<StaffBillingPlan[]>([]);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -161,17 +156,14 @@ export default function StaffCrmPage() {
     }
   }, [query, role]);
 
-  const loadReports = useCallback(async () => {
+  const loadPlans = useCallback(async () => {
     try {
-      const response =
-        reportFilter === "all"
-          ? await fetchStaffCrmReports()
-          : await fetchFilteredStaffCrmReports(reportFilter);
-      setReports(response);
+      const response = await fetchStaffCrmReports();
+      setBillingPlans(response.plans || []);
     } catch {
-      setReports(null);
+      setBillingPlans([]);
     }
-  }, [reportFilter]);
+  }, []);
 
   useEffect(() => {
     if (!showCreateAccount || createForm.role !== "business_user" || manualAddress) return;
@@ -213,11 +205,11 @@ export default function StaffCrmPage() {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void loadAccounts();
-      void loadReports();
+      void loadPlans();
     }, 250);
 
     return () => window.clearTimeout(timeout);
-  }, [loadAccounts, loadReports]);
+  }, [loadAccounts, loadPlans]);
 
   async function handleCreateAccount(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -285,7 +277,6 @@ export default function StaffCrmPage() {
 
       setShowCreateAccount(false);
       await loadAccounts();
-      await loadReports();
       if (createdId) router.push(`/staff/accounts/${createdId}`);
     } catch (caughtError) {
       setCreateError(
@@ -296,29 +287,6 @@ export default function StaffCrmPage() {
     } finally {
       setCreatingAccount(false);
     }
-  }
-
-  async function exportMarketingOptIns() {
-    const token = getAuthToken();
-    const response = await fetch(getMarketingOptInsCsvUrl(), {
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      setError("Could not export marketing opt-ins.");
-      return;
-    }
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "marketing-opt-ins.csv";
-    link.click();
-    window.URL.revokeObjectURL(url);
   }
 
   const stats = useMemo(() => {
@@ -358,95 +326,6 @@ export default function StaffCrmPage() {
           </div>
         }
       />
-
-      {reports ? (
-        <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {[
-              ["New businesses", reports.summary.new_businesses_30d],
-              ["New candidates", reports.summary.new_candidates_30d],
-              ["Pending subscriptions", reports.summary.pending_subscriptions],
-              ["Cancellations", reports.summary.cancellations],
-              ["Marketing opted in", reports.summary.marketing_opted_in],
-              ["Total businesses", reports.summary.total_businesses],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-[28px] border border-hier-border bg-white p-5 shadow-sm">
-                <p className="text-sm font-medium text-hier-muted">{label}</p>
-                <p className="mt-3 text-3xl font-semibold text-hier-text">{value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-[28px] border border-hier-border bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-hier-text">Marketing opt-in</h2>
-                <p className="mt-1 text-sm text-hier-muted">Latest customers available for email campaigns.</p>
-              </div>
-              <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
-                <Megaphone className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-5 text-4xl font-semibold text-hier-text">
-              {reports.summary.marketing_opted_in}
-            </p>
-            <button
-              type="button"
-              onClick={() => void exportMarketingOptIns()}
-              className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm font-semibold text-hier-text transition hover:bg-hier-soft"
-            >
-              Export CSV
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {reports ? (
-        <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
-          <div className="grid gap-4 lg:grid-cols-[280px_1fr] lg:items-start">
-            <label className="block space-y-2">
-              <span className="text-sm font-medium text-hier-text">Reporting filter</span>
-              <select
-                value={reportFilter}
-                onChange={(event) => setReportFilter(event.target.value)}
-                className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
-              >
-                <option value="all">All customers</option>
-                <option value="pending_subscriptions">Pending subscriptions</option>
-                <option value="cancellations">Cancellations</option>
-                <option value="new_businesses">New businesses</option>
-                <option value="new_candidates">New candidates</option>
-                <option value="marketing_opt_ins">Marketing opt-ins</option>
-              </select>
-            </label>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-hier-text">Filtered report</h2>
-                <span className="text-sm text-hier-muted">{reports.filtered_accounts.length} accounts</span>
-              </div>
-              {reports.filtered_accounts.length ? (
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {reports.filtered_accounts.slice(0, 12).map((account) => (
-                    <Link
-                      key={`report-${account.user_id}`}
-                      href={`/staff/accounts/${account.user_id}`}
-                      className="rounded-[20px] border border-hier-border bg-hier-panel p-4 transition hover:border-hier-primary"
-                    >
-                      <p className="truncate text-sm font-semibold text-hier-text">{account.display_name}</p>
-                      <p className="mt-1 truncate text-xs text-hier-muted">{account.email || "No email"}</p>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
-                  No accounts match this report filter.
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
-      ) : null}
 
       <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
         <div className="grid gap-4 lg:grid-cols-[1fr_220px_auto] lg:items-end">
@@ -618,7 +497,7 @@ export default function StaffCrmPage() {
                       onChange={(event) => setCreateForm((current) => ({ ...current, plan_code: event.target.value }))}
                       className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
                     >
-                      {(reports?.plans?.length ? reports.plans : [{ code: "starter", name: "Starter" }]).map((plan) => (
+                      {(billingPlans.length ? billingPlans : [{ code: "starter", name: "Starter" }]).map((plan) => (
                         <option key={plan.code} value={plan.code}>
                           {plan.name || plan.code}
                         </option>

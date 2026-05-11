@@ -76,6 +76,7 @@ export function Sidebar({
 
     if (staffToken) window.sessionStorage.setItem("hier_staff_return_token", staffToken);
     if (staffUser) window.sessionStorage.setItem("hier_staff_return_user", JSON.stringify(staffUser));
+    window.sessionStorage.setItem("hier_staff_return_account_id", supportTarget.id);
 
     const response = await createStaffSupportSession(supportTarget.id);
     setAuthToken(response.access_token);
@@ -168,20 +169,6 @@ export function Sidebar({
             Waitlist
           </Link>
 
-          {/* REPORTS */}
-          <Link
-            href="/staff/reports"
-            className={clsx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-              pathname.startsWith("/staff/reports")
-                ? "bg-hier-primary text-white shadow-card"
-                : "text-hier-ink hover:bg-hier-panel"
-            )}
-          >
-            <Flag className="h-4 w-4" />
-            Reports
-          </Link>
-
           {/* TEAM */}
           {canManageStaff ? (
             <Link
@@ -197,6 +184,41 @@ export function Sidebar({
               Staff team
             </Link>
           ) : null}
+        </nav>
+      ) : null}
+
+      {/* REPORTING SECTION */}
+      {isStaff ? (
+        <nav className="space-y-2">
+          <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+            Reporting
+          </p>
+
+          <Link
+            href="/staff/customer-reports"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              pathname.startsWith("/staff/customer-reports")
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <BarChart3 className="h-4 w-4" />
+            Customer reporting
+          </Link>
+
+          <Link
+            href="/staff/reports"
+            className={clsx(
+              "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+              pathname.startsWith("/staff/reports")
+                ? "bg-hier-primary text-white shadow-card"
+                : "text-hier-ink hover:bg-hier-panel"
+            )}
+          >
+            <Flag className="h-4 w-4" />
+            Content reports
+          </Link>
         </nav>
       ) : null}
 

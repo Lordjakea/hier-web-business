@@ -36,6 +36,7 @@ import {
   updateStaffAccountBilling,
   updateStaffAccountIdentity,
   updateStaffBusinessProfile,
+  verifyStaffAccountEmailCode,
   type StaffAccountDetail,
   type StaffBilling,
   type StaffBillingPlan,
@@ -263,6 +264,8 @@ export default function StaffAccountDetailPage() {
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [markingVerified, setMarkingVerified] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verifyingCode, setVerifyingCode] = useState(false);
   const [sendingPasswordReset, setSendingPasswordReset] = useState(false);
   const [startingSupportPath, setStartingSupportPath] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -548,6 +551,7 @@ export default function StaffAccountDetailPage() {
 
       if (staffToken) window.sessionStorage.setItem("hier_staff_return_token", staffToken);
       if (staffUser) window.sessionStorage.setItem("hier_staff_return_user", JSON.stringify(staffUser));
+      window.sessionStorage.setItem("hier_staff_return_account_id", String(userId));
 
       const response = await createStaffSupportSession(userId);
       setAuthToken(response.access_token);
@@ -655,6 +659,47 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setSavingInlineEdit(false);
+    }
+  }
+
+  async function handleVerifyEmailCode() {
+    if (!userId) return;
+
+    const code = verificationCode.trim();
+    const reason =
+      identityReason.trim() || "Staff entered customer verification code in CRM.";
+
+    if (!code) {
+      setError("Please enter the verification code from the customer.");
+      return;
+    }
+
+    setVerifyingCode(true);
+    setError(null);
+    setActionMessage(null);
+
+    try {
+      const response = await verifyStaffAccountEmailCode(userId, code, reason);
+      setAccount((current) =>
+        current
+          ? {
+              ...current,
+              basic: response.account,
+            }
+          : current
+      );
+      setVerificationCode("");
+      setIdentityReason("");
+      setActionMessage("Email verified and temporary password sent to the customer.");
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not verify this code."
+      );
+    } finally {
+      setVerifyingCode(false);
     }
   }
 
@@ -1331,6 +1376,34 @@ export default function StaffAccountDetailPage() {
                 ) : null}
                 Save identity changes
               </button>
+
+              {!account.basic?.email_verified ? (
+                <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                  <label className="text-xs font-semibold text-hier-muted">
+                    Customer verification code
+                  </label>
+                  <input
+                    value={verificationCode}
+                    onChange={(event) => setVerificationCode(event.target.value)}
+                    inputMode="numeric"
+                    placeholder="Enter 6-digit code"
+                    className="mt-2 h-11 w-full rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold tracking-[0.2em] text-hier-text outline-none transition focus:border-hier-primary"
+                  />
+                  <button
+                    type="button"
+                    disabled={verifyingCode || !verificationCode.trim()}
+                    onClick={handleVerifyEmailCode}
+                    className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {verifyingCode ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
+                    )}
+                    Verify and send temporary password
+                  </button>
+                </div>
+              ) : null}
 
               <button
                 type="button"

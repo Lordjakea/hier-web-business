@@ -47,7 +47,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
     window.sessionStorage.removeItem("hier_staff_return_token");
     window.sessionStorage.removeItem("hier_staff_return_user");
-    router.replace("/staff");
+    const accountId =
+      window.sessionStorage.getItem("hier_staff_return_account_id") ||
+      window.sessionStorage.getItem("hier_staff_selected_account_id");
+    window.sessionStorage.removeItem("hier_staff_return_account_id");
+    window.sessionStorage.removeItem("hier_staff_selected_account_id");
+    window.sessionStorage.removeItem("hier_staff_selected_account_name");
+    router.replace(accountId ? `/staff/accounts/${accountId}` : "/staff");
   }
 
   if (!ready) return <div className="min-h-screen bg-[#f7f8fc]" />;

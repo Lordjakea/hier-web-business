@@ -241,12 +241,14 @@ export async function searchStaffAccounts(params?: {
   q?: string;
   role?: string;
   per_page?: number;
+  include_test?: boolean;
 }) {
   const search = new URLSearchParams();
 
   if (params?.q?.trim()) search.set("q", params.q.trim());
   if (params?.role && params.role !== "all") search.set("role", params.role);
   if (params?.per_page) search.set("per_page", String(params.per_page));
+  search.set("include_test", params?.include_test === false ? "false" : "true");
 
   const query = search.toString();
 
@@ -355,6 +357,21 @@ export async function resendStaffAccountVerificationEmail(
   }>(`/api/staff/accounts/${userId}/resend-verification-email`, {
     method: "POST",
     body: JSON.stringify({ reason }),
+  });
+}
+
+export async function verifyStaffAccountEmailCode(
+  userId: number | string,
+  code: string,
+  reason: string
+) {
+  return apiFetch<{
+    ok: boolean;
+    account: StaffAccountDetail["basic"];
+    message?: string;
+  }>(`/api/staff/accounts/${userId}/verify-email-code`, {
+    method: "POST",
+    body: JSON.stringify({ code, reason }),
   });
 }
 
