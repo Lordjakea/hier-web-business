@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, Check, Mail, MapPin, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HierBrand } from "@/components/ui/brand";
 import { apiFetch } from "@/lib/api";
+import { searchAddresses, type AddressOption } from "@/lib/address-lookup";
 
 type SignupResponse = {
   id?: number;
@@ -28,6 +29,11 @@ export default function BusinessSignupPage() {
   const [companyName, setCompanyName] = useState("");
   const [companyNumber, setCompanyNumber] = useState("");
   const [address, setAddress] = useState("");
+  const [addressOptions, setAddressOptions] = useState<AddressOption[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState<AddressOption | null>(null);
+  const [manualAddress, setManualAddress] = useState(false);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -36,6 +42,41 @@ export default function BusinessSignupPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (manualAddress) return;
+
+    const query = address.trim();
+    if (query.length < 6) {
+      setAddressOptions([]);
+      setSelectedAddress(null);
+      setAddressError(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      setAddressLoading(true);
+      setAddressError(null);
+      setSelectedAddress(null);
+
+      try {
+        const results = await searchAddresses(query);
+        setAddressOptions(results);
+        if (!results.length) setAddressError("No addresses found. Use manual address if needed.");
+      } catch (caughtError) {
+        setAddressOptions([]);
+        setAddressError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Address lookup failed. Use manual address if needed."
+        );
+      } finally {
+        setAddressLoading(false);
+      }
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [address, manualAddress]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,7 +92,10 @@ export default function BusinessSignupPage() {
       if (!companyNumber.trim()) {
         throw new Error("Company number is required.");
       }
-      if (!address.trim()) {
+      if (!manualAddress && !selectedAddress) {
+        throw new Error("Please search and select an address, or use manual address.");
+      }
+      if (manualAddress && !address.trim()) {
         throw new Error("Address is required.");
       }
       if (!normalizedEmail) {
@@ -73,13 +117,17 @@ export default function BusinessSignupPage() {
         throw new Error("You must accept the Terms & Conditions to create an account.");
       }
 
+      const chosenAddress = manualAddress
+        ? address.trim()
+        : selectedAddress?.label || address.trim();
+
       await apiFetch<SignupResponse>("/signup", {
         method: "POST",
         body: JSON.stringify({
           role: "business_user",
           company_name: companyName.trim(),
           company_number: companyNumber.trim(),
-          address: address.trim(),
+          address: chosenAddress,
           email: normalizedEmail,
           password,
           confirm_password: confirmPassword,
@@ -234,19 +282,65 @@ export default function BusinessSignupPage() {
 
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-hier-text">
-                  Address
+                  Address search
                 </span>
                 <div className="relative">
-                  <MapPin className="pointer-events-none absolute left-4 top-6 h-4 w-4 text-hier-muted" />
-                  <textarea
+                  <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-hier-muted" />
+                  <input
+                    type="text"
                     value={address}
-                    onChange={(event) => setAddress(event.target.value)}
-                    placeholder="Registered business address"
-                    rows={4}
-                    className="w-full rounded-[22px] border border-hier-border bg-hier-panel pl-11 pr-4 pt-5 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+                    onChange={(event) => {
+                      setAddress(event.target.value);
+                      setSelectedAddress(null);
+                    }}
+                    placeholder="House number and postcode"
+                    className="h-14 w-full rounded-[22px] border border-hier-border bg-hier-panel pl-11 pr-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
                   />
                 </div>
+                <label className="flex items-center gap-2 text-xs font-semibold text-hier-muted">
+                  <input
+                    type="checkbox"
+                    checked={manualAddress}
+                    onChange={(event) => {
+                      setManualAddress(event.target.checked);
+                      setSelectedAddress(null);
+                      setAddressOptions([]);
+                      setAddressError(null);
+                    }}
+                    className="h-4 w-4"
+                  />
+                  Use manual address override
+                </label>
               </label>
+
+              {!manualAddress ? (
+                <div className="space-y-2">
+                  {addressLoading ? (
+                    <p className="text-sm font-medium text-hier-muted">Searching addresses...</p>
+                  ) : null}
+                  {addressError ? (
+                    <p className="text-sm font-medium text-rose-700">{addressError}</p>
+                  ) : null}
+                  {selectedAddress ? (
+                    <div className="rounded-[18px] border border-hier-primary bg-hier-soft p-3 text-sm font-semibold text-hier-text">
+                      {selectedAddress.label}
+                    </div>
+                  ) : addressOptions.length ? (
+                    <div className="max-h-56 space-y-2 overflow-y-auto rounded-[18px] border border-hier-border bg-hier-panel p-2">
+                      {addressOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setSelectedAddress(option)}
+                          className="block w-full rounded-[14px] bg-white p-3 text-left text-sm font-medium text-hier-text transition hover:bg-hier-soft"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-hier-text">Email</span>

@@ -150,7 +150,9 @@ export type StaffCrmReportResponse = {
   };
   business_statuses: Record<string, number>;
   subscription_statuses: Record<string, number>;
-  marketing_opted_in_customers: Array<{
+  filtered_accounts: StaffAccountSearchItem[];
+  plans: StaffBillingPlan[];
+  marketing_opted_in_preview: Array<{
     id: number;
     account_type: string;
     display_name: string;
@@ -170,6 +172,15 @@ export async function fetchStaffCrmReports() {
   return apiFetch<StaffCrmReportResponse>("/api/staff/crm-reports");
 }
 
+export async function fetchFilteredStaffCrmReports(filter: string) {
+  const query = filter && filter !== "all" ? `?filter=${encodeURIComponent(filter)}` : "";
+  return apiFetch<StaffCrmReportResponse>(`/api/staff/crm-reports${query}`);
+}
+
+export function getMarketingOptInsCsvUrl() {
+  return resolveApiUrl("/api/staff/crm-reports/marketing-opt-ins.csv");
+}
+
 export async function createStaffAccount(payload: {
   role: "user" | "business_user";
   email: string;
@@ -181,8 +192,8 @@ export async function createStaffAccount(payload: {
   company_number?: string | null;
   address?: string | null;
   marketing_opt_in?: boolean;
+  accepted_terms?: boolean;
   plan_code?: string | null;
-  billing_status?: string | null;
   billing_email?: string | null;
   billing_name?: string | null;
   trial_ends_at?: string | null;
@@ -196,6 +207,22 @@ export async function createStaffAccount(payload: {
   }>("/api/staff/accounts", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function createStaffBillingCheckout(
+  userId: number | string,
+  planCode: string
+) {
+  return apiFetch<{
+    ok: boolean;
+    checkout_url?: string;
+    checkout_session_id?: string;
+    plan?: StaffBillingPlan;
+    billing?: StaffBilling;
+  }>(`/api/staff/accounts/${userId}/billing-checkout`, {
+    method: "POST",
+    body: JSON.stringify({ plan_code: planCode }),
   });
 }
 

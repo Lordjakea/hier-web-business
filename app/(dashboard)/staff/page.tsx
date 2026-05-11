@@ -18,13 +18,18 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffAccount,
+  createStaffBillingCheckout,
+  fetchFilteredStaffCrmReports,
   fetchStaffCrmReports,
   fetchStaffMe,
+  getMarketingOptInsCsvUrl,
   searchStaffAccounts,
   type StaffAccountSearchItem,
   type StaffCrmReportResponse,
   type StaffMe,
 } from "@/lib/staff-crm";
+import { searchAddresses, type AddressOption } from "@/lib/address-lookup";
+import { getAuthToken } from "@/lib/auth";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -106,9 +111,16 @@ export default function StaffCrmPage() {
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [reports, setReports] = useState<StaffCrmReportResponse | null>(null);
+  const [reportFilter, setReportFilter] = useState("all");
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createMessage, setCreateMessage] = useState<string | null>(null);
+  const [addressOptions, setAddressOptions] = useState<AddressOption[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState<AddressOption | null>(null);
+  const [manualAddress, setManualAddress] = useState(false);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     role: "business_user" as "user" | "business_user",
     email: "",
@@ -119,8 +131,8 @@ export default function StaffCrmPage() {
     company_number: "",
     address: "",
     marketing_opt_in: false,
+    accepted_terms: false,
     plan_code: "starter",
-    billing_status: "trial",
     billing_email: "",
     billing_name: "",
   });
@@ -151,12 +163,52 @@ export default function StaffCrmPage() {
 
   const loadReports = useCallback(async () => {
     try {
-      const response = await fetchStaffCrmReports();
+      const response =
+        reportFilter === "all"
+          ? await fetchStaffCrmReports()
+          : await fetchFilteredStaffCrmReports(reportFilter);
       setReports(response);
     } catch {
       setReports(null);
     }
-  }, []);
+  }, [reportFilter]);
+
+  useEffect(() => {
+    if (!showCreateAccount || createForm.role !== "business_user" || manualAddress) return;
+
+    const queryText = createForm.address.trim();
+    if (queryText.length < 6) {
+      setAddressOptions([]);
+      setSelectedAddress(null);
+      setAddressError(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      setAddressLoading(true);
+      setAddressError(null);
+      setSelectedAddress(null);
+
+      try {
+        const results = await searchAddresses(queryText);
+        setAddressOptions(results);
+        if (!results.length) {
+          setAddressError("No addresses found. Use manual address if needed.");
+        }
+      } catch (caughtError) {
+        setAddressOptions([]);
+        setAddressError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Address lookup failed. Use manual address if needed."
+        );
+      } finally {
+        setAddressLoading(false);
+      }
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [createForm.address, createForm.role, manualAddress, showCreateAccount]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -185,8 +237,17 @@ export default function StaffCrmPage() {
       } else {
         if (!createForm.company_name.trim()) throw new Error("Company name is required.");
         if (!createForm.company_number.trim()) throw new Error("Company number is required.");
-        if (!createForm.address.trim()) throw new Error("Address is required.");
+        if (!manualAddress && !selectedAddress) throw new Error("Please search and select an address, or use manual address.");
+        if (manualAddress && !createForm.address.trim()) throw new Error("Address is required.");
       }
+
+      if (!createForm.accepted_terms) {
+        throw new Error("Confirm the customer has agreed to the Terms & Conditions or EULA.");
+      }
+
+      const chosenAddress = manualAddress
+        ? createForm.address.trim()
+        : selectedAddress?.label || createForm.address.trim();
 
       const response = await createStaffAccount({
         role: createForm.role,
@@ -196,10 +257,10 @@ export default function StaffCrmPage() {
         last_name: createForm.last_name.trim() || null,
         company_name: createForm.company_name.trim() || null,
         company_number: createForm.company_number.trim() || null,
-        address: createForm.address.trim() || null,
+        address: chosenAddress || null,
         marketing_opt_in: createForm.marketing_opt_in,
+        accepted_terms: createForm.accepted_terms,
         plan_code: createForm.role === "business_user" ? createForm.plan_code : null,
-        billing_status: createForm.role === "business_user" ? createForm.billing_status : null,
         billing_email: createForm.billing_email.trim() || email,
         billing_name:
           createForm.billing_name.trim() ||
@@ -208,6 +269,20 @@ export default function StaffCrmPage() {
       });
 
       const createdId = response.account?.basic?.id;
+
+      if (
+        createdId &&
+        createForm.role === "business_user" &&
+        createForm.plan_code &&
+        createForm.plan_code !== "starter"
+      ) {
+        const checkout = await createStaffBillingCheckout(createdId, createForm.plan_code);
+        if (checkout.checkout_url) {
+          window.open(checkout.checkout_url, "_blank", "noopener,noreferrer");
+          setCreateMessage("Account created. Stripe checkout opened in a new tab.");
+        }
+      }
+
       setShowCreateAccount(false);
       await loadAccounts();
       await loadReports();
@@ -221,6 +296,29 @@ export default function StaffCrmPage() {
     } finally {
       setCreatingAccount(false);
     }
+  }
+
+  async function exportMarketingOptIns() {
+    const token = getAuthToken();
+    const response = await fetch(getMarketingOptInsCsvUrl(), {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      setError("Could not export marketing opt-ins.");
+      return;
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "marketing-opt-ins.csv";
+    link.click();
+    window.URL.revokeObjectURL(url);
   }
 
   const stats = useMemo(() => {
@@ -262,7 +360,7 @@ export default function StaffCrmPage() {
       />
 
       {reports ? (
-        <section className="grid gap-4 xl:grid-cols-[1fr_420px]">
+        <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {[
               ["New businesses", reports.summary.new_businesses_30d],
@@ -289,31 +387,61 @@ export default function StaffCrmPage() {
                 <Megaphone className="h-4 w-4" />
               </div>
             </div>
-            {reports.marketing_opted_in_customers.length ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const emails = reports.marketing_opted_in_customers
-                    .map((customer) => customer.email)
-                    .filter(Boolean)
-                    .join(", ");
-                  void navigator.clipboard?.writeText(emails);
-                }}
-                className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm font-semibold text-hier-text transition hover:bg-hier-soft"
+            <p className="mt-5 text-4xl font-semibold text-hier-text">
+              {reports.summary.marketing_opted_in}
+            </p>
+            <button
+              type="button"
+              onClick={() => void exportMarketingOptIns()}
+              className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm font-semibold text-hier-text transition hover:bg-hier-soft"
+            >
+              Export CSV
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {reports ? (
+        <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+          <div className="grid gap-4 lg:grid-cols-[280px_1fr] lg:items-start">
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-hier-text">Reporting filter</span>
+              <select
+                value={reportFilter}
+                onChange={(event) => setReportFilter(event.target.value)}
+                className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
               >
-                Copy email list
-              </button>
-            ) : null}
-            <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
-              {reports.marketing_opted_in_customers.length ? (
-                reports.marketing_opted_in_customers.slice(0, 12).map((customer) => (
-                  <div key={customer.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-3">
-                    <p className="truncate text-sm font-semibold text-hier-text">{customer.display_name}</p>
-                    <p className="mt-1 truncate text-xs text-hier-muted">{customer.email || "No email"}</p>
-                  </div>
-                ))
+                <option value="all">All customers</option>
+                <option value="pending_subscriptions">Pending subscriptions</option>
+                <option value="cancellations">Cancellations</option>
+                <option value="new_businesses">New businesses</option>
+                <option value="new_candidates">New candidates</option>
+                <option value="marketing_opt_ins">Marketing opt-ins</option>
+              </select>
+            </label>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-hier-text">Filtered report</h2>
+                <span className="text-sm text-hier-muted">{reports.filtered_accounts.length} accounts</span>
+              </div>
+              {reports.filtered_accounts.length ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {reports.filtered_accounts.slice(0, 12).map((account) => (
+                    <Link
+                      key={`report-${account.user_id}`}
+                      href={`/staff/accounts/${account.user_id}`}
+                      className="rounded-[20px] border border-hier-border bg-hier-panel p-4 transition hover:border-hier-primary"
+                    >
+                      <p className="truncate text-sm font-semibold text-hier-text">{account.display_name}</p>
+                      <p className="mt-1 truncate text-xs text-hier-muted">{account.email || "No email"}</p>
+                    </Link>
+                  ))}
+                </div>
               ) : (
-                <p className="text-sm text-hier-muted">No marketing opt-ins yet.</p>
+                <p className="rounded-[20px] border border-dashed border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                  No accounts match this report filter.
+                </p>
               )}
             </div>
           </div>
@@ -429,36 +557,72 @@ export default function StaffCrmPage() {
                     </label>
                   ))}
                   <label className="space-y-2 text-sm font-medium text-hier-text sm:col-span-2">
-                    Address
-                    <textarea
+                    Address search
+                    <input
                       value={createForm.address}
-                      onChange={(event) => setCreateForm((current) => ({ ...current, address: event.target.value }))}
-                      rows={3}
-                      className="w-full rounded-[18px] border border-hier-border bg-hier-panel p-4"
+                      onChange={(event) => {
+                        setCreateForm((current) => ({ ...current, address: event.target.value }));
+                        setSelectedAddress(null);
+                      }}
+                      placeholder="House number and postcode"
+                      className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
                     />
+                    <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-hier-muted">
+                      <input
+                        type="checkbox"
+                        checked={manualAddress}
+                        onChange={(event) => {
+                          setManualAddress(event.target.checked);
+                          setAddressOptions([]);
+                          setSelectedAddress(null);
+                          setAddressError(null);
+                        }}
+                      />
+                      Use manual address override
+                    </label>
                   </label>
+
+                  {!manualAddress ? (
+                    <div className="space-y-2 sm:col-span-2">
+                      {addressLoading ? (
+                        <p className="text-sm font-medium text-hier-muted">Searching addresses...</p>
+                      ) : null}
+                      {addressError ? (
+                        <p className="text-sm font-medium text-red-700">{addressError}</p>
+                      ) : null}
+                      {selectedAddress ? (
+                        <div className="rounded-[18px] border border-hier-primary bg-hier-soft p-3 text-sm font-semibold text-hier-text">
+                          {selectedAddress.label}
+                        </div>
+                      ) : addressOptions.length ? (
+                        <div className="max-h-56 space-y-2 overflow-y-auto rounded-[18px] border border-hier-border bg-hier-panel p-2">
+                          {addressOptions.map((option) => (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setSelectedAddress(option)}
+                              className="block w-full rounded-[14px] bg-white p-3 text-left text-sm font-medium text-hier-text transition hover:bg-hier-soft"
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <label className="space-y-2 text-sm font-medium text-hier-text">
                     Plan
-                    <input
+                    <select
                       value={createForm.plan_code}
                       onChange={(event) => setCreateForm((current) => ({ ...current, plan_code: event.target.value }))}
                       className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
-                    />
-                  </label>
-                  <label className="space-y-2 text-sm font-medium text-hier-text">
-                    Billing status
-                    <select
-                      value={createForm.billing_status}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({ ...current, billing_status: event.target.value }))
-                      }
-                      className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4"
                     >
-                      <option value="trial">Trial</option>
-                      <option value="active">Active</option>
-                      <option value="past_due">Past due</option>
-                      <option value="cancelled">Cancelled</option>
-                      <option value="suspended">Suspended</option>
+                      {(reports?.plans?.length ? reports.plans : [{ code: "starter", name: "Starter" }]).map((plan) => (
+                        <option key={plan.code} value={plan.code}>
+                          {plan.name || plan.code}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 </div>
@@ -495,6 +659,26 @@ export default function StaffCrmPage() {
                 <span>Customer has opted in to receive marketing emails from Hier.</span>
               </label>
 
+              <label className="flex items-start gap-3 rounded-[20px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                <input
+                  type="checkbox"
+                  checked={createForm.accepted_terms}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, accepted_terms: event.target.checked }))
+                  }
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  Customer has agreed to the Hier Terms &amp; Conditions or EULA for this account.
+                </span>
+              </label>
+
+              {createForm.role === "business_user" && createForm.plan_code !== "starter" ? (
+                <div className="rounded-[20px] border border-hier-border bg-hier-soft p-4 text-sm text-hier-muted">
+                  Creating this account will also open a Stripe checkout link for the selected plan so billing details can be captured securely.
+                </div>
+              ) : null}
+
               {createError ? (
                 <div className="rounded-[18px] border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                   {createError}
@@ -521,6 +705,13 @@ export default function StaffCrmPage() {
             <p className="font-semibold">Staff CRM unavailable</p>
             <p className="mt-1">{error}</p>
           </div>
+        </div>
+      ) : null}
+
+      {createMessage ? (
+        <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+          <p>{createMessage}</p>
         </div>
       ) : null}
 

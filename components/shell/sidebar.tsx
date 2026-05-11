@@ -18,8 +18,10 @@ import {
   Flag,
 } from "lucide-react";
 import clsx from "clsx";
-import { getStoredUser } from "@/lib/auth";
+import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
 import { HierBrand } from "@/components/ui/brand";
+import { createStaffSupportSession } from "@/lib/staff-crm";
+import { useEffect, useState } from "react";
 
 const primaryLinks = [
   { label: "Candidates", href: "/candidates", icon: LayoutGrid },
@@ -46,6 +48,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const storedUser = getStoredUser();
+  const [supportTarget, setSupportTarget] = useState<{ id: string; name: string } | null>(null);
 
   const isStaff = Boolean(
     storedUser?.role === "staff" &&
@@ -56,6 +59,29 @@ export function Sidebar({
   const canManageStaff = ["admin", "owner"].includes(
     String(storedUser?.staff_role || "").toLowerCase()
   );
+
+  useEffect(() => {
+    const id = window.sessionStorage.getItem("hier_staff_selected_account_id");
+    const name = window.sessionStorage.getItem("hier_staff_selected_account_name");
+    setSupportTarget(id ? { id, name: name || `Account #${id}` } : null);
+  }, [pathname]);
+
+  async function openSupportLink(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (!isStaff || !supportTarget?.id) return;
+
+    event.preventDefault();
+
+    const staffToken = getAuthToken();
+    const staffUser = getStoredUser();
+
+    if (staffToken) window.sessionStorage.setItem("hier_staff_return_token", staffToken);
+    if (staffUser) window.sessionStorage.setItem("hier_staff_return_user", JSON.stringify(staffUser));
+
+    const response = await createStaffSupportSession(supportTarget.id);
+    setAuthToken(response.access_token);
+    setStoredUser(response.user);
+    window.location.href = href;
+  }
 
   const content = (
     <div className="flex h-full min-h-0 flex-col gap-8 overflow-y-auto overscroll-contain border-r border-hier-border bg-white px-4 py-5 [-webkit-overflow-scrolling:touch]">
@@ -86,6 +112,7 @@ export function Sidebar({
             <Link
               key={label}
               href={href}
+              onClick={(event) => void openSupportLink(event, href)}
               className={clsx(
                 "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
                 active
@@ -103,6 +130,12 @@ export function Sidebar({
       {/* STAFF SECTION */}
       {isStaff ? (
         <nav className="space-y-2">
+          {supportTarget ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold text-amber-900">
+              Support target: {supportTarget.name}
+            </div>
+          ) : null}
+
           <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
             Hier Staff
           </p>

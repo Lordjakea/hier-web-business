@@ -351,6 +351,19 @@ export default function StaffAccountDetailPage() {
     void loadAccount();
   }, [loadAccount]);
 
+  useEffect(() => {
+    if (!account?.basic?.id || account.account_type !== "business") return;
+
+    window.sessionStorage.setItem("hier_staff_selected_account_id", String(account.basic.id));
+    window.sessionStorage.setItem(
+      "hier_staff_selected_account_name",
+      account.business_profile?.company_name ||
+        account.basic.full_name ||
+        account.basic.email ||
+        `Account #${account.basic.id}`
+    );
+  }, [account]);
+
   async function handleCreateNote(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
