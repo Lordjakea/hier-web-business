@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, CalendarClock, Check, Loader2, MessageSquarePlus, Plus, Search } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
+  convertStaffLead,
   createStaffFollowUp,
   createStaffLead,
   createStaffLeadNote,
+  deleteStaffLead,
   fetchStaffLeads,
   updateStaffFollowUp,
   updateStaffLead,
@@ -40,6 +43,7 @@ function blankLeadForm() {
 }
 
 export default function StaffLeadsPage() {
+  const router = useRouter();
   const [leads, setLeads] = useState<StaffLead[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
@@ -49,6 +53,8 @@ export default function StaffLeadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [leadForm, setLeadForm] = useState(blankLeadForm);
+  const [convertRole, setConvertRole] = useState<"business_user" | "user">("business_user");
+  const [convertCompanyNumber, setConvertCompanyNumber] = useState("");
   const [note, setNote] = useState("");
   const [followUp, setFollowUp] = useState({
     title: "Call back",
@@ -180,6 +186,46 @@ export default function StaffLeadsPage() {
     }
   }
 
+  async function handleDeleteLead() {
+    if (!selectedLead) return;
+    if (!window.confirm(`Delete lead ${selectedLead.name}?`)) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteStaffLead(selectedLead.id);
+      setLeads((current) => current.filter((lead) => lead.id !== selectedLead.id));
+      setSelectedLeadId(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not delete lead.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleConvertLead() {
+    if (!selectedLead) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await convertStaffLead(selectedLead.id, {
+        role: convertRole,
+        company_number: convertCompanyNumber || null,
+      });
+      setLeads((current) =>
+        current.map((lead) => (lead.id === selectedLead.id ? response.lead : lead))
+      );
+      setSelectedLeadId(response.lead.id);
+      if (response.account.basic?.id) {
+        router.push(`/staff/accounts/${response.account.basic.id}`);
+      }
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not convert lead.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -289,6 +335,65 @@ export default function StaffLeadsPage() {
                   <p><span className="font-semibold text-hier-text">Business:</span> {selectedLead.business_name || "-"}</p>
                   <p><span className="font-semibold text-hier-text">Address:</span> {selectedLead.address || "-"}</p>
                   <p><span className="font-semibold text-hier-text">Marketing opt in:</span> {selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
+                </div>
+                <label className="mt-4 flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedLead.marketing_opt_in)}
+                    disabled={saving}
+                    onChange={(event) =>
+                      void updateStaffLead(selectedLead.id, {
+                        marketing_opt_in: event.target.checked,
+                      }).then((response) => {
+                        setLeads((current) =>
+                          current.map((lead) =>
+                            lead.id === selectedLead.id ? response.lead : lead
+                          )
+                        );
+                      }).catch((caughtError) => {
+                        setError(
+                          caughtError instanceof Error
+                            ? caughtError.message
+                            : "Could not update marketing opt-in."
+                        );
+                      })
+                    }
+                  />
+                  Marketing opt in
+                </label>
+                <div className="mt-4 grid gap-2">
+                  <select
+                    value={convertRole}
+                    onChange={(event) => setConvertRole(event.target.value as "business_user" | "user")}
+                    className="h-10 rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm outline-none"
+                  >
+                    <option value="business_user">Convert to business account</option>
+                    <option value="user">Convert to candidate account</option>
+                  </select>
+                  {convertRole === "business_user" ? (
+                    <input
+                      value={convertCompanyNumber}
+                      onChange={(event) => setConvertCompanyNumber(event.target.value)}
+                      placeholder="Company number (optional)"
+                      className="h-10 rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm outline-none"
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={saving || Boolean(selectedLead.converted_user_id)}
+                    onClick={() => void handleConvertLead()}
+                    className="inline-flex h-10 items-center justify-center rounded-[16px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {selectedLead.converted_user_id ? "Converted" : "Convert lead"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleDeleteLead()}
+                    className="inline-flex h-10 items-center justify-center rounded-[16px] border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-800 disabled:opacity-50"
+                  >
+                    Delete lead
+                  </button>
                 </div>
               </section>
 

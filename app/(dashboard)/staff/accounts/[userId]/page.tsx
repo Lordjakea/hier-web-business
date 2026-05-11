@@ -10,7 +10,6 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
-  FileText,
   KeyRound,
   Loader2,
   Mail,
@@ -34,9 +33,7 @@ import {
   fetchStaffAccountBilling,
   fetchStaffAccountDetail,
   fetchStaffFollowUps,
-  fetchStaffAccountPosts,
   markStaffAccountEmailVerified,
-  removeStaffPost,
   resendStaffAccountVerificationEmail,
   sendStaffAccountPasswordReset,
   previewStaffBillingChange,
@@ -281,12 +278,6 @@ export default function StaffAccountDetailPage() {
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const [posts, setPosts] = useState<any[]>([]);
-  const [loadingPosts, setLoadingPosts] = useState(false);
-  const [selectedPost, setSelectedPost] = useState<any | null>(null);
-  const [removeReason, setRemoveReason] = useState("");
-  const [removingPost, setRemovingPost] = useState(false);
-
   const [identityEmail, setIdentityEmail] = useState("");
   const [identityPhone, setIdentityPhone] = useState("");
   const [identityFullName, setIdentityFullName] = useState("");
@@ -302,6 +293,8 @@ export default function StaffAccountDetailPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [cancelStripeOnDelete, setCancelStripeOnDelete] = useState(true);
   const [deletingAccount, setDeletingAccount] = useState(false);
 
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -343,20 +336,12 @@ export default function StaffAccountDetailPage() {
         });
         setFollowUps(followUpResponse.items || []);
 
-        setLoadingPosts(true);
-        try {
-          const postsResponse = await fetchStaffAccountPosts(userId);
-          setPosts(postsResponse.items || []);
-        } finally {
-          setLoadingPosts(false);
-        }
       } else {
         setBilling(null);
         setBillingPlans([]);
         setSelectedBillingPlan("");
         setBillingPreview(null);
         setFollowUps([]);
-        setPosts([]);
       }
     } catch (caughtError) {
       setError(
@@ -602,7 +587,10 @@ export default function StaffAccountDetailPage() {
     setActionMessage(null);
 
     try {
-      await deleteStaffAccount(userId, reason);
+      await deleteStaffAccount(userId, reason, {
+        confirm_delete: deleteConfirmed,
+        cancel_stripe_subscription: cancelStripeOnDelete,
+      });
       router.push("/staff");
     } catch (caughtError) {
       setError(
@@ -900,52 +888,6 @@ export default function StaffAccountDetailPage() {
     }
   }
 
-  async function handleConfirmRemovePost() {
-    if (!selectedPost) return;
-
-    const trimmed = removeReason.trim();
-
-    if (trimmed.length < 10) {
-      setError("Please enter a removal reason of at least 10 characters.");
-      return;
-    }
-
-    setRemovingPost(true);
-    setError(null);
-
-    try {
-      const response = await removeStaffPost(selectedPost.id, trimmed);
-
-      setPosts((current) =>
-        current.map((post) =>
-          post.id === selectedPost.id ? { ...post, ...response.post } : post
-        )
-      );
-
-      setAccount((current) =>
-        current
-          ? {
-              ...current,
-              notes: response.note
-                ? [response.note, ...(current.notes || [])]
-                : current.notes,
-            }
-          : current
-      );
-
-      setSelectedPost(null);
-      setRemoveReason("");
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Could not remove this post."
-      );
-    } finally {
-      setRemovingPost(false);
-    }
-  }
-
   const title = useMemo(() => {
     if (!account?.basic) return "Account detail";
 
@@ -994,10 +936,9 @@ export default function StaffAccountDetailPage() {
   const Icon =
     account.account_type === "business" ? BriefcaseBusiness : UserRound;
 
-  const recentItems =
-    account.account_type === "business"
-      ? account.recent_posts || []
-      : account.recent_applications || [];
+  const requiresStripeCancellationOnDelete =
+    account.account_type === "business" && !isAppleManagedBilling;
+  const recentApplications = account.recent_applications || [];
 
   const businessProfileRows: Array<[string, string, unknown]> = [
     ["Company", "company_name", account.business_profile?.company_name],
@@ -1471,69 +1412,10 @@ export default function StaffAccountDetailPage() {
             </InfoCard>
           ) : null}
 
-          {account.account_type === "business" ? (
-            <InfoCard title="Business posts">
-              {loadingPosts ? (
-                <div className="flex items-center gap-2 text-sm text-hier-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading posts...
-                </div>
-              ) : posts.length ? (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {posts.map((post) => {
-                    const removed =
-                      !post.is_active || post.archived_at || post.shadow_hidden;
-
-                    return (
-                      <button
-                        key={post.id}
-                        type="button"
-                        disabled={removed}
-                        onClick={() => {
-                          setSelectedPost(post);
-                          setRemoveReason("");
-                        }}
-                        className="group overflow-hidden rounded-[22px] border border-hier-border bg-hier-panel text-left shadow-sm transition hover:-translate-y-0.5 hover:border-hier-primary hover:shadow-card disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {post.image_url ? (
-                          <img
-                            src={post.image_url}
-                            alt={post.title || "Job post image"}
-                            className="aspect-[4/3] w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex aspect-[4/3] w-full items-center justify-center border-b border-dashed border-hier-border bg-white text-xs text-hier-muted">
-                            No post image
-                          </div>
-                        )}
-
-                        <div className="p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="min-h-[40px] overflow-hidden text-sm font-semibold text-hier-text">
-                              {post.title || `Post #${post.id}`}
-                            </p>
-                            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-hier-muted group-hover:text-hier-primary" />
-                          </div>
-                          <p className="mt-1 truncate text-xs text-hier-muted">
-                            {post.location || post.sector || "-"}
-                          </p>
-                          {removed ? (
-                            <span className="mt-3 inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-hier-muted">
-                              Removed
-                            </span>
-                          ) : null}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>              ) : (
-                <p className="text-sm text-hier-muted">No posts found.</p>
-              )}
-            </InfoCard>
-          ) : (
+          {account.account_type !== "business" ? (
             <InfoCard title="Recent applications">
-              {recentItems.length ? (
-                recentItems.map((item) => (
+              {recentApplications.length ? (
+                recentApplications.map((item) => (
                   <div
                     key={item.id}
                     className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
@@ -1556,7 +1438,8 @@ export default function StaffAccountDetailPage() {
                 <p className="text-sm text-hier-muted">No recent items yet.</p>
               )}
             </InfoCard>
-          )}
+          ) : null}
+
         </div>
 
         <aside className="space-y-6">
@@ -1721,6 +1604,8 @@ export default function StaffAccountDetailPage() {
                 onClick={() => {
                   setShowDeleteAccount(true);
                   setDeleteReason("");
+                  setDeleteConfirmed(false);
+                  setCancelStripeOnDelete(requiresStripeCancellationOnDelete);
                 }}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-800 transition hover:bg-red-100"
               >
@@ -1931,6 +1816,8 @@ export default function StaffAccountDetailPage() {
                 onClick={() => {
                   setShowDeleteAccount(false);
                   setDeleteReason("");
+                  setDeleteConfirmed(false);
+                  setCancelStripeOnDelete(requiresStripeCancellationOnDelete);
                 }}
                 className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1951,6 +1838,39 @@ export default function StaffAccountDetailPage() {
               />
             </div>
 
+            <div className="mt-4 space-y-3">
+              <label className="flex items-start gap-3 rounded-[18px] border border-red-200 bg-white p-4 text-sm font-semibold text-red-950">
+                <input
+                  type="checkbox"
+                  checked={deleteConfirmed}
+                  onChange={(event) => setDeleteConfirmed(event.target.checked)}
+                  disabled={deletingAccount}
+                  className="mt-1"
+                />
+                I confirm this account should be deleted.
+              </label>
+
+              {account.account_type === "business" ? (
+                <label className="flex items-start gap-3 rounded-[18px] border border-red-200 bg-white p-4 text-sm font-semibold text-red-950">
+                  <input
+                    type="checkbox"
+                    checked={cancelStripeOnDelete}
+                    onChange={(event) => setCancelStripeOnDelete(event.target.checked)}
+                    disabled={deletingAccount || isAppleManagedBilling}
+                    className="mt-1"
+                  />
+                  Cancel the Stripe subscription as part of this deletion.
+                </label>
+              ) : null}
+
+              {isAppleManagedBilling ? (
+                <p className="rounded-[18px] border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                  This account is Apple-managed, so the subscription must be
+                  cancelled in Apple before the account can be deleted.
+                </p>
+              ) : null}
+            </div>
+
             <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
@@ -1958,6 +1878,8 @@ export default function StaffAccountDetailPage() {
                 onClick={() => {
                   setShowDeleteAccount(false);
                   setDeleteReason("");
+                  setDeleteConfirmed(false);
+                  setCancelStripeOnDelete(requiresStripeCancellationOnDelete);
                 }}
                 className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1966,7 +1888,13 @@ export default function StaffAccountDetailPage() {
 
               <button
                 type="button"
-                disabled={deleteReason.trim().length < 10 || deletingAccount}
+                disabled={
+                  deleteReason.trim().length < 10 ||
+                  !deleteConfirmed ||
+                  (requiresStripeCancellationOnDelete && !cancelStripeOnDelete) ||
+                  isAppleManagedBilling ||
+                  deletingAccount
+                }
                 onClick={handleDeleteAccount}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1982,158 +1910,6 @@ export default function StaffAccountDetailPage() {
         </div>
       ) : null}
 
-      {selectedPost ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-[32px] border border-hier-border bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-hier-text">
-                  Review job post
-                </h2>
-                <p className="mt-1 text-sm text-hier-muted">
-                  Review the full post before deciding whether it should stay
-                  live or be removed.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedPost(null);
-                  setRemoveReason("");
-                }}
-                className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-5 max-h-[65vh] overflow-y-auto pr-1">
-              {selectedPost.image_url ? (
-                <div className="overflow-hidden rounded-[24px] border border-hier-border bg-white">
-                  <img
-                    src={selectedPost.image_url}
-                    alt={selectedPost.title || "Job post image"}
-                    className="h-64 w-full object-cover"
-                  />
-                </div>
-              ) : (
-                <div className="flex h-40 items-center justify-center rounded-[24px] border border-dashed border-hier-border bg-hier-panel text-sm text-hier-muted">
-                  No post image
-                </div>
-              )}
-
-              <div className="mt-5 rounded-[22px] border border-hier-border bg-hier-panel p-4">
-                <p className="text-lg font-semibold text-hier-text">
-                  {selectedPost.title || `Post #${selectedPost.id}`}
-                </p>
-
-                <div className="mt-3 grid gap-3 text-sm text-hier-muted sm:grid-cols-2">
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Company:
-                    </span>{" "}
-                    {selectedPost.company_name || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Location:
-                    </span>{" "}
-                    {selectedPost.location || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Sector:
-                    </span>{" "}
-                    {selectedPost.sector || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">Type:</span>{" "}
-                    {selectedPost.employment_type || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Salary min:
-                    </span>{" "}
-                    {selectedPost.salary_min || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Salary max:
-                    </span>{" "}
-                    {selectedPost.salary_max || "—"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Created:
-                    </span>{" "}
-                    {formatDate(selectedPost.created_at)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-hier-text">
-                      Status:
-                    </span>{" "}
-                    {selectedPost.is_active ? "Live" : "Removed"}
-                  </p>
-                </div>
-
-                <div className="mt-5">
-                  <p className="text-sm font-semibold text-hier-text">
-                    Description
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-hier-muted">
-                    {selectedPost.description || "No description provided."}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-[22px] border border-red-200 bg-red-50 p-4">
-                <label className="block text-sm font-semibold text-red-950">
-                  Removal reason
-                </label>
-                <p className="mt-1 text-xs text-red-800">
-                  Only complete this if you decide the post should be removed.
-                </p>
-
-                <textarea
-                  value={removeReason}
-                  onChange={(event) => setRemoveReason(event.target.value)}
-                  rows={5}
-                  placeholder="Explain why this post is being removed..."
-                  className="mt-3 w-full resize-none rounded-[18px] border border-red-200 bg-white p-4 text-sm text-hier-text outline-none transition focus:border-red-500"
-                />
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedPost(null);
-                  setRemoveReason("");
-                }}
-                className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={removeReason.trim().length < 10 || removingPost}
-                onClick={handleConfirmRemovePost}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {removingPost ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                Remove post
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

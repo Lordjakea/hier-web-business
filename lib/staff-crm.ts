@@ -433,6 +433,27 @@ export async function updateStaffLead(
   });
 }
 
+export async function deleteStaffLead(leadId: number | string) {
+  return apiFetch<{ ok: boolean; deleted: boolean; lead_id: number }>(
+    `/api/staff/leads/${leadId}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function convertStaffLead(
+  leadId: number | string,
+  payload: { role?: "user" | "business_user"; company_number?: string | null; plan_code?: string | null } = {}
+) {
+  return apiFetch<{
+    ok: boolean;
+    lead: StaffLead;
+    account: StaffAccountDetail;
+  }>(`/api/staff/leads/${leadId}/convert`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function createStaffLeadNote(leadId: number | string, note: string) {
   return apiFetch<{ ok: boolean; note: StaffNote }>(`/api/staff/leads/${leadId}/notes`, {
     method: "POST",
@@ -605,7 +626,11 @@ export async function sendStaffAccountPasswordReset(
 
 export async function deleteStaffAccount(
   userId: number | string,
-  reason: string
+  reason: string,
+  options?: {
+    confirm_delete?: boolean;
+    cancel_stripe_subscription?: boolean;
+  }
 ) {
   const token = getAuthToken();
 
@@ -616,7 +641,11 @@ export async function deleteStaffAccount(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({
+      reason,
+      confirm_delete: Boolean(options?.confirm_delete),
+      cancel_stripe_subscription: Boolean(options?.cancel_stripe_subscription),
+    }),
     cache: "no-store",
   });
 
