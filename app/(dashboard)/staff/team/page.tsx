@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, MailPlus, PauseCircle, Pencil, PlayCircle, RefreshCw, ShieldCheck, Trash2, Users } from "lucide-react";
+import { Check, KeyRound, MailPlus, PauseCircle, Pencil, PlayCircle, RefreshCw, ShieldCheck, Trash2, Users } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffInvite,
   deleteStaffTeamMember,
   fetchStaffTeam,
+  issueStaffTeamTemporaryPassword,
   updateStaffTeamMember,
   type StaffInvite,
   type StaffTeamUser,
@@ -57,6 +58,7 @@ export default function StaffTeamPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [savingUserId, setSavingUserId] = useState<number | null>(null);
+  const [resettingUserId, setResettingUserId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [devInviteUrl, setDevInviteUrl] = useState<string | null>(null);
@@ -182,6 +184,26 @@ export default function StaffTeamPage() {
     }
   }
 
+  async function handleIssueTemporaryPassword(user: StaffTeamUser) {
+    if (!window.confirm(`Issue a new temporary password for ${user.full_name || user.email}?`)) return;
+
+    setResettingUserId(user.id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await issueStaffTeamTemporaryPassword(user.id);
+      setStaff((current) =>
+        current.map((item) => (item.id === user.id ? response.staff : item))
+      );
+      setSuccess("Temporary password sent to the staff member.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not issue temporary password.");
+    } finally {
+      setResettingUserId(null);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -286,7 +308,7 @@ export default function StaffTeamPage() {
                     <button
                       type="button"
                       onClick={() => void handleTogglePaused(user)}
-                      disabled={savingUserId === user.id}
+                      disabled={savingUserId === user.id || resettingUserId === user.id}
                       className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
                     >
                       {user.is_active === false ? (
@@ -295,6 +317,15 @@ export default function StaffTeamPage() {
                         <PauseCircle className="h-3.5 w-3.5" />
                       )}
                       {user.is_active === false ? "Resume" : "Pause"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleIssueTemporaryPassword(user)}
+                      disabled={savingUserId === user.id || resettingUserId === user.id}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" />
+                      {resettingUserId === user.id ? "Sending..." : "Temp password"}
                     </button>
                   </div>
                 </div>

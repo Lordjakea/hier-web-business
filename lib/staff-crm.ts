@@ -872,6 +872,19 @@ export async function deleteStaffTeamMember(staffUserId: number | string) {
   );
 }
 
+export async function issueStaffTeamTemporaryPassword(
+  staffUserId: number | string,
+  reason = "Staff team temporary password reset requested from CRM."
+) {
+  return apiFetch<{ ok: boolean; message?: string; staff: StaffTeamUser }>(
+    `/api/staff/team/${staffUserId}/temporary-password`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }
+  );
+}
+
 export async function inspectStaffInvite(token: string) {
   return apiFetch<{
     ok: boolean;
