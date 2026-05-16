@@ -26,6 +26,7 @@ import {
   updateBusinessJobPost,
   type ManagedPostItem,
 } from "@/lib/business-posts";
+import { EMPLOYMENT_TYPE_OPTIONS, SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 type FormValues = {
   title: string;
@@ -379,6 +380,16 @@ export default function EditPostPage() {
         if (min != null && max != null && min > max) {
           throw new Error("Minimum salary cannot be greater than maximum salary.");
         }
+        if (!SECTOR_OPTIONS.includes(values.sector as (typeof SECTOR_OPTIONS)[number])) {
+          throw new Error("Choose a sector from the list.");
+        }
+        if (
+          !EMPLOYMENT_TYPE_OPTIONS.includes(
+            values.employmentType as (typeof EMPLOYMENT_TYPE_OPTIONS)[number]
+          )
+        ) {
+          throw new Error("Choose an employment type from the list.");
+        }
 
         updatedPost = await updateBusinessJobPost(postId, {
           title: values.title.trim(),
@@ -585,20 +596,33 @@ export default function EditPostPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block text-sm font-semibold text-hier-text">
                   Sector
-                  <input
+                  <select
                     value={values.sector}
                     onChange={(e) => setField("sector", e.target.value)}
                     className="mt-2 h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm outline-none transition focus:border-hier-primary"
-                  />
+                  >
+                    <option value="">Select sector</option>
+                    {SECTOR_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label className="block text-sm font-semibold text-hier-text">
                   Employment type
-                  <input
+                  <select
                     value={values.employmentType}
                     onChange={(e) => setField("employmentType", e.target.value)}
                     className="mt-2 h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm outline-none transition focus:border-hier-primary"
-                  />
+                  >
+                    {EMPLOYMENT_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label className="block text-sm font-semibold text-hier-text">

@@ -242,6 +242,21 @@ function getInterviewWith(slot?: InterviewSlot | null) {
   return slot?.interviewer_name || slot?.notes || null;
 }
 
+type ShowcaseItem = NonNullable<BusinessCandidate["showcase"]>[number];
+
+function getShowcaseUrl(item: ShowcaseItem) {
+  return item.public_url || item.thumbnail_url || null;
+}
+
+function getShowcaseType(item: ShowcaseItem) {
+  const raw = `${item.media_type || ""} ${item.mime_type || ""}`.toLowerCase();
+
+  if (raw.includes("video")) return "Video";
+  if (raw.includes("image")) return "Image";
+  if (raw.includes("pdf")) return "PDF";
+  return "File";
+}
+
 function toIsoFromDatetimeLocal(value: string) {
   if (!value) return null;
   const d = new Date(value);
@@ -349,6 +364,7 @@ export function ApplicationDetailDrawer({
     application?.job_post?.location_text;
 
   const avatarUrl = candidate?.avatar_url || application?.user?.avatar_url || null;
+  const showcaseItems = candidate?.showcase || [];
 
   const fileName =
     application?.attachments?.find((item) => item.kind === "cv")?.filename ||
@@ -1191,6 +1207,86 @@ export function ApplicationDetailDrawer({
                 </p>
               </section>
             ) : null}
+
+            <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-hier-text">Showcase files</h3>
+                {showcaseItems.length ? (
+                  <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold text-hier-primary">
+                    {showcaseItems.length}
+                  </span>
+                ) : null}
+              </div>
+
+              {showcaseItems.length ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {showcaseItems.map((item) => {
+                    const href = getShowcaseUrl(item);
+                    const type = getShowcaseType(item);
+                    const title = item.title || item.file_name || "Showcase file";
+                    const isImage = type === "Image" && href;
+
+                    return (
+                      <article
+                        key={item.id}
+                        className="overflow-hidden rounded-[20px] border border-hier-border bg-hier-panel"
+                      >
+                        {isImage ? (
+                          <img
+                            src={item.thumbnail_url || href}
+                            alt={title}
+                            className="h-32 w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-32 items-center justify-center bg-white text-hier-primary">
+                            {type === "Video" ? (
+                              <Video className="h-8 w-8" aria-hidden="true" />
+                            ) : (
+                              <ExternalLink className="h-8 w-8" aria-hidden="true" />
+                            )}
+                          </div>
+                        )}
+
+                        <div className="space-y-2 px-4 py-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-sm font-semibold text-hier-text">
+                              {title}
+                            </p>
+                            <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-hier-muted">
+                              {type}
+                            </span>
+                          </div>
+
+                          {item.description ? (
+                            <p className="text-sm leading-6 text-hier-muted">
+                              {item.description}
+                            </p>
+                          ) : null}
+
+                          {href ? (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-2 text-sm font-semibold text-hier-primary"
+                            >
+                              Open file
+                              <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                            </a>
+                          ) : (
+                            <p className="text-sm text-hier-muted">No file link available.</p>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-hier-muted">
+                  No showcase files shared yet.
+                </p>
+              )}
+            </section>
 
             {candidate?.experience && candidate.experience.length > 0 ? (
               <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">

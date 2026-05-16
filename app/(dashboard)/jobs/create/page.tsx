@@ -19,6 +19,7 @@ import {
   createBusinessContentPost,
   createBusinessJobPost,
 } from "@/lib/business-posts";
+import { EMPLOYMENT_TYPE_OPTIONS, SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 type ContentType = "post" | "job";
 type SalaryMode = "single" | "range";
@@ -538,6 +539,20 @@ export default function JobsCreatePage() {
           throw new Error(
             "Add at least one screening question or turn the toggle off."
           );
+        }
+
+        if (!isGig) {
+          if (!SECTOR_OPTIONS.includes(values.sector as (typeof SECTOR_OPTIONS)[number])) {
+            throw new Error("Choose a sector from the list.");
+          }
+
+          if (
+            !EMPLOYMENT_TYPE_OPTIONS.includes(
+              values.employmentType as (typeof EMPLOYMENT_TYPE_OPTIONS)[number]
+            )
+          ) {
+            throw new Error("Choose an employment type from the list.");
+          }
         }
 
         const created = await createBusinessJobPost({
@@ -1115,24 +1130,37 @@ export default function JobsCreatePage() {
                         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
                           Sector
                         </span>
-                        <input
+                        <select
                           value={values.sector}
                           onChange={(e) => onChange("sector", e.target.value)}
                           className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                        />
+                        >
+                          <option value="">Select sector</option>
+                          {SECTOR_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
                       </label>
 
                       <label className="space-y-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
                           Employment type
                         </span>
-                        <input
+                        <select
                           value={values.employmentType}
                           onChange={(e) =>
                             onChange("employmentType", e.target.value)
                           }
                           className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
-                        />
+                        >
+                          {EMPLOYMENT_TYPE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
                       </label>
 
                       <label className="space-y-2">

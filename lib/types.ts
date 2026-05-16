@@ -135,7 +135,10 @@ export type CandidateExperienceItem = {
 export type CandidateShowcaseItem = {
   id: string | number;
   title?: string | null;
+  description?: string | null;
   media_type?: string | null;
+  mime_type?: string | null;
+  file_name?: string | null;
   public_url?: string | null;
   thumbnail_url?: string | null;
 };
