@@ -37,10 +37,42 @@ function blankLeadForm() {
     phone: "",
     email: "",
     business_name: "",
+    lead_type: "business",
+    website_url: "",
     source: "",
-    address: "",
+    address_line_1: "",
+    address_line_2: "",
+    town: "",
+    city: "",
+    postcode: "",
     marketing_opt_in: false,
   };
+}
+
+function formatLeadType(value?: string | null) {
+  return value === "candidate" ? "Candidate" : "Business";
+}
+
+function normalizeLeadType(value?: string | null) {
+  return String(value || "").trim().toLowerCase() === "candidate"
+    ? "candidate"
+    : "business";
+}
+
+function formatLeadAddress(lead: StaffLead) {
+  return (
+    [
+      lead.address_line_1,
+      lead.address_line_2,
+      lead.town,
+      lead.city,
+      lead.postcode,
+    ]
+      .filter(Boolean)
+      .join(", ") ||
+    lead.address ||
+    "-"
+  );
 }
 
 const leadImportFields = [
@@ -49,7 +81,14 @@ const leadImportFields = [
   { key: "email", label: "Email" },
   { key: "phone", label: "Number" },
   { key: "business_name", label: "Business name" },
-  { key: "address", label: "Address" },
+  { key: "lead_type", label: "Lead type" },
+  { key: "website_url", label: "Website" },
+  { key: "address_line_1", label: "Address line 1" },
+  { key: "address_line_2", label: "Address line 2" },
+  { key: "town", label: "Town" },
+  { key: "city", label: "City" },
+  { key: "postcode", label: "Postcode" },
+  { key: "source", label: "Where heard about us" },
   { key: "marketing_opt_in", label: "Marketing opt in" },
 ] as const;
 
@@ -107,7 +146,14 @@ function guessLeadField(header: string) {
   if (["email", "email_address", "contact_email"].includes(normalized)) return "email";
   if (["phone", "number", "mobile", "telephone", "contact_number"].includes(normalized)) return "phone";
   if (["business", "business_name", "company", "company_name"].includes(normalized)) return "business_name";
-  if (["address", "postcode", "full_address"].includes(normalized)) return "address";
+  if (["lead_type", "type", "account_type"].includes(normalized)) return "lead_type";
+  if (["website", "website_url", "url", "site"].includes(normalized)) return "website_url";
+  if (["address", "address_line_1", "line_1", "first_line", "full_address"].includes(normalized)) return "address_line_1";
+  if (["address_line_2", "line_2", "second_line"].includes(normalized)) return "address_line_2";
+  if (["town"].includes(normalized)) return "town";
+  if (["city", "location"].includes(normalized)) return "city";
+  if (["postcode", "post_code", "zip"].includes(normalized)) return "postcode";
+  if (["source", "heard_about_us", "where_heard", "where_did_you_hear_about_us"].includes(normalized)) return "source";
   if (["marketing", "marketing_opt_in", "opt_in", "marketing_consent"].includes(normalized)) return "marketing_opt_in";
   return "ignore";
 }
@@ -118,6 +164,8 @@ export default function StaffLeadsPage() {
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [leadTypeFilter, setLeadTypeFilter] = useState("all");
+  const [cityFilter, setCityFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,7 +196,12 @@ export default function StaffLeadsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchStaffLeads({ q: query, status });
+      const response = await fetchStaffLeads({
+        q: query,
+        status,
+        lead_type: leadTypeFilter,
+        city: cityFilter,
+      });
       setLeads(response.items || []);
       setSelectedLeadId((current) => {
         if (current && response.items?.some((lead) => lead.id === current)) return current;
@@ -159,7 +212,7 @@ export default function StaffLeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, status]);
+  }, [cityFilter, leadTypeFilter, query, status]);
 
   useEffect(() => {
     void loadLeads();
@@ -178,8 +231,14 @@ export default function StaffLeadsPage() {
       phone: selectedLead.phone || "",
       email: selectedLead.email || "",
       business_name: selectedLead.business_name || "",
+      lead_type: normalizeLeadType(selectedLead.lead_type),
+      website_url: selectedLead.website_url || "",
       source: selectedLead.source || "",
-      address: selectedLead.address || "",
+      address_line_1: selectedLead.address_line_1 || "",
+      address_line_2: selectedLead.address_line_2 || "",
+      town: selectedLead.town || "",
+      city: selectedLead.city || "",
+      postcode: selectedLead.postcode || "",
       marketing_opt_in: Boolean(selectedLead.marketing_opt_in),
     });
   }, [selectedLead]);
@@ -347,7 +406,15 @@ export default function StaffLeadsPage() {
       "email",
       "phone",
       "business_name",
+      "lead_type",
+      "website_url",
+      "source",
       "address",
+      "address_line_1",
+      "address_line_2",
+      "town",
+      "city",
+      "postcode",
       "marketing_opt_in",
       "status",
       "created_at",
@@ -424,7 +491,14 @@ export default function StaffLeadsPage() {
       email: (mapped.email || "").trim(),
       phone: (mapped.phone || "").trim() || null,
       business_name: (mapped.business_name || "").trim() || null,
-      address: (mapped.address || "").trim() || null,
+      lead_type: normalizeLeadType(mapped.lead_type),
+      website_url: (mapped.website_url || "").trim() || null,
+      source: (mapped.source || "").trim() || null,
+      address_line_1: (mapped.address_line_1 || "").trim() || null,
+      address_line_2: (mapped.address_line_2 || "").trim() || null,
+      town: (mapped.town || "").trim() || null,
+      city: (mapped.city || "").trim() || null,
+      postcode: (mapped.postcode || "").trim() || null,
       marketing_opt_in: parseBoolean(mapped.marketing_opt_in),
     };
   }
@@ -477,7 +551,7 @@ export default function StaffLeadsPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 rounded-[28px] border border-hier-border bg-white p-4 shadow-card lg:grid-cols-[1fr_180px_auto_auto]">
+      <section className="grid gap-4 rounded-[28px] border border-hier-border bg-white p-4 shadow-card xl:grid-cols-[1fr_180px_180px_180px_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-hier-muted" />
           <input
@@ -498,6 +572,21 @@ export default function StaffLeadsPage() {
           <option value="qualified">Qualified</option>
           <option value="closed">Closed</option>
         </select>
+        <select
+          value={leadTypeFilter}
+          onChange={(event) => setLeadTypeFilter(event.target.value)}
+          className="h-12 rounded-[20px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+        >
+          <option value="all">All lead types</option>
+          <option value="business">Business</option>
+          <option value="candidate">Candidate</option>
+        </select>
+        <input
+          value={cityFilter}
+          onChange={(event) => setCityFilter(event.target.value)}
+          placeholder="City"
+          className="h-12 rounded-[20px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+        />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -549,11 +638,18 @@ export default function StaffLeadsPage() {
                   <div>
                     <p className="font-semibold text-hier-text">{lead.name}</p>
                     <p className="mt-1 text-sm text-hier-muted">{lead.email}</p>
-                    <p className="mt-1 text-sm text-hier-muted">{lead.phone || lead.business_name || "-"}</p>
+                    <p className="mt-1 text-sm text-hier-muted">
+                      {lead.phone || lead.business_name || lead.city || "-"}
+                    </p>
                   </div>
-                  <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
-                    {lead.status || "new"}
-                  </span>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                      {formatLeadType(lead.lead_type)}
+                    </span>
+                    <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                      {lead.status || "new"}
+                    </span>
+                  </div>
                 </div>
               </button>
             ))
@@ -633,6 +729,30 @@ export default function StaffLeadsPage() {
                       placeholder="Business name"
                       className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
                     />
+                    <select
+                      value={leadEditForm.lead_type}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({
+                          ...current,
+                          lead_type: event.target.value,
+                        }))
+                      }
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    >
+                      <option value="business">Business lead</option>
+                      <option value="candidate">Candidate lead</option>
+                    </select>
+                    <input
+                      value={leadEditForm.website_url}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({
+                          ...current,
+                          website_url: event.target.value,
+                        }))
+                      }
+                      placeholder="Website link (optional)"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
                     <input
                       value={leadEditForm.source}
                       onChange={(event) =>
@@ -644,14 +764,45 @@ export default function StaffLeadsPage() {
                       placeholder="Where did you hear about us? (optional)"
                       className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
                     />
-                    <textarea
-                      value={leadEditForm.address}
+                    <input
+                      value={leadEditForm.address_line_1}
                       onChange={(event) =>
-                        setLeadEditForm((current) => ({ ...current, address: event.target.value }))
+                        setLeadEditForm((current) => ({ ...current, address_line_1: event.target.value }))
                       }
-                      placeholder="Address"
-                      rows={3}
-                      className="resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                      placeholder="Address first line"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={leadEditForm.address_line_2}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({ ...current, address_line_2: event.target.value }))
+                      }
+                      placeholder="Address second line"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={leadEditForm.town}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({ ...current, town: event.target.value }))
+                      }
+                      placeholder="Town"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={leadEditForm.city}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({ ...current, city: event.target.value }))
+                      }
+                      placeholder="City"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={leadEditForm.postcode}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({ ...current, postcode: event.target.value }))
+                      }
+                      placeholder="Postcode"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
                     />
                     <label className="flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
                       <input
@@ -680,8 +831,10 @@ export default function StaffLeadsPage() {
                     <div className="mt-5 space-y-3 text-sm">
                       <p><span className="font-semibold text-hier-text">Phone:</span> {selectedLead.phone || "-"}</p>
                       <p><span className="font-semibold text-hier-text">Business:</span> {selectedLead.business_name || "-"}</p>
+                      <p><span className="font-semibold text-hier-text">Lead type:</span> {formatLeadType(selectedLead.lead_type)}</p>
+                      <p><span className="font-semibold text-hier-text">Website:</span> {selectedLead.website_url || "-"}</p>
                       <p><span className="font-semibold text-hier-text">Heard about us:</span> {selectedLead.source || "-"}</p>
-                      <p><span className="font-semibold text-hier-text">Address:</span> {selectedLead.address || "-"}</p>
+                      <p><span className="font-semibold text-hier-text">Address:</span> {formatLeadAddress(selectedLead)}</p>
                       <p><span className="font-semibold text-hier-text">Marketing opt in:</span> {selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
                     </div>
                     <label className="mt-4 flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
@@ -919,6 +1072,8 @@ export default function StaffLeadsPage() {
                           <th className="px-3 py-2">Email</th>
                           <th className="px-3 py-2">Number</th>
                           <th className="px-3 py-2">Business</th>
+                          <th className="px-3 py-2">Type</th>
+                          <th className="px-3 py-2">City</th>
                           <th className="px-3 py-2">Marketing</th>
                         </tr>
                       </thead>
@@ -929,6 +1084,8 @@ export default function StaffLeadsPage() {
                             <td className="px-3 py-2">{lead.email || "-"}</td>
                             <td className="px-3 py-2">{lead.phone || "-"}</td>
                             <td className="px-3 py-2">{lead.business_name || "-"}</td>
+                            <td className="px-3 py-2">{formatLeadType(lead.lead_type)}</td>
+                            <td className="px-3 py-2">{lead.city || "-"}</td>
                             <td className="px-3 py-2">{lead.marketing_opt_in ? "Yes" : "No"}</td>
                           </tr>
                         ))}
@@ -971,7 +1128,7 @@ export default function StaffLeadsPage() {
 
       {showCreate ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <form className="w-full max-w-2xl rounded-[32px] bg-white p-6 shadow-panel" onSubmit={handleCreateLead}>
+          <form className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[32px] bg-white p-6 shadow-panel" onSubmit={handleCreateLead}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-hier-text">Create lead</h2>
@@ -986,8 +1143,17 @@ export default function StaffLeadsPage() {
               <input required type="email" value={leadForm.email} onChange={(event) => setLeadForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.phone} onChange={(event) => setLeadForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Number" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.business_name} onChange={(event) => setLeadForm((current) => ({ ...current, business_name: event.target.value }))} placeholder="Business name (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <select value={leadForm.lead_type} onChange={(event) => setLeadForm((current) => ({ ...current, lead_type: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
+                <option value="business">Business lead</option>
+                <option value="candidate">Candidate lead</option>
+              </select>
+              <input value={leadForm.website_url} onChange={(event) => setLeadForm((current) => ({ ...current, website_url: event.target.value }))} placeholder="Website link (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.source} onChange={(event) => setLeadForm((current) => ({ ...current, source: event.target.value }))} placeholder="Where did you hear about us? (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
-              <textarea value={leadForm.address} onChange={(event) => setLeadForm((current) => ({ ...current, address: event.target.value }))} placeholder="Address" rows={3} className="sm:col-span-2 resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.address_line_1} onChange={(event) => setLeadForm((current) => ({ ...current, address_line_1: event.target.value }))} placeholder="Address first line" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.address_line_2} onChange={(event) => setLeadForm((current) => ({ ...current, address_line_2: event.target.value }))} placeholder="Address second line" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.town} onChange={(event) => setLeadForm((current) => ({ ...current, town: event.target.value }))} placeholder="Town" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.city} onChange={(event) => setLeadForm((current) => ({ ...current, city: event.target.value }))} placeholder="City" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.postcode} onChange={(event) => setLeadForm((current) => ({ ...current, postcode: event.target.value }))} placeholder="Postcode" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
             </div>
             <label className="mt-4 flex items-start gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text">
               <input
