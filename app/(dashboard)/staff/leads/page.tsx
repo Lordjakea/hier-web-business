@@ -1049,14 +1049,6 @@ export default function StaffLeadsPage() {
                   >
                     {selectedLead.converted_user_id ? "Converted" : "Convert lead"}
                   </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void handleDeleteLead()}
-                    className="inline-flex h-10 items-center justify-center rounded-[16px] border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-800 disabled:opacity-50"
-                  >
-                    Delete lead
-                  </button>
                 </div>
               </section>
 
@@ -1149,6 +1141,15 @@ export default function StaffLeadsPage() {
                   ))}
                 </div>
               </section>
+
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void handleDeleteLead()}
+                className="inline-flex h-11 w-full items-center justify-center rounded-[18px] border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-800 disabled:opacity-50"
+              >
+                Delete lead
+              </button>
             </>
           ) : null}
         </aside>
