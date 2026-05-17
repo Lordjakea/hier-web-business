@@ -202,6 +202,7 @@ export type StaffLead = {
   phone?: string | null;
   email: string;
   business_name?: string | null;
+  job_title?: string | null;
   lead_type?: "business" | "candidate" | string | null;
   website_url?: string | null;
   address?: string | null;
@@ -490,6 +491,7 @@ export async function createStaffLead(payload: {
   phone?: string | null;
   email: string;
   business_name?: string | null;
+  job_title?: string | null;
   lead_type?: "business" | "candidate" | string | null;
   website_url?: string | null;
   address?: string | null;
@@ -516,6 +518,7 @@ export async function updateStaffLead(
       | "phone"
       | "email"
       | "business_name"
+      | "job_title"
       | "lead_type"
       | "website_url"
       | "address"

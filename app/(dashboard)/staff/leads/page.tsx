@@ -37,6 +37,7 @@ function blankLeadForm() {
     phone: "",
     email: "",
     business_name: "",
+    job_title: "",
     lead_type: "business",
     website_url: "",
     source: "",
@@ -81,6 +82,7 @@ const leadImportFields = [
   { key: "email", label: "Email" },
   { key: "phone", label: "Number" },
   { key: "business_name", label: "Business name" },
+  { key: "job_title", label: "Job title" },
   { key: "lead_type", label: "Lead type" },
   { key: "website_url", label: "Website" },
   { key: "address_line_1", label: "Address line 1" },
@@ -140,12 +142,19 @@ function parseBoolean(value: string | undefined) {
   return ["yes", "y", "true", "1", "opt in", "opted in", "marketing"].includes(normalized);
 }
 
+function externalUrl(value?: string | null) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 function guessLeadField(header: string) {
   const normalized = normaliseHeader(header);
   if (["name", "full_name", "contact_name", "lead_name"].includes(normalized)) return "name";
   if (["email", "email_address", "contact_email"].includes(normalized)) return "email";
   if (["phone", "number", "mobile", "telephone", "contact_number"].includes(normalized)) return "phone";
   if (["business", "business_name", "company", "company_name"].includes(normalized)) return "business_name";
+  if (["job_title", "job", "role", "position"].includes(normalized)) return "job_title";
   if (["lead_type", "type", "account_type"].includes(normalized)) return "lead_type";
   if (["website", "website_url", "url", "site"].includes(normalized)) return "website_url";
   if (["address", "address_line_1", "line_1", "first_line", "full_address"].includes(normalized)) return "address_line_1";
@@ -179,7 +188,6 @@ export default function StaffLeadsPage() {
   const [importMapping, setImportMapping] = useState<Record<string, string>>({});
   const [importing, setImporting] = useState(false);
   const [convertRole, setConvertRole] = useState<"business_user" | "user">("business_user");
-  const [convertCompanyNumber, setConvertCompanyNumber] = useState("");
   const [note, setNote] = useState("");
   const [followUp, setFollowUp] = useState({
     title: "Call back",
@@ -231,6 +239,7 @@ export default function StaffLeadsPage() {
       phone: selectedLead.phone || "",
       email: selectedLead.email || "",
       business_name: selectedLead.business_name || "",
+      job_title: selectedLead.job_title || "",
       lead_type: normalizeLeadType(selectedLead.lead_type),
       website_url: selectedLead.website_url || "",
       source: selectedLead.source || "",
@@ -384,7 +393,6 @@ export default function StaffLeadsPage() {
     try {
       const response = await convertStaffLead(selectedLead.id, {
         role: convertRole,
-        company_number: convertCompanyNumber || null,
       });
       setLeads((current) =>
         current.map((lead) => (lead.id === selectedLead.id ? response.lead : lead))
@@ -406,6 +414,7 @@ export default function StaffLeadsPage() {
       "email",
       "phone",
       "business_name",
+      "job_title",
       "lead_type",
       "website_url",
       "source",
@@ -491,6 +500,7 @@ export default function StaffLeadsPage() {
       email: (mapped.email || "").trim(),
       phone: (mapped.phone || "").trim() || null,
       business_name: (mapped.business_name || "").trim() || null,
+      job_title: (mapped.job_title || "").trim() || null,
       lead_type: normalizeLeadType(mapped.lead_type),
       website_url: (mapped.website_url || "").trim() || null,
       source: (mapped.source || "").trim() || null,
@@ -639,7 +649,7 @@ export default function StaffLeadsPage() {
                     <p className="font-semibold text-hier-text">{lead.name}</p>
                     <p className="mt-1 text-sm text-hier-muted">{lead.email}</p>
                     <p className="mt-1 text-sm text-hier-muted">
-                      {lead.phone || lead.business_name || lead.city || "-"}
+                      {lead.job_title || lead.phone || lead.business_name || lead.city || "-"}
                     </p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
@@ -727,6 +737,17 @@ export default function StaffLeadsPage() {
                         }))
                       }
                       placeholder="Business name"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={leadEditForm.job_title}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({
+                          ...current,
+                          job_title: event.target.value,
+                        }))
+                      }
+                      placeholder="Job title (optional)"
                       className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
                     />
                     <select
@@ -831,8 +852,23 @@ export default function StaffLeadsPage() {
                     <div className="mt-5 space-y-3 text-sm">
                       <p><span className="font-semibold text-hier-text">Phone:</span> {selectedLead.phone || "-"}</p>
                       <p><span className="font-semibold text-hier-text">Business:</span> {selectedLead.business_name || "-"}</p>
+                      <p><span className="font-semibold text-hier-text">Job title:</span> {selectedLead.job_title || "-"}</p>
                       <p><span className="font-semibold text-hier-text">Lead type:</span> {formatLeadType(selectedLead.lead_type)}</p>
-                      <p><span className="font-semibold text-hier-text">Website:</span> {selectedLead.website_url || "-"}</p>
+                      <p>
+                        <span className="font-semibold text-hier-text">Website:</span>{" "}
+                        {selectedLead.website_url ? (
+                          <a
+                            href={externalUrl(selectedLead.website_url)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="break-all font-semibold text-hier-primary hover:underline"
+                          >
+                            {selectedLead.website_url}
+                          </a>
+                        ) : (
+                          "-"
+                        )}
+                      </p>
                       <p><span className="font-semibold text-hier-text">Heard about us:</span> {selectedLead.source || "-"}</p>
                       <p><span className="font-semibold text-hier-text">Address:</span> {formatLeadAddress(selectedLead)}</p>
                       <p><span className="font-semibold text-hier-text">Marketing opt in:</span> {selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
@@ -873,14 +909,6 @@ export default function StaffLeadsPage() {
                     <option value="business_user">Convert to business account</option>
                     <option value="user">Convert to candidate account</option>
                   </select>
-                  {convertRole === "business_user" ? (
-                    <input
-                      value={convertCompanyNumber}
-                      onChange={(event) => setConvertCompanyNumber(event.target.value)}
-                      placeholder="Company number (optional)"
-                      className="h-10 rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm outline-none"
-                    />
-                  ) : null}
                   <button
                     type="button"
                     disabled={saving || Boolean(selectedLead.converted_user_id)}
@@ -1072,6 +1100,7 @@ export default function StaffLeadsPage() {
                           <th className="px-3 py-2">Email</th>
                           <th className="px-3 py-2">Number</th>
                           <th className="px-3 py-2">Business</th>
+                          <th className="px-3 py-2">Job title</th>
                           <th className="px-3 py-2">Type</th>
                           <th className="px-3 py-2">City</th>
                           <th className="px-3 py-2">Marketing</th>
@@ -1084,6 +1113,7 @@ export default function StaffLeadsPage() {
                             <td className="px-3 py-2">{lead.email || "-"}</td>
                             <td className="px-3 py-2">{lead.phone || "-"}</td>
                             <td className="px-3 py-2">{lead.business_name || "-"}</td>
+                            <td className="px-3 py-2">{lead.job_title || "-"}</td>
                             <td className="px-3 py-2">{formatLeadType(lead.lead_type)}</td>
                             <td className="px-3 py-2">{lead.city || "-"}</td>
                             <td className="px-3 py-2">{lead.marketing_opt_in ? "Yes" : "No"}</td>
@@ -1143,6 +1173,7 @@ export default function StaffLeadsPage() {
               <input required type="email" value={leadForm.email} onChange={(event) => setLeadForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.phone} onChange={(event) => setLeadForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Number" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.business_name} onChange={(event) => setLeadForm((current) => ({ ...current, business_name: event.target.value }))} placeholder="Business name (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.job_title} onChange={(event) => setLeadForm((current) => ({ ...current, job_title: event.target.value }))} placeholder="Job title (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <select value={leadForm.lead_type} onChange={(event) => setLeadForm((current) => ({ ...current, lead_type: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
                 <option value="business">Business lead</option>
                 <option value="candidate">Candidate lead</option>
