@@ -37,6 +37,7 @@ function blankLeadForm() {
     phone: "",
     email: "",
     business_name: "",
+    source: "",
     address: "",
     marketing_opt_in: false,
   };
@@ -177,6 +178,7 @@ export default function StaffLeadsPage() {
       phone: selectedLead.phone || "",
       email: selectedLead.email || "",
       business_name: selectedLead.business_name || "",
+      source: selectedLead.source || "",
       address: selectedLead.address || "",
       marketing_opt_in: Boolean(selectedLead.marketing_opt_in),
     });
@@ -631,6 +633,17 @@ export default function StaffLeadsPage() {
                       placeholder="Business name"
                       className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
                     />
+                    <input
+                      value={leadEditForm.source}
+                      onChange={(event) =>
+                        setLeadEditForm((current) => ({
+                          ...current,
+                          source: event.target.value,
+                        }))
+                      }
+                      placeholder="Where did you hear about us? (optional)"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
                     <textarea
                       value={leadEditForm.address}
                       onChange={(event) =>
@@ -667,6 +680,7 @@ export default function StaffLeadsPage() {
                     <div className="mt-5 space-y-3 text-sm">
                       <p><span className="font-semibold text-hier-text">Phone:</span> {selectedLead.phone || "-"}</p>
                       <p><span className="font-semibold text-hier-text">Business:</span> {selectedLead.business_name || "-"}</p>
+                      <p><span className="font-semibold text-hier-text">Heard about us:</span> {selectedLead.source || "-"}</p>
                       <p><span className="font-semibold text-hier-text">Address:</span> {selectedLead.address || "-"}</p>
                       <p><span className="font-semibold text-hier-text">Marketing opt in:</span> {selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
                     </div>
@@ -972,6 +986,7 @@ export default function StaffLeadsPage() {
               <input required type="email" value={leadForm.email} onChange={(event) => setLeadForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.phone} onChange={(event) => setLeadForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Number" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.business_name} onChange={(event) => setLeadForm((current) => ({ ...current, business_name: event.target.value }))} placeholder="Business name (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <input value={leadForm.source} onChange={(event) => setLeadForm((current) => ({ ...current, source: event.target.value }))} placeholder="Where did you hear about us? (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <textarea value={leadForm.address} onChange={(event) => setLeadForm((current) => ({ ...current, address: event.target.value }))} placeholder="Address" rows={3} className="sm:col-span-2 resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
             </div>
             <label className="mt-4 flex items-start gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text">

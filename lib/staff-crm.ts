@@ -477,6 +477,7 @@ export async function createStaffLead(payload: {
   email: string;
   business_name?: string | null;
   address?: string | null;
+  source?: string | null;
   marketing_opt_in?: boolean;
 }) {
   return apiFetch<{ ok: boolean; lead: StaffLead }>("/api/staff/leads", {
@@ -487,7 +488,7 @@ export async function createStaffLead(payload: {
 
 export async function updateStaffLead(
   leadId: number | string,
-  payload: Partial<Pick<StaffLead, "name" | "phone" | "email" | "business_name" | "address" | "marketing_opt_in" | "status">>
+  payload: Partial<Pick<StaffLead, "name" | "phone" | "email" | "business_name" | "address" | "source" | "marketing_opt_in" | "status">>
 ) {
   return apiFetch<{ ok: boolean; lead: StaffLead }>(`/api/staff/leads/${leadId}`, {
     method: "PATCH",
@@ -516,10 +517,14 @@ export async function convertStaffLead(
   });
 }
 
-export async function createStaffLeadNote(leadId: number | string, note: string) {
+export async function createStaffLeadNote(
+  leadId: number | string,
+  note: string,
+  mentionedStaffUserIds: Array<number | string> = []
+) {
   return apiFetch<{ ok: boolean; note: StaffNote }>(`/api/staff/leads/${leadId}/notes`, {
     method: "POST",
-    body: JSON.stringify({ note }),
+    body: JSON.stringify({ note, mentioned_staff_user_ids: mentionedStaffUserIds }),
   });
 }
 
