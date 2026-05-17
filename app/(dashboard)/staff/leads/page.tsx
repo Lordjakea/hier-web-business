@@ -16,6 +16,22 @@ import {
   type StaffLead,
 } from "@/lib/staff-crm";
 
+type LeadContactForm = {
+  name: string;
+  job_title: string;
+  email: string;
+  phone: string;
+};
+
+function blankContact(): LeadContactForm {
+  return {
+    name: "",
+    job_title: "",
+    email: "",
+    phone: "",
+  };
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) return "-";
   try {
@@ -38,6 +54,7 @@ function blankLeadForm() {
     email: "",
     business_name: "",
     job_title: "",
+    contacts: [] as LeadContactForm[],
     lead_type: "business",
     website_url: "",
     source: "",
@@ -74,6 +91,17 @@ function formatLeadAddress(lead: StaffLead) {
     lead.address ||
     "-"
   );
+}
+
+function normaliseContacts(
+  contacts?: StaffLead["contacts"] | LeadContactForm[],
+): LeadContactForm[] {
+  return (contacts || []).map((contact) => ({
+    name: contact.name || "",
+    job_title: contact.job_title || "",
+    email: contact.email || "",
+    phone: contact.phone || "",
+  }));
 }
 
 const leadImportFields = [
@@ -240,6 +268,7 @@ export default function StaffLeadsPage() {
       email: selectedLead.email || "",
       business_name: selectedLead.business_name || "",
       job_title: selectedLead.job_title || "",
+      contacts: normaliseContacts(selectedLead.contacts),
       lead_type: normalizeLeadType(selectedLead.lead_type),
       website_url: selectedLead.website_url || "",
       source: selectedLead.source || "",
@@ -251,6 +280,64 @@ export default function StaffLeadsPage() {
       marketing_opt_in: Boolean(selectedLead.marketing_opt_in),
     });
   }, [selectedLead]);
+
+  function addContact(form: "create" | "edit") {
+    if (form === "create") {
+      setLeadForm((current) => ({
+        ...current,
+        contacts: [...current.contacts, blankContact()],
+      }));
+      return;
+    }
+
+    setLeadEditForm((current) => ({
+      ...current,
+      contacts: [...current.contacts, blankContact()],
+    }));
+  }
+
+  function updateContact(
+    form: "create" | "edit",
+    index: number,
+    field: keyof LeadContactForm,
+    value: string,
+  ) {
+    const update = (contacts: LeadContactForm[]) =>
+      contacts.map((contact, contactIndex) =>
+        contactIndex === index ? { ...contact, [field]: value } : contact,
+      );
+
+    if (form === "create") {
+      setLeadForm((current) => ({
+        ...current,
+        contacts: update(current.contacts),
+      }));
+      return;
+    }
+
+    setLeadEditForm((current) => ({
+      ...current,
+      contacts: update(current.contacts),
+    }));
+  }
+
+  function removeContact(form: "create" | "edit", index: number) {
+    const remove = (contacts: LeadContactForm[]) =>
+      contacts.filter((_, contactIndex) => contactIndex !== index);
+
+    if (form === "create") {
+      setLeadForm((current) => ({
+        ...current,
+        contacts: remove(current.contacts),
+      }));
+      return;
+    }
+
+    setLeadEditForm((current) => ({
+      ...current,
+      contacts: remove(current.contacts),
+    }));
+  }
 
   async function handleCreateLead(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -501,6 +588,7 @@ export default function StaffLeadsPage() {
       phone: (mapped.phone || "").trim() || null,
       business_name: (mapped.business_name || "").trim() || null,
       job_title: (mapped.job_title || "").trim() || null,
+      contacts: [],
       lead_type: normalizeLeadType(mapped.lead_type),
       website_url: (mapped.website_url || "").trim() || null,
       source: (mapped.source || "").trim() || null,
@@ -626,7 +714,7 @@ export default function StaffLeadsPage() {
         </button>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_440px]">
+      <section className="grid gap-6 2xl:grid-cols-[minmax(420px,0.82fr)_minmax(680px,1.18fr)]">
         <div className="space-y-3">
           {loading ? (
             <div className="rounded-[28px] border border-hier-border bg-white p-8 text-sm text-hier-muted">
@@ -638,25 +726,25 @@ export default function StaffLeadsPage() {
                 key={lead.id}
                 type="button"
                 onClick={() => setSelectedLeadId(lead.id)}
-                className={`w-full rounded-[24px] border p-4 text-left shadow-sm transition ${
+                className={`w-full rounded-[18px] border px-4 py-3 text-left shadow-sm transition ${
                   selectedLead?.id === lead.id
                     ? "border-hier-primary bg-white shadow-card"
                     : "border-hier-border bg-white hover:border-hier-primary"
                 }`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-hier-text">{lead.name}</p>
-                    <p className="mt-1 text-sm text-hier-muted">{lead.email}</p>
-                    <p className="mt-1 text-sm text-hier-muted">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-hier-text">{lead.name}</p>
+                    <p className="mt-0.5 truncate text-sm text-hier-muted">{lead.email}</p>
+                    <p className="mt-0.5 truncate text-sm text-hier-muted">
                       {lead.job_title || lead.phone || lead.business_name || lead.city || "-"}
                     </p>
                   </div>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    <span className="rounded-full border border-hier-border bg-hier-panel px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-hier-muted">
                       {formatLeadType(lead.lead_type)}
                     </span>
-                    <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
+                    <span className="rounded-full border border-hier-border bg-hier-panel px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-hier-muted">
                       {lead.status || "new"}
                     </span>
                   </div>
@@ -673,7 +761,7 @@ export default function StaffLeadsPage() {
         <aside className="space-y-4">
           {selectedLead ? (
             <>
-              <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
+              <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold text-hier-text">{selectedLead.name}</h2>
@@ -703,7 +791,7 @@ export default function StaffLeadsPage() {
                   </div>
                 </div>
                 {editingLead ? (
-                  <form className="mt-5 grid gap-3" onSubmit={handleSaveLeadEdit}>
+                  <form className="mt-5 grid gap-3 md:grid-cols-2" onSubmit={handleSaveLeadEdit}>
                     <input
                       value={leadEditForm.name}
                       onChange={(event) =>
@@ -774,6 +862,35 @@ export default function StaffLeadsPage() {
                       placeholder="Website link (optional)"
                       className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
                     />
+                    <div className="rounded-[20px] border border-hier-border bg-hier-panel p-4 sm:col-span-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-hier-text">Additional contacts</p>
+                        <button
+                          type="button"
+                          onClick={() => addContact("edit")}
+                          className="rounded-[14px] border border-hier-border bg-white px-3 py-2 text-xs font-semibold text-hier-text"
+                        >
+                          Add contact
+                        </button>
+                      </div>
+                      {leadEditForm.contacts.length ? (
+                        <div className="mt-3 grid gap-3">
+                          {leadEditForm.contacts.map((contact, index) => (
+                            <div key={index} className="grid gap-2 rounded-[16px] bg-white p-3 sm:grid-cols-2">
+                              <input value={contact.name} onChange={(event) => updateContact("edit", index, "name", event.target.value)} placeholder="Contact name" className="h-10 rounded-[14px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                              <input value={contact.job_title} onChange={(event) => updateContact("edit", index, "job_title", event.target.value)} placeholder="Job title" className="h-10 rounded-[14px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                              <input value={contact.email} onChange={(event) => updateContact("edit", index, "email", event.target.value)} placeholder="Email" className="h-10 rounded-[14px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                              <input value={contact.phone} onChange={(event) => updateContact("edit", index, "phone", event.target.value)} placeholder="Phone" className="h-10 rounded-[14px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                              <button type="button" onClick={() => removeContact("edit", index)} className="h-10 rounded-[14px] border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-800 sm:col-span-2">
+                                Remove contact
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm text-hier-muted">No extra contacts added.</p>
+                      )}
+                    </div>
                     <input
                       value={leadEditForm.source}
                       onChange={(event) =>
@@ -825,7 +942,7 @@ export default function StaffLeadsPage() {
                       placeholder="Postcode"
                       className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
                     />
-                    <label className="flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
+                    <label className="flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text md:col-span-2">
                       <input
                         type="checkbox"
                         checked={leadEditForm.marketing_opt_in}
@@ -841,7 +958,7 @@ export default function StaffLeadsPage() {
                     <button
                       type="submit"
                       disabled={saving}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50 md:col-span-2"
                     >
                       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                       Save lead
@@ -849,13 +966,13 @@ export default function StaffLeadsPage() {
                   </form>
                 ) : (
                   <>
-                    <div className="mt-5 space-y-3 text-sm">
-                      <p><span className="font-semibold text-hier-text">Phone:</span> {selectedLead.phone || "-"}</p>
-                      <p><span className="font-semibold text-hier-text">Business:</span> {selectedLead.business_name || "-"}</p>
-                      <p><span className="font-semibold text-hier-text">Job title:</span> {selectedLead.job_title || "-"}</p>
-                      <p><span className="font-semibold text-hier-text">Lead type:</span> {formatLeadType(selectedLead.lead_type)}</p>
-                      <p>
-                        <span className="font-semibold text-hier-text">Website:</span>{" "}
+                    <div className="mt-5 grid gap-3 text-sm md:grid-cols-2">
+                      <p><span className="block font-semibold text-hier-text">Phone</span>{selectedLead.phone || "-"}</p>
+                      <p><span className="block font-semibold text-hier-text">Business</span>{selectedLead.business_name || "-"}</p>
+                      <p><span className="block font-semibold text-hier-text">Job title</span>{selectedLead.job_title || "-"}</p>
+                      <p><span className="block font-semibold text-hier-text">Lead type</span>{formatLeadType(selectedLead.lead_type)}</p>
+                      <p className="md:col-span-2">
+                        <span className="block font-semibold text-hier-text">Website</span>
                         {selectedLead.website_url ? (
                           <a
                             href={externalUrl(selectedLead.website_url)}
@@ -869,10 +986,25 @@ export default function StaffLeadsPage() {
                           "-"
                         )}
                       </p>
-                      <p><span className="font-semibold text-hier-text">Heard about us:</span> {selectedLead.source || "-"}</p>
-                      <p><span className="font-semibold text-hier-text">Address:</span> {formatLeadAddress(selectedLead)}</p>
-                      <p><span className="font-semibold text-hier-text">Marketing opt in:</span> {selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
+                      <p><span className="block font-semibold text-hier-text">Heard about us</span>{selectedLead.source || "-"}</p>
+                      <p><span className="block font-semibold text-hier-text">Marketing opt in</span>{selectedLead.marketing_opt_in ? "Yes" : "No"}</p>
+                      <p className="md:col-span-2"><span className="block font-semibold text-hier-text">Address</span>{formatLeadAddress(selectedLead)}</p>
                     </div>
+                    {(selectedLead.contacts || []).length ? (
+                      <div className="mt-5 rounded-[20px] border border-hier-border bg-hier-panel p-4">
+                        <p className="text-sm font-semibold text-hier-text">Additional contacts</p>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          {(selectedLead.contacts || []).map((contact, index) => (
+                            <div key={`${contact.email || contact.name || "contact"}-${index}`} className="rounded-[16px] bg-white p-3 text-sm">
+                              <p className="font-semibold text-hier-text">{contact.name || "Unnamed contact"}</p>
+                              <p className="mt-1 text-hier-text">{contact.job_title || "No job title"}</p>
+                              <p className="mt-1 break-all text-hier-text">{contact.email || "-"}</p>
+                              <p className="mt-1 text-hier-text">{contact.phone || "-"}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <label className="mt-4 flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
                       <input
                         type="checkbox"
@@ -981,7 +1113,7 @@ export default function StaffLeadsPage() {
                           </button>
                         ) : null}
                       </div>
-                      {item.note ? <p className="mt-2 text-hier-muted">{item.note}</p> : null}
+                      {item.note ? <p className="mt-2 text-hier-text">{item.note}</p> : null}
                     </div>
                   ))}
                 </div>
@@ -1010,9 +1142,9 @@ export default function StaffLeadsPage() {
                 </form>
                 <div className="mt-4 space-y-2">
                   {(selectedLead.notes || []).map((item) => (
-                    <div key={item.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-muted">
+                    <div key={item.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
                       <p>{item.note}</p>
-                      <p className="mt-2 text-xs">{formatDateTime(item.created_at)}</p>
+                      <p className="mt-2 text-xs text-hier-text">{formatDateTime(item.created_at)}</p>
                     </div>
                   ))}
                 </div>
@@ -1179,6 +1311,35 @@ export default function StaffLeadsPage() {
                 <option value="candidate">Candidate lead</option>
               </select>
               <input value={leadForm.website_url} onChange={(event) => setLeadForm((current) => ({ ...current, website_url: event.target.value }))} placeholder="Website link (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <div className="rounded-[20px] border border-hier-border bg-hier-panel p-4 sm:col-span-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-hier-text">Additional contacts</p>
+                  <button
+                    type="button"
+                    onClick={() => addContact("create")}
+                    className="rounded-[14px] border border-hier-border bg-white px-3 py-2 text-xs font-semibold text-hier-text"
+                  >
+                    Add contact
+                  </button>
+                </div>
+                {leadForm.contacts.length ? (
+                  <div className="mt-3 grid gap-3">
+                    {leadForm.contacts.map((contact, index) => (
+                      <div key={index} className="grid gap-2 rounded-[16px] bg-white p-3 sm:grid-cols-2">
+                        <input value={contact.name} onChange={(event) => updateContact("create", index, "name", event.target.value)} placeholder="Contact name" className="h-10 rounded-[14px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                        <input value={contact.job_title} onChange={(event) => updateContact("create", index, "job_title", event.target.value)} placeholder="Job title" className="h-10 rounded-[14px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                        <input value={contact.email} onChange={(event) => updateContact("create", index, "email", event.target.value)} placeholder="Email" className="h-10 rounded-[14px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                        <input value={contact.phone} onChange={(event) => updateContact("create", index, "phone", event.target.value)} placeholder="Phone" className="h-10 rounded-[14px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                        <button type="button" onClick={() => removeContact("create", index)} className="h-10 rounded-[14px] border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-800 sm:col-span-2">
+                          Remove contact
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-hier-muted">No extra contacts added.</p>
+                )}
+              </div>
               <input value={leadForm.source} onChange={(event) => setLeadForm((current) => ({ ...current, source: event.target.value }))} placeholder="Where did you hear about us? (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.address_line_1} onChange={(event) => setLeadForm((current) => ({ ...current, address_line_1: event.target.value }))} placeholder="Address first line" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.address_line_2} onChange={(event) => setLeadForm((current) => ({ ...current, address_line_2: event.target.value }))} placeholder="Address second line" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
