@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { LockKeyhole, Mail } from "lucide-react";
 import { HierBrand } from "@/components/ui/brand";
 import { loginBusinessUser } from "@/lib/business-applications";
 import { setAuthToken, setStoredUser } from "@/lib/auth";
@@ -31,26 +31,6 @@ type LoginResponseUser = {
     business_name?: string | null;
   } | null;
 };
-
-function Feature({
-  icon: Icon,
-  title,
-  text,
-}: {
-  icon: typeof Mail;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className="rounded-[24px] border border-white/50 bg-white/75 p-5 shadow-card backdrop-blur-sm">
-      <div className="mb-3 inline-flex rounded-2xl bg-hier-primary/15 p-3 text-hier-primary">
-        <Icon className="h-5 w-5" />
-      </div>
-      <h3 className="text-base font-semibold text-hier-text">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-hier-muted">{text}</p>
-    </div>
-  );
-}
 
 function LoginPageContent() {
   const router = useRouter();
@@ -133,57 +113,22 @@ function LoginPageContent() {
 
   return (
     <main className="min-h-screen bg-login-glow">
-      <div className="mx-auto grid min-h-screen max-w-[1600px] gap-10 px-6 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:px-10">
+      <div className="mx-auto grid min-h-screen max-w-[1600px] items-center gap-10 px-6 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:px-10">
         <section className="hidden rounded-[36px] border border-hier-border bg-gradient-to-br from-white via-hier-soft to-white p-10 shadow-panel lg:flex">
-          <div className="flex h-full flex-col">
+          <div className="flex flex-col">
             <HierBrand />
 
-            <div className="mt-16 space-y-8">
-              <div className="space-y-4">
-                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-hier-muted">
-                  Business dashboard
-                </p>
-                <h1 className="max-w-xl text-5xl font-semibold leading-tight tracking-tight text-hier-text">
-                  Manage applicants with a cleaner, faster Kanban workflow.
-                </h1>
-                <p className="max-w-xl text-lg leading-8 text-hier-muted">
-                  Hier Intelligence Applicant tracking, candidate onboarding and
-                  Analytics Pro await inside.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Feature
-                  icon={ShieldCheck}
-                  title="Professional feel"
-                  text="Move candidates smoothly through the Kanban board."
-                />
-                <Feature
-                  icon={LockKeyhole}
-                  title="Analytics Pro"
-                  text="See how your business is performing."
-                />
-              </div>
-            </div>
-
-            <div className="mt-auto pt-10">
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  ["84", "Active applicants"],
-                  ["12", "Open roles"],
-                  ["78%", "Offer success"],
-                ].map(([value, label]) => (
-                  <div
-                    key={label}
-                    className="rounded-[24px] border border-white/60 bg-white/80 p-5 shadow-card"
-                  >
-                    <p className="text-2xl font-semibold text-hier-text">
-                      {value}
-                    </p>
-                    <p className="mt-2 text-sm text-hier-muted">{label}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="mt-16 space-y-4">
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-hier-muted">
+                Business dashboard
+              </p>
+              <h1 className="max-w-xl text-5xl font-semibold leading-tight tracking-tight text-hier-text">
+                Manage applicants with a cleaner, faster Kanban workflow.
+              </h1>
+              <p className="max-w-xl text-lg leading-8 text-hier-muted">
+                Hier Intelligence Applicant tracking, candidate onboarding and
+                Analytics Pro await inside.
+              </p>
             </div>
           </div>
         </section>
