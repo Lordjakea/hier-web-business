@@ -19,6 +19,7 @@ import {
   createBusinessContentPost,
   createBusinessJobPost,
 } from "@/lib/business-posts";
+import { getLocaleCurrency } from "@/lib/currency";
 import { EMPLOYMENT_TYPE_OPTIONS, SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 type ContentType = "post" | "job";
@@ -72,7 +73,7 @@ const initialValues: FormValues = {
   salaryMin: "",
   salaryMax: "",
   budget: "",
-  currency: "GBP",
+  currency: getLocaleCurrency(),
   tagsText: "",
   hasScreeningQuestions: false,
   screeningQuestions: [""],

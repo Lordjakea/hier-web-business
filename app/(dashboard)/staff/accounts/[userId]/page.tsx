@@ -55,6 +55,7 @@ import {
   type StaffTeamUser,
 } from "@/lib/staff-crm";
 import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
+import { formatCurrency } from "@/lib/currency";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -78,16 +79,18 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
-function formatMoneyFromMinor(value?: number | null, currency = "GBP") {
-  if (value === null || value === undefined) return "—";
-  try {
-    return new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency: currency || "GBP",
-    }).format(value / 100);
-  } catch {
-    return `${currency || "GBP"} ${(value / 100).toFixed(2)}`;
-  }
+function formatMoneyFromMinor(value?: number | null, currency?: string | null) {
+  if (value === null || value === undefined) return "-";
+  return formatCurrency(value, { currency, minorUnits: true });
+}
+
+function formatMonthlyPrice(amount?: number | null, currency?: string | null) {
+  if (!amount && amount !== 0) return "";
+  return formatCurrency(amount, {
+    currency,
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  });
 }
 
 function InfoCard({
@@ -1264,7 +1267,7 @@ export default function StaffAccountDetailPage() {
                         {billingPlans.map((plan) => (
                           <option key={plan.code} value={plan.code}>
                             {plan.name || plan.code}
-                            {plan.price_monthly ? ` - GBP ${plan.price_monthly}/mo` : ""}
+                            {plan.price_monthly ? ` - ${formatMonthlyPrice(plan.price_monthly, plan.currency)}/mo` : ""}
                           </option>
                         ))}
                       </select>
@@ -1340,7 +1343,7 @@ export default function StaffAccountDetailPage() {
                           <p className="mt-1 text-sm font-semibold text-hier-text">
                             {formatMoneyFromMinor(
                               billingPreview.amount_due_now,
-                              billingPreview.currency || "GBP"
+                              billingPreview.currency
                             )}
                           </p>
                         </div>
@@ -1376,7 +1379,7 @@ export default function StaffAccountDetailPage() {
                                 ) : null}
                               </div>
                               <p className="font-semibold text-hier-text">
-                                {formatMoneyFromMinor(line.amount, line.currency || billingPreview.currency || "GBP")}
+                                {formatMoneyFromMinor(line.amount, line.currency || billingPreview.currency)}
                               </p>
                             </div>
                           ))}

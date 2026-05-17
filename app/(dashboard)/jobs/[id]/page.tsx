@@ -15,6 +15,7 @@ import {
   type BusinessJobAIShortlist,
   type ManagedPostItem,
 } from "@/lib/business-posts";
+import { formatCurrencyRange } from "@/lib/currency";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -421,7 +422,7 @@ export default function JobDetailPage() {
                   <p className="mt-2 text-base font-semibold text-hier-text">
                     {item.kind === "job"
                       ? (item as any).salary_min && (item as any).salary_max
-                        ? `${(item as any).currency || "GBP"} ${(item as any).salary_min?.toLocaleString()}-${(item as any).salary_max?.toLocaleString()} / ${
+                        ? `${formatCurrencyRange((item as any).salary_min, (item as any).salary_max, (item as any).currency)} / ${
                             (item as any).salary_period === "hourly" ? "hr" : "yr"
                           }`
                         : `${(item as any).applicant_count || 0} applicants`

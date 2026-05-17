@@ -36,28 +36,15 @@ import type {
   BillingPreviewChangeResponse,
   BillingStatusResponse,
 } from "@/lib/types";
-
-function formatMoney(amount?: number | null, currency?: string | null) {
-  const value = Number(amount || 0);
-  const code = (currency || "GBP").toUpperCase();
-  try {
-    return new Intl.NumberFormat("en-GB", { style: "currency", currency: code }).format(value / 100);
-  } catch {
-    return `£${(value / 100).toFixed(2)}`;
-  }
-}
+import { formatCurrency } from "@/lib/currency";
 
 function formatMonthlyPrice(amount?: number | null, currency?: string | null) {
   if (!amount && amount !== 0) return "Custom";
-  try {
-    return new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency: (currency || "GBP").toUpperCase(),
-      maximumFractionDigits: 0,
-    }).format(Number(amount));
-  } catch {
-    return `£${Number(amount).toFixed(0)}`;
-  }
+  return formatCurrency(amount, {
+    currency,
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  });
 }
 
 function formatDate(value?: string | null, includeTime = false) {
@@ -661,12 +648,12 @@ export default function BillingPage() {
                         {preview.mode === "immediate_upgrade" ? (
                           <>
                             <p className="mt-2 text-sm text-hier-muted">This upgrade applies immediately.</p>
-                            <p className="mt-3 text-lg font-semibold text-hier-text">Due now: {formatMoney(preview.amount_due_now, preview.currency)}</p>
+                            <p className="mt-3 text-lg font-semibold text-hier-text">Due now: {formatCurrency(preview.amount_due_now, { currency: preview.currency, minorUnits: true })}</p>
                             <div className="mt-3 space-y-2 text-sm text-hier-muted">
                               {(preview.lines || []).slice(0, 4).map((line, index) => (
                                 <div key={line.id || index} className="flex items-start justify-between gap-3">
                                   <span className="leading-5">{line.description || (line.proration ? "Proration" : "Plan adjustment")}</span>
-                                  <span className="font-medium text-hier-text">{formatMoney(line.amount, line.currency || preview.currency)}</span>
+                                  <span className="font-medium text-hier-text">{formatCurrency(line.amount, { currency: line.currency || preview.currency, minorUnits: true })}</span>
                                 </div>
                               ))}
                             </div>

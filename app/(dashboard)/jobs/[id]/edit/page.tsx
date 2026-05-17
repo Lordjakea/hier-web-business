@@ -26,6 +26,7 @@ import {
   updateBusinessJobPost,
   type ManagedPostItem,
 } from "@/lib/business-posts";
+import { getLocaleCurrency } from "@/lib/currency";
 import { EMPLOYMENT_TYPE_OPTIONS, SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 type FormValues = {
@@ -58,7 +59,7 @@ const initialValues: FormValues = {
   salaryMin: "",
   salaryMax: "",
   salaryPeriod: "yearly",
-  currency: "GBP",
+  currency: getLocaleCurrency(),
   tagsText: "",
   hasScreeningQuestions: false,
   screeningQuestions: [""],
@@ -188,7 +189,7 @@ export default function EditPostPage() {
             (item as any).salary_max != null ? String((item as any).salary_max) : "",
           salaryPeriod:
             (item as any).salary_period === "hourly" ? "hourly" : "yearly",
-          currency: (item as any).currency || "GBP",
+          currency: (item as any).currency || getLocaleCurrency(),
           tagsText: Array.isArray((item as any).tags)
             ? (item as any).tags.join(", ")
             : "",
@@ -344,7 +345,7 @@ export default function EditPostPage() {
             ? Number(values.salaryMax.replace(/,/g, ""))
             : null,
           salary_period: values.salaryPeriod,
-          currency: values.currency.trim() || "GBP",
+          currency: values.currency.trim() || getLocaleCurrency(),
           tags: values.tagsText
             .split(",")
             .map((item) => item.trim())
@@ -404,7 +405,7 @@ export default function EditPostPage() {
           salary_min: min,
           salary_max: max,
           salary_period: values.salaryPeriod,
-          currency: values.currency.trim() || "GBP",
+          currency: values.currency.trim() || getLocaleCurrency(),
           tags: values.tagsText
             .split(",")
             .map((item) => item.trim())

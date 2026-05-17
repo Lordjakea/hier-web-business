@@ -25,6 +25,7 @@ import {
   fetchBusinessJobs,
   type ManagedPostItem,
 } from "@/lib/business-posts";
+import { formatCurrency, formatCurrencyRange } from "@/lib/currency";
 
 type KindTab = "all" | "job" | "content";
 type StatusTab = "live" | "draft" | "archived";
@@ -44,11 +45,15 @@ function formatSalary(item: ManagedPostItem) {
   if (item.kind !== "job") return null;
 
   if (item.is_gig && item.budget) {
-    return `${item.currency || "GBP"} ${item.budget}`;
+    return formatCurrency(item.budget, {
+      currency: item.currency,
+      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+    });
   }
 
   if (item.salary_min && item.salary_max) {
-    return `${item.currency || "GBP"} ${item.salary_min.toLocaleString()}-${item.salary_max.toLocaleString()} ${
+    return `${formatCurrencyRange(item.salary_min, item.salary_max, item.currency)} ${
       item.salary_period === "hourly" ? "/ hr" : "/ yr"
     }`;
   }

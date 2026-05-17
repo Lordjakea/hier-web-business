@@ -4,24 +4,24 @@
 
 @font-face {
   font-family: "Poppins";
-  src: url("/fonts/poppins-extralight.ttf") format("truetype");
+  src: url("/fonts/poppins-bold.ttf") format("truetype");
   font-style: normal;
-  font-weight: 200;
+  font-weight: 100 900;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Avenir Next";
-  src: url("/fonts/avenir-next.ttc");
+  font-family: "Avenir Next LT Pro";
+  src: url("/fonts/avenir-next-lt-pro-bold.otf") format("opentype");
   font-style: normal;
-  font-weight: 400 900;
+  font-weight: 100 900;
   font-display: swap;
 }
 
 :root {
   color-scheme: light;
-  --font-primary: "Poppins", "Avenir Next", Arial, sans-serif;
-  --font-secondary: "Avenir Next", "Poppins", Arial, sans-serif;
+  --font-primary: "Poppins", "Avenir Next LT Pro", Arial, sans-serif;
+  --font-secondary: "Avenir Next LT Pro", "Poppins", Arial, sans-serif;
 }
 
 * {
