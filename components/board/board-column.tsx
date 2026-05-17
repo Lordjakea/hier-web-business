@@ -49,13 +49,13 @@ export function BoardColumn({
     <section
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDropCard}
-      className={`flex h-full min-h-[620px] shrink-0 flex-col rounded-[28px] border border-hier-border bg-hier-panel/70 p-3 ${
+      className={`flex h-[min(72vh,760px)] min-h-[420px] shrink-0 flex-col overflow-hidden rounded-[28px] border border-hier-border bg-hier-panel/70 p-3 sm:min-h-[520px] ${
         fluid
           ? "w-[min(332px,calc(100vw-2rem))] 3xl:min-w-0 3xl:w-auto"
           : "w-[316px]"
       }`}
     >
-      <header className="mb-3 space-y-2 px-1 py-1">
+      <header className="mb-3 shrink-0 space-y-2 px-1 py-1">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <span
@@ -99,7 +99,7 @@ export function BoardColumn({
         )}
       </header>
 
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
         {candidates.map((candidate) => (
           <CandidateCard
             key={candidate.id}
