@@ -21,6 +21,11 @@ const config: Config = {
           ink: "#1D2433",
         },
       },
+      fontFamily: {
+        sans: ["var(--font-primary)"],
+        primary: ["var(--font-primary)"],
+        secondary: ["var(--font-secondary)"],
+      },
       boxShadow: {
         panel: "0 18px 60px rgba(17, 17, 17, 0.08)",
         card: "0 8px 24px rgba(17, 17, 17, 0.06)",
