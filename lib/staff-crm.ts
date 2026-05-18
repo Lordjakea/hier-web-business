@@ -670,6 +670,16 @@ export async function updateStaffHiringIntelligenceSource(
   });
 }
 
+export async function deleteStaffHiringIntelligenceSource(id: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    deleted: boolean;
+    source_id: number | string;
+  }>(`/api/staff/leads/intelligence/sources/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function approveStaffHiringIntelligenceLead(id: number | string) {
   return apiFetch<{
     ok: boolean;
@@ -687,6 +697,16 @@ export async function ignoreStaffHiringIntelligenceLead(id: number | string) {
     lead?: StaffHiringIntelligenceLead;
   }>(`/api/staff/leads/intelligence/${id}/ignore`, {
     method: "POST",
+  });
+}
+
+export async function deleteStaffHiringIntelligenceLead(id: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    deleted: boolean;
+    item_id: number | string;
+  }>(`/api/staff/leads/intelligence/${id}`, {
+    method: "DELETE",
   });
 }
 

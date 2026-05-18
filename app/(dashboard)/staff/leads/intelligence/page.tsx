@@ -6,19 +6,25 @@ import {
   Ban,
   Check,
   Download,
+  Pencil,
   ExternalLink,
   Loader2,
   Plus,
   RefreshCw,
   Search,
+  Trash2,
+  X,
   UserPlus,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { getStoredUser } from "@/lib/auth";
 import {
   approveStaffHiringIntelligenceLead,
   createStaffHiringIntelligenceDiscoveryQuery,
   convertStaffHiringIntelligenceLeadToLead,
   createStaffHiringIntelligenceSource,
+  deleteStaffHiringIntelligenceLead,
+  deleteStaffHiringIntelligenceSource,
   fetchStaffHiringIntelligenceDiscoveryQueries,
   fetchStaffHiringIntelligenceLeads,
   fetchStaffHiringIntelligenceSources,
@@ -105,6 +111,16 @@ function blankSourceForm() {
   };
 }
 
+function sourceToForm(source: StaffHiringIntelligenceSource) {
+  return {
+    company_name: source.company_name || "",
+    website_url: source.website_url || "",
+    careers_url: source.careers_url || "",
+    platform: source.platform || "careers_page",
+    location_hint: source.location_hint || "",
+  };
+}
+
 function blankDiscoveryForm() {
   return {
     query: "",
@@ -114,6 +130,10 @@ function blankDiscoveryForm() {
 }
 
 export default function StaffHiringIntelligencePage() {
+  const storedUser = getStoredUser();
+  const canManageScanner = ["admin", "owner"].includes(
+    String(storedUser?.staff_role || "").toLowerCase(),
+  );
   const [records, setRecords] = useState<StaffHiringIntelligenceLead[]>([]);
   const [sources, setSources] = useState<StaffHiringIntelligenceSource[]>([]);
   const [discoveryQueries, setDiscoveryQueries] = useState<StaffHiringIntelligenceDiscoveryQuery[]>([]);
@@ -133,6 +153,8 @@ export default function StaffHiringIntelligencePage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [sourceForm, setSourceForm] = useState(blankSourceForm);
+  const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
+  const [sourceEditForm, setSourceEditForm] = useState(blankSourceForm);
   const [discoveryForm, setDiscoveryForm] = useState(blankDiscoveryForm);
 
   const selectedRecord = useMemo(
@@ -188,15 +210,24 @@ export default function StaffHiringIntelligencePage() {
   );
 
   const loadSources = useCallback(async () => {
+    if (!canManageScanner) {
+      setSources([]);
+      return;
+    }
     try {
       const response = await fetchStaffHiringIntelligenceSources();
       setSources(response.items || []);
     } catch {
       setSources([]);
     }
-  }, []);
+  }, [canManageScanner]);
 
   const loadDiscoveryQueries = useCallback(async () => {
+    if (!canManageScanner) {
+      setDiscoveryQueries([]);
+      setSearchUsage(null);
+      return;
+    }
     try {
       const response = await fetchStaffHiringIntelligenceDiscoveryQueries();
       setDiscoveryQueries(response.items || []);
@@ -205,7 +236,7 @@ export default function StaffHiringIntelligencePage() {
       setDiscoveryQueries([]);
       setSearchUsage(null);
     }
-  }, []);
+  }, [canManageScanner]);
 
   useEffect(() => {
     void loadRecords();
@@ -352,6 +383,73 @@ export default function StaffHiringIntelligencePage() {
     }
   }
 
+  function handleStartEditSource(source: StaffHiringIntelligenceSource) {
+    setEditingSourceId(source.id);
+    setSourceEditForm(sourceToForm(source));
+    setError(null);
+    setNotice(null);
+  }
+
+  async function handleUpdateSource(
+    event: React.FormEvent<HTMLFormElement>,
+    source: StaffHiringIntelligenceSource,
+  ) {
+    event.preventDefault();
+    setSourceSaving(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await updateStaffHiringIntelligenceSource(source.id, {
+        company_name: sourceEditForm.company_name,
+        website_url: sourceEditForm.website_url || null,
+        careers_url: sourceEditForm.careers_url,
+        platform: sourceEditForm.platform || "careers_page",
+        location_hint: sourceEditForm.location_hint || null,
+      });
+      setSources((current) =>
+        current.map((item) => (item.id === source.id ? response.source : item)),
+      );
+      setEditingSourceId(null);
+      setSourceEditForm(blankSourceForm());
+      setNotice("Hiring source updated.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update that hiring source.",
+      );
+    } finally {
+      setSourceSaving(false);
+    }
+  }
+
+  async function handleDeleteSource(source: StaffHiringIntelligenceSource) {
+    if (!window.confirm(`Delete ${source.company_name} as a hiring source?`)) return;
+
+    setSourceSaving(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await deleteStaffHiringIntelligenceSource(source.id);
+      setSources((current) => current.filter((item) => item.id !== source.id));
+      if (editingSourceId === source.id) {
+        setEditingSourceId(null);
+        setSourceEditForm(blankSourceForm());
+      }
+      setNotice("Hiring source deleted.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not delete that hiring source.",
+      );
+    } finally {
+      setSourceSaving(false);
+    }
+  }
+
   async function handleRecordAction(action: "approve" | "ignore" | "convert") {
     if (!selectedRecord) return;
 
@@ -386,6 +484,31 @@ export default function StaffHiringIntelligencePage() {
         caughtError instanceof Error
           ? caughtError.message
           : "Could not update this hiring signal.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteRecord() {
+    if (!selectedRecord) return;
+    if (!window.confirm(`Delete the hiring signal for ${selectedRecord.company_name}?`)) return;
+
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await deleteStaffHiringIntelligenceLead(selectedRecord.id);
+      const nextRecords = records.filter((record) => record.id !== selectedRecord.id);
+      setRecords(nextRecords);
+      setSelectedRecordId(nextRecords[0]?.id || null);
+      setNotice("Hiring signal deleted.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not delete this hiring signal.",
       );
     } finally {
       setSaving(false);
@@ -446,7 +569,7 @@ export default function StaffHiringIntelligencePage() {
         eyebrow="Hier staff"
         title="Hiring intelligence"
         description="Track companies actively hiring and turn verified signals into leads."
-        action={
+        action={canManageScanner ? (
           <button
             type="button"
             onClick={() => void handleRunScan()}
@@ -456,7 +579,7 @@ export default function StaffHiringIntelligencePage() {
             {scanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Run scan now
           </button>
-        }
+        ) : null}
       />
 
       {error ? (
@@ -541,6 +664,7 @@ export default function StaffHiringIntelligencePage() {
         </button>
       </section>
 
+      {canManageScanner ? (
       <section className="grid gap-6 rounded-[28px] border border-hier-border bg-white p-5 shadow-card xl:grid-cols-[minmax(360px,0.9fr)_minmax(420px,1.1fr)]">
         <form className="space-y-4" onSubmit={handleCreateSource}>
           <div>
@@ -612,30 +736,121 @@ export default function StaffHiringIntelligencePage() {
             {sources.length ? (
               sources.map((source) => (
                 <div key={source.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-hier-text">{source.company_name}</p>
-                      <p className="mt-1 truncate text-xs text-hier-muted">{source.careers_url}</p>
-                      <p className="mt-2 text-xs text-hier-muted">
-                        {source.last_scan_status || "Not scanned"} - {source.last_jobs_found_count ?? 0} jobs found
-                      </p>
-                      {source.last_scan_error ? (
-                        <p className="mt-2 text-xs text-red-700">{source.last_scan_error}</p>
-                      ) : null}
+                  {editingSourceId === source.id ? (
+                    <form className="space-y-3" onSubmit={(event) => void handleUpdateSource(event, source)}>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <input
+                          required
+                          value={sourceEditForm.company_name}
+                          onChange={(event) =>
+                            setSourceEditForm((current) => ({ ...current, company_name: event.target.value }))
+                          }
+                          placeholder="Company name"
+                          className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary"
+                        />
+                        <input
+                          value={sourceEditForm.website_url}
+                          onChange={(event) =>
+                            setSourceEditForm((current) => ({ ...current, website_url: event.target.value }))
+                          }
+                          placeholder="Website URL"
+                          className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary"
+                        />
+                        <input
+                          required
+                          value={sourceEditForm.careers_url}
+                          onChange={(event) =>
+                            setSourceEditForm((current) => ({ ...current, careers_url: event.target.value }))
+                          }
+                          placeholder="Careers URL"
+                          className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary sm:col-span-2"
+                        />
+                        <input
+                          value={sourceEditForm.platform}
+                          onChange={(event) =>
+                            setSourceEditForm((current) => ({ ...current, platform: event.target.value }))
+                          }
+                          placeholder="Platform"
+                          className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary"
+                        />
+                        <input
+                          value={sourceEditForm.location_hint}
+                          onChange={(event) =>
+                            setSourceEditForm((current) => ({ ...current, location_hint: event.target.value }))
+                          }
+                          placeholder="Location hint"
+                          className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="submit"
+                          disabled={sourceSaving}
+                          className="inline-flex h-9 items-center justify-center gap-2 rounded-[14px] bg-hier-primary px-3 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          {sourceSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSourceId(null);
+                            setSourceEditForm(blankSourceForm());
+                          }}
+                          disabled={sourceSaving}
+                          className="inline-flex h-9 items-center justify-center gap-2 rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-hier-text">{source.company_name}</p>
+                        <p className="mt-1 truncate text-xs text-hier-muted">{source.careers_url}</p>
+                        <p className="mt-2 text-xs text-hier-muted">
+                          {source.last_scan_status || "Not scanned"} - {source.last_jobs_found_count ?? 0} jobs found
+                        </p>
+                        {source.last_scan_error ? (
+                          <p className="mt-2 text-xs text-red-700">{source.last_scan_error}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleSource(source)}
+                          disabled={sourceSaving}
+                          className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold ${
+                            source.is_enabled
+                              ? "bg-emerald-50 text-emerald-800"
+                              : "bg-white text-hier-muted"
+                          } disabled:opacity-50`}
+                        >
+                          {source.is_enabled ? "Enabled" : "Disabled"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditSource(source)}
+                          disabled={sourceSaving}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-hier-border bg-white text-hier-text disabled:opacity-50"
+                          aria-label={`Edit ${source.company_name}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteSource(source)}
+                          disabled={sourceSaving}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-700 disabled:opacity-50"
+                          aria-label={`Delete ${source.company_name}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleToggleSource(source)}
-                      disabled={sourceSaving}
-                      className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
-                        source.is_enabled
-                          ? "bg-emerald-50 text-emerald-800"
-                          : "bg-white text-hier-muted"
-                      }`}
-                    >
-                      {source.is_enabled ? "Enabled" : "Disabled"}
-                    </button>
-                  </div>
+                  )}
                 </div>
               ))
             ) : (
@@ -646,7 +861,9 @@ export default function StaffHiringIntelligencePage() {
           </div>
         </div>
       </section>
+      ) : null}
 
+      {canManageScanner ? (
       <section className="grid gap-6 rounded-[28px] border border-hier-border bg-white p-5 shadow-card xl:grid-cols-[minmax(360px,0.9fr)_minmax(420px,1.1fr)]">
         <form className="space-y-4" onSubmit={handleCreateDiscoveryQuery}>
           <div>
@@ -751,6 +968,7 @@ export default function StaffHiringIntelligencePage() {
           </div>
         </div>
       </section>
+      ) : null}
 
       <section className="grid gap-6 2xl:grid-cols-[minmax(720px,1fr)_420px]">
         <div className="overflow-hidden rounded-[28px] border border-hier-border bg-white shadow-card">
@@ -957,6 +1175,17 @@ export default function StaffHiringIntelligencePage() {
                     <Ban className="h-4 w-4" />
                     Ignore
                   </button>
+                  {canManageScanner ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteRecord()}
+                      disabled={saving}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] border border-red-200 bg-white px-4 text-sm font-semibold text-red-800 disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      Delete output
+                    </button>
+                  ) : null}
                 </div>
               </section>
             </>
