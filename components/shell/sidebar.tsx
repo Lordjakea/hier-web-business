@@ -19,6 +19,7 @@ import {
   Flag,
   PhoneCall,
   CalendarClock,
+  Radar,
 } from "lucide-react";
 import clsx from "clsx";
 import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
@@ -46,7 +47,8 @@ const staffLinks = [
   { label: "CRM", href: "/staff", icon: LifeBuoy, match: (path: string) => path === "/staff" || path.startsWith("/staff/accounts") },
   { label: "Notifications", href: "/staff/notifications", icon: Bell, match: (path: string) => path.startsWith("/staff/notifications") },
   { label: "Waitlist", href: "/staff/waitlist", icon: Mail, match: (path: string) => path.startsWith("/staff/waitlist") },
-  { label: "Leads", href: "/staff/leads", icon: PhoneCall, match: (path: string) => path.startsWith("/staff/leads") },
+  { label: "Leads", href: "/staff/leads", icon: PhoneCall, match: (path: string) => path === "/staff/leads" },
+  { label: "Hiring Intel", href: "/staff/leads/intelligence", icon: Radar, match: (path: string) => path.startsWith("/staff/leads/intelligence") },
   { label: "Follow-ups", href: "/staff/follow-ups", icon: CalendarClock, match: (path: string) => path.startsWith("/staff/follow-ups") },
   { label: "Cases", href: "/staff/cases", icon: BriefcaseBusiness, match: (path: string) => path.startsWith("/staff/cases") },
 ];

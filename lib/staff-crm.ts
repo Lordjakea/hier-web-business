@@ -230,6 +230,71 @@ export type StaffLead = {
   updated_at?: string | null;
 };
 
+export type StaffHiringIntelligenceLead = {
+  id: number;
+  company_name: string;
+  website_url?: string | null;
+  lead_id?: number | null;
+  job_title?: string | null;
+  job_location?: string | null;
+  job_platform?: string | null;
+  job_url?: string | null;
+  job_posted_at?: string | null;
+  job_detected_at?: string | null;
+  last_seen_hiring_at?: string | null;
+  contact_name?: string | null;
+  contact_role?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  contact_linkedin_url?: string | null;
+  contact_source_url?: string | null;
+  contact_confidence?: "high" | "medium" | "low" | string | null;
+  hiring_signal_score?: number | null;
+  intelligence_status?: "new" | "reviewed" | "approved" | "converted" | "ignored" | string | null;
+  source_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type StaffHiringIntelligenceSource = {
+  id: number;
+  company_name: string;
+  website_url?: string | null;
+  careers_url: string;
+  platform?: string | null;
+  location_hint?: string | null;
+  is_enabled?: boolean | null;
+  last_scanned_at?: string | null;
+  last_scan_status?: string | null;
+  last_scan_error?: string | null;
+  last_jobs_found_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type StaffHiringIntelligenceDiscoveryQuery = {
+  id: number;
+  query: string;
+  location_hint?: string | null;
+  platform_hint?: string | null;
+  is_enabled?: boolean | null;
+  last_run_at?: string | null;
+  last_run_status?: string | null;
+  last_run_error?: string | null;
+  last_results_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type StaffHiringIntelligenceSearchUsage = {
+  provider: "brave" | string;
+  monthly_limit: number;
+  monthly_used: number;
+  monthly_remaining: number;
+  per_scan_limit: number;
+  configured: boolean;
+};
+
 export type StaffFollowUp = {
   id: number;
   entity_type: "lead" | "account" | string;
@@ -490,6 +555,150 @@ export async function fetchStaffLeads(params?: {
   return apiFetch<{ ok: boolean; items: StaffLead[] }>(
     `/api/staff/leads${query ? `?${query}` : ""}`
   );
+}
+
+export async function fetchStaffHiringIntelligenceLeads(params?: {
+  q?: string;
+  platform?: string;
+  status?: string;
+  confidence?: string;
+  location?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params?.q?.trim()) search.set("q", params.q.trim());
+  if (params?.platform?.trim() && params.platform !== "all") search.set("platform", params.platform.trim());
+  if (params?.status?.trim() && params.status !== "all") search.set("status", params.status.trim());
+  if (params?.confidence?.trim() && params.confidence !== "all") search.set("confidence", params.confidence.trim());
+  if (params?.location?.trim()) search.set("location", params.location.trim());
+  const query = search.toString();
+
+  return apiFetch<{
+    ok: boolean;
+    items: StaffHiringIntelligenceLead[];
+    total?: number;
+  }>(`/api/staff/leads/intelligence${query ? `?${query}` : ""}`);
+}
+
+export async function runStaffHiringIntelligenceScan() {
+  return apiFetch<{
+    ok: boolean;
+    message?: string;
+    scan_id?: number | string;
+    sources_scanned?: number;
+    jobs_found?: number;
+  }>("/api/staff/leads/intelligence/run-scan", {
+    method: "POST",
+  });
+}
+
+export async function fetchStaffHiringIntelligenceSources() {
+  return apiFetch<{
+    ok: boolean;
+    items: StaffHiringIntelligenceSource[];
+  }>("/api/staff/leads/intelligence/sources");
+}
+
+export async function fetchStaffHiringIntelligenceDiscoveryQueries() {
+  return apiFetch<{
+    ok: boolean;
+    items: StaffHiringIntelligenceDiscoveryQuery[];
+    usage: StaffHiringIntelligenceSearchUsage;
+  }>("/api/staff/leads/intelligence/discovery");
+}
+
+export async function createStaffHiringIntelligenceDiscoveryQuery(payload: {
+  query: string;
+  location_hint?: string | null;
+  platform_hint?: string | null;
+  is_enabled?: boolean;
+}) {
+  return apiFetch<{
+    ok: boolean;
+    query: StaffHiringIntelligenceDiscoveryQuery;
+  }>("/api/staff/leads/intelligence/discovery", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateStaffHiringIntelligenceDiscoveryQuery(
+  id: number | string,
+  payload: Partial<Pick<
+    StaffHiringIntelligenceDiscoveryQuery,
+    "query" | "location_hint" | "platform_hint" | "is_enabled"
+  >>
+) {
+  return apiFetch<{
+    ok: boolean;
+    query: StaffHiringIntelligenceDiscoveryQuery;
+  }>(`/api/staff/leads/intelligence/discovery/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createStaffHiringIntelligenceSource(payload: {
+  company_name: string;
+  website_url?: string | null;
+  careers_url: string;
+  platform?: string | null;
+  location_hint?: string | null;
+  is_enabled?: boolean;
+}) {
+  return apiFetch<{
+    ok: boolean;
+    source: StaffHiringIntelligenceSource;
+  }>("/api/staff/leads/intelligence/sources", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateStaffHiringIntelligenceSource(
+  id: number | string,
+  payload: Partial<Pick<
+    StaffHiringIntelligenceSource,
+    "company_name" | "website_url" | "careers_url" | "platform" | "location_hint" | "is_enabled"
+  >>
+) {
+  return apiFetch<{
+    ok: boolean;
+    source: StaffHiringIntelligenceSource;
+  }>(`/api/staff/leads/intelligence/sources/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function approveStaffHiringIntelligenceLead(id: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    item?: StaffHiringIntelligenceLead;
+    lead?: StaffHiringIntelligenceLead;
+  }>(`/api/staff/leads/intelligence/${id}/approve`, {
+    method: "POST",
+  });
+}
+
+export async function ignoreStaffHiringIntelligenceLead(id: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    item?: StaffHiringIntelligenceLead;
+    lead?: StaffHiringIntelligenceLead;
+  }>(`/api/staff/leads/intelligence/${id}/ignore`, {
+    method: "POST",
+  });
+}
+
+export async function convertStaffHiringIntelligenceLeadToLead(id: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    item?: StaffHiringIntelligenceLead;
+    intelligence_lead?: StaffHiringIntelligenceLead;
+    lead?: StaffLead;
+  }>(`/api/staff/leads/intelligence/${id}/convert-to-lead`, {
+    method: "POST",
+  });
 }
 
 export async function createStaffLead(payload: {
