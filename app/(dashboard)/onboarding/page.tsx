@@ -27,7 +27,8 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { apiFetch, resolveApiUrl } from "@/lib/api";
+import { API_BASE_URL, apiFetch, resolveApiUrl } from "@/lib/api";
+import { getAuthToken } from "@/lib/auth";
 import {
   createOnboardingDocument,
   fetchOnboardingDetail,
@@ -252,10 +253,68 @@ function normalizeFileUrl(url: string) {
   return resolveApiUrl(`/${value}`);
 }
 
-function openFileUrl(url: string | null | undefined) {
+async function resolveProtectedDownloadUrl(url: string) {
+  const resolved = normalizeFileUrl(url);
+  if (!resolved) return null;
+
+  if (!resolved.startsWith(`${API_BASE_URL}/`)) {
+    return resolved;
+  }
+
+  const downloadUrl = new URL(resolved);
+  downloadUrl.searchParams.set("json", "1");
+
+  const headers = new Headers({ Accept: "application/json" });
+  const token = getAuthToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(downloadUrl.toString(), {
+    headers,
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      payload?.msg || payload?.error || payload?.message || "Could not open file.";
+    throw new Error(message);
+  }
+
+  return typeof payload?.url === "string" && payload.url.trim()
+    ? payload.url
+    : resolved;
+}
+
+async function openFileUrl(
+  url: string | null | undefined,
+  options: { download?: boolean } = {},
+) {
   const resolved = url ? normalizeFileUrl(url) : null;
   if (!resolved) return;
-  window.open(resolved, "_blank", "noopener,noreferrer");
+
+  try {
+    const finalUrl = await resolveProtectedDownloadUrl(resolved);
+    if (!finalUrl) return;
+
+    if (options.download) {
+      const link = document.createElement("a");
+      link.href = finalUrl;
+      link.download = "";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return;
+    }
+
+    window.open(finalUrl, "_blank", "noopener,noreferrer");
+  } catch (caughtError) {
+    window.alert(
+      caughtError instanceof Error ? caughtError.message : "Could not open file.",
+    );
+  }
 }
 
 function getTaskMeta(task: BusinessOnboardingTask): Record<string, any> {
@@ -1391,7 +1450,7 @@ export default function OnboardingPage() {
                                           {taskViewUrl ? (
                                             <button
                                               type="button"
-                                              onClick={() => openFileUrl(taskViewUrl)}
+                                              onClick={() => void openFileUrl(taskViewUrl)}
                                               className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink transition hover:bg-hier-soft"
                                             >
                                               <Eye className="h-4 w-4" />
@@ -1496,7 +1555,9 @@ export default function OnboardingPage() {
                                                     {resolvedContractUrl ? (
                                                       <button
                                                         type="button"
-                                                        onClick={() => openFileUrl(contractUrl)}
+                                                        onClick={() =>
+                                                          void openFileUrl(contractUrl)
+                                                        }
                                                         className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
                                                       >
                                                         <Eye className="h-4 w-4" />
@@ -1505,14 +1566,18 @@ export default function OnboardingPage() {
                                                     ) : null}
 
                                                     {resolvedContractUrl ? (
-                                                      <a
-                                                        href={resolvedContractUrl}
-                                                        download
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          void openFileUrl(contractUrl, {
+                                                            download: true,
+                                                          })
+                                                        }
                                                         className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
                                                       >
                                                         <Save className="h-4 w-4" />
                                                         Save contract
-                                                      </a>
+                                                      </button>
                                                     ) : null}
 
                                                     {contract.status === "draft" ? (
@@ -1787,7 +1852,7 @@ export default function OnboardingPage() {
                                         {docUrl ? (
                                           <button
                                             type="button"
-                                            onClick={() => openFileUrl(docUrl)}
+                                            onClick={() => void openFileUrl(docUrl)}
                                             className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
                                           >
                                             <Eye className="h-4 w-4" />
@@ -1918,7 +1983,7 @@ export default function OnboardingPage() {
                                       {taskViewUrl ? (
                                         <button
                                           type="button"
-                                          onClick={() => openFileUrl(taskViewUrl)}
+                                          onClick={() => void openFileUrl(taskViewUrl)}
                                           className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
                                         >
                                           <Eye className="h-4 w-4" />
@@ -1988,7 +2053,7 @@ export default function OnboardingPage() {
                                         <div className="mt-3">
                                           <button
                                             type="button"
-                                            onClick={() => openFileUrl(docUrl)}
+                                            onClick={() => void openFileUrl(docUrl)}
                                             className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
                                           >
                                             <Eye className="h-4 w-4" />
