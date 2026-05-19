@@ -10,7 +10,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   Eye,
-  FilePlus2,
   FileText,
   Loader2,
   Mail,
@@ -28,9 +27,8 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { apiFetch } from "@/lib/api";
+import { apiFetch, resolveApiUrl } from "@/lib/api";
 import {
-  createOnboardingContract,
   createOnboardingDocument,
   fetchOnboardingDetail,
   fetchOnboardingList,
@@ -169,6 +167,26 @@ function applicationAllowsOnboarding(stage?: string | null) {
   return stage === "offered" || stage === "started";
 }
 
+function normalizeTaskKey(value?: string | null) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function isRightToWorkTask(task: BusinessOnboardingTask) {
+  const key = normalizeTaskKey(task.task_key || task.title);
+  return key.includes("right_to_work") || key.includes("rtw");
+}
+
+function isContractSignatureTask(task: BusinessOnboardingTask) {
+  const key = normalizeTaskKey(task.task_key || task.title);
+  return key.includes("contract") && key.includes("sign");
+}
+
 function isRemovedOrArchived(status?: string | null) {
   return status === "removed" || status === "archived";
 }
@@ -206,6 +224,8 @@ function getPossibleFileUrl(record: any): string | null {
     "public_url",
     "url",
     "view_url",
+    "signed_storage_key",
+    "storage_key",
   ];
 
   for (const key of directKeys) {
@@ -224,9 +244,18 @@ function getPossibleFileUrl(record: any): string | null {
   return null;
 }
 
+function normalizeFileUrl(url: string) {
+  const value = url.trim();
+  if (!value) return null;
+  if (/^(https?:|blob:|data:)/i.test(value)) return value;
+  if (value.startsWith("/")) return resolveApiUrl(value);
+  return resolveApiUrl(`/${value}`);
+}
+
 function openFileUrl(url: string | null | undefined) {
-  if (!url) return;
-  window.open(url, "_blank", "noopener,noreferrer");
+  const resolved = url ? normalizeFileUrl(url) : null;
+  if (!resolved) return;
+  window.open(resolved, "_blank", "noopener,noreferrer");
 }
 
 function getTaskMeta(task: BusinessOnboardingTask): Record<string, any> {
@@ -723,35 +752,8 @@ export default function OnboardingPage() {
     }
   }
 
-  async function handleCreateContract() {
-    if (!selectedId || !canManageSelected || !contractTitle.trim()) return;
-
-    setBusyKey("contract-create");
-    setActionError(null);
-    setSuccessMessage(null);
-
-    try {
-      await createOnboardingContract(selectedId, {
-        title: contractTitle.trim(),
-        template_name: contractTemplateName.trim() || undefined,
-        status: "draft",
-      });
-
-      setContractTitle("");
-      setContractTemplateName("");
-      await refreshSelected();
-      setSuccessMessage("Contract created.");
-    } catch (caughtError) {
-      setActionError(
-        caughtError instanceof Error ? caughtError.message : "Could not create contract.",
-      );
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
   async function handleContractUpload(file: File) {
-    if (!selectedId || !canManageSelected || !contractTitle.trim()) return;
+    if (!selectedId || !canManageSelected) return;
 
     setBusyKey("contract-upload");
     setActionError(null);
@@ -759,7 +761,7 @@ export default function OnboardingPage() {
 
     try {
       await uploadAndCreateOnboardingContract(selectedId, file, {
-        title: contractTitle.trim(),
+        title: contractTitle.trim() || file.name,
         template_name: contractTemplateName.trim() || undefined,
       });
 
@@ -1324,7 +1326,17 @@ export default function OnboardingPage() {
                           (selected.tasks || []).map((task: BusinessOnboardingTask) => {
                             const submissionValue = getTaskSubmissionValue(task);
                             const submissionPairs = getTaskSubmissionPairs(task);
-                            const taskViewUrl = getPossibleFileUrl(task as any);
+                            const taskDocuments = (selected.documents || []).filter(
+                              (doc) => doc.task_id === task.id,
+                            );
+                            const taskDocumentUrl =
+                              taskDocuments
+                                .map((doc) => getPossibleFileUrl(doc as any))
+                                .find(Boolean) || null;
+                            const taskViewUrl =
+                              getPossibleFileUrl(task as any) || taskDocumentUrl;
+                            const rightToWorkTask = isRightToWorkTask(task);
+                            const contractSignatureTask = isContractSignatureTask(task);
 
                             return (
                               <div
@@ -1340,6 +1352,12 @@ export default function OnboardingPage() {
                                       <p className="mt-1 text-sm text-hier-muted">
                                         {task.description || "No description added yet."}
                                       </p>
+                                      {rightToWorkTask ? (
+                                        <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+                                          Tell the candidate to upload either a passport or
+                                          a birth certificate for the right to work check.
+                                        </div>
+                                      ) : null}
                                     </div>
 
                                     <span
@@ -1385,6 +1403,147 @@ export default function OnboardingPage() {
                                     </div>
                                   ) : null}
 
+                                  {contractSignatureTask ? (
+                                    <div className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
+                                      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                                        <div className="grid flex-1 gap-3 md:grid-cols-2">
+                                          <input
+                                            value={contractTitle}
+                                            onChange={(event) =>
+                                              setContractTitle(event.target.value)
+                                            }
+                                            placeholder="Contract title"
+                                            className="h-12 w-full rounded-2xl border border-hier-border bg-white px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
+                                            disabled={!canManageSelected}
+                                          />
+
+                                          <input
+                                            value={contractTemplateName}
+                                            onChange={(event) =>
+                                              setContractTemplateName(event.target.value)
+                                            }
+                                            placeholder="Template name optional"
+                                            className="h-12 w-full rounded-2xl border border-hier-border bg-white px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
+                                            disabled={!canManageSelected}
+                                          />
+                                        </div>
+
+                                        <label
+                                          className={`inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${
+                                            canManageSelected
+                                              ? "cursor-pointer"
+                                              : "cursor-not-allowed opacity-60"
+                                          }`}
+                                        >
+                                          <Upload className="h-4 w-4" />
+                                          {busyKey === "contract-upload"
+                                            ? "Uploading..."
+                                            : "Upload contract"}
+                                          <input
+                                            type="file"
+                                            accept=".pdf,.doc,.docx"
+                                            className="hidden"
+                                            disabled={!canManageSelected}
+                                            onChange={(event) => {
+                                              const file = event.target.files?.[0];
+                                              if (!file || !canManageSelected) {
+                                                event.currentTarget.value = "";
+                                                return;
+                                              }
+                                              void handleContractUpload(file);
+                                              event.currentTarget.value = "";
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+
+                                      {(selected.contracts || []).length > 0 ? (
+                                        <div className="mt-4 space-y-3">
+                                          {(selected.contracts || []).map(
+                                            (contract: BusinessOnboardingContract) => {
+                                              const contractUrl = getPossibleFileUrl(
+                                                contract as any,
+                                              );
+                                              const resolvedContractUrl = contractUrl
+                                                ? normalizeFileUrl(contractUrl)
+                                                : null;
+
+                                              return (
+                                                <div
+                                                  key={contract.id}
+                                                  className="rounded-[18px] border border-hier-border bg-white p-4"
+                                                >
+                                                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                                    <div>
+                                                      <p className="text-sm font-semibold text-hier-text">
+                                                        {contract.title}
+                                                      </p>
+                                                      <p className="mt-1 text-xs text-hier-muted">
+                                                        {contract.template_name ||
+                                                          "No template"}
+                                                      </p>
+                                                    </div>
+                                                    <span
+                                                      className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
+                                                        contract.status,
+                                                      )}`}
+                                                    >
+                                                      {formatLabel(contract.status)}
+                                                    </span>
+                                                  </div>
+
+                                                  <div className="mt-3 flex flex-wrap gap-2">
+                                                    {resolvedContractUrl ? (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => openFileUrl(contractUrl)}
+                                                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                                      >
+                                                        <Eye className="h-4 w-4" />
+                                                        View contract
+                                                      </button>
+                                                    ) : null}
+
+                                                    {resolvedContractUrl ? (
+                                                      <a
+                                                        href={resolvedContractUrl}
+                                                        download
+                                                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
+                                                      >
+                                                        <Save className="h-4 w-4" />
+                                                        Save contract
+                                                      </a>
+                                                    ) : null}
+
+                                                    {contract.status === "draft" ? (
+                                                      <button
+                                                        type="button"
+                                                        disabled={
+                                                          !canManageSelected ||
+                                                          busyKey ===
+                                                            `contract-send-${contract.id}`
+                                                        }
+                                                        onClick={() =>
+                                                          void handleContractSend(
+                                                            contract.id,
+                                                          )
+                                                        }
+                                                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
+                                                      >
+                                                        <Send className="h-4 w-4" />
+                                                        Send to candidate
+                                                      </button>
+                                                    ) : null}
+                                                  </div>
+                                                </div>
+                                              );
+                                            },
+                                          )}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+
                                   {!selectedIsEmployeeLike ? (
                                     <div className="flex flex-wrap gap-2">
                                       {task.owner_type === "candidate" && task.status === "draft" ? (
@@ -1395,7 +1554,9 @@ export default function OnboardingPage() {
                                           className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
                                         >
                                           <Send className="h-4 w-4" />
-                                          Send to candidate
+                                          {rightToWorkTask
+                                            ? "Send passport / birth certificate request"
+                                            : "Send to candidate"}
                                         </button>
                                       ) : null}
 
@@ -1504,126 +1665,6 @@ export default function OnboardingPage() {
 
                     {!selectedIsEmployeeLike ? (
                       <>
-                        <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
-                          <div className="flex items-center gap-3">
-                            <FilePlus2 className="h-5 w-5 text-hier-primary" />
-                            <h3 className="text-xl font-semibold text-hier-text">
-                              Create contract
-                            </h3>
-                          </div>
-
-                          <div className="mt-5 space-y-3">
-                            <input
-                              value={contractTitle}
-                              onChange={(event) => setContractTitle(event.target.value)}
-                              placeholder="Employment contract"
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                              disabled={!canManageSelected}
-                            />
-
-                            <input
-                              value={contractTemplateName}
-                              onChange={(event) => setContractTemplateName(event.target.value)}
-                              placeholder="Template name optional"
-                              className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
-                              disabled={!canManageSelected}
-                            />
-
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => void handleCreateContract()}
-                                disabled={!canManageSelected || busyKey === "contract-create" || !contractTitle.trim()}
-                                className="inline-flex h-11 items-center justify-center rounded-2xl bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:opacity-60"
-                              >
-                                {busyKey === "contract-create" ? "Creating…" : "Create contract"}
-                              </button>
-
-                              <label
-                                className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink ${
-                                  canManageSelected
-                                    ? "cursor-pointer"
-                                    : "cursor-not-allowed opacity-60"
-                                }`}
-                              >
-                                <Upload className="h-4 w-4" />
-                                {busyKey === "contract-upload" ? "Uploading…" : "Upload contract"}
-                                <input
-                                  type="file"
-                                  accept=".pdf,.doc,.docx"
-                                  className="hidden"
-                                  disabled={!canManageSelected}
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    if (!file || !canManageSelected) return;
-                                    void handleContractUpload(file);
-                                    event.currentTarget.value = "";
-                                  }}
-                                />
-                              </label>
-                            </div>
-                          </div>
-
-                          {(selected.contracts || []).length > 0 ? (
-                            <div className="mt-4 space-y-3">
-                              {(selected.contracts || []).map(
-                                (contract: BusinessOnboardingContract) => {
-                                  const contractUrl = getPossibleFileUrl(contract as any);
-
-                                  return (
-                                    <div
-                                      key={contract.id}
-                                      className="rounded-[20px] border border-hier-border bg-white p-4"
-                                    >
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                          <p className="text-sm font-semibold text-hier-text">
-                                            {contract.title}
-                                          </p>
-                                          <p className="mt-1 text-xs text-hier-muted">
-                                            {contract.template_name || "No template"}
-                                          </p>
-                                        </div>
-                                        <span
-                                          className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${documentTone(
-                                            contract.status,
-                                          )}`}
-                                        >
-                                          {formatLabel(contract.status)}
-                                        </span>
-                                      </div>
-
-                                      <div className="mt-3 flex flex-wrap gap-2">
-                                        {contractUrl ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => openFileUrl(contractUrl)}
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-hier-border bg-white px-4 text-sm font-medium text-hier-ink"
-                                          >
-                                            <Eye className="h-4 w-4" />
-                                            View contract
-                                          </button>
-                                        ) : null}
-
-                                        {contract.status === "draft" ? (
-                                          <button
-                                            type="button"
-                                            disabled={!canManageSelected || busyKey === `contract-send-${contract.id}`}
-                                            onClick={() => void handleContractSend(contract.id)}
-                                            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-sm font-medium text-sky-700 disabled:opacity-60"
-                                          >
-                                            <Send className="h-4 w-4" />
-                                            Send contract
-                                          </button>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                  );
-                                },
-                              )}
-                            </div>
-                          ) : null}
-                        </section>
 
                         <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
                           <div className="flex items-center gap-3">
