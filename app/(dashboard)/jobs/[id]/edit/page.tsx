@@ -20,6 +20,8 @@ import { uploadBusinessMediaFile } from "@/lib/business-media-upload";
 import {
   archiveBusinessContentPost,
   archiveBusinessPost,
+  deleteBusinessContentPost,
+  deleteBusinessJobPost,
   fetchBusinessContentDetail,
   fetchBusinessPostDetail,
   updateBusinessContentPost,
@@ -137,6 +139,7 @@ export default function EditPostPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -490,6 +493,39 @@ export default function EditPostPage() {
       );
     } finally {
       setArchiving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (
+      !window.confirm(
+        "Delete this post permanently? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setError(null);
+
+      if (kind === "content") {
+        await deleteBusinessContentPost(postId);
+      } else {
+        await deleteBusinessJobPost(postId);
+      }
+
+      router.push("/jobs");
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+          ? e.message
+          : "Could not delete post.",
+      );
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -909,6 +945,15 @@ export default function EditPostPage() {
                   className="inline-flex h-11 items-center justify-center rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-95 disabled:opacity-60"
                 >
                   {archiving ? "Archiving…" : "Archive post"}
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => void handleDelete()}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {deleting ? "Deleting..." : "Delete post"}
                 </button>
               </div>
             </section>

@@ -13,6 +13,7 @@ import {
   PenSquare,
   Plus,
   RefreshCw,
+  Trash2,
   Video,
 } from "lucide-react";
 
@@ -21,6 +22,8 @@ import { ApiError } from "@/lib/api";
 import {
   archiveBusinessContentPost,
   archiveBusinessPost,
+  deleteBusinessContentPost,
+  deleteBusinessJobPost,
   fetchBusinessContent,
   fetchBusinessJobs,
   type ManagedPostItem,
@@ -177,6 +180,37 @@ export default function JobsPage() {
       await load(false);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not archive post.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(item: ManagedPostItem) {
+    const label =
+      item.kind === "content"
+        ? item.caption || item.title || "this content post"
+        : item.title || "this job post";
+
+    if (
+      !window.confirm(
+        `Delete ${label}? This removes it permanently and cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setBusyId(`delete-${item.kind}-${item.id}`);
+
+      if (item.kind === "job") {
+        await deleteBusinessJobPost(item.id);
+      } else {
+        await deleteBusinessContentPost(item.id);
+      }
+
+      await load(false);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not delete post.");
     } finally {
       setBusyId(null);
     }
@@ -474,6 +508,18 @@ export default function JobsPage() {
                           : busyId === `archive-${item.kind}-${item.id}`
                             ? "Archiving…"
                             : "Archive"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={busyId === `delete-${item.kind}-${item.id}`}
+                        onClick={() => void handleDelete(item)}
+                        className="inline-flex h-11 items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {busyId === `delete-${item.kind}-${item.id}`
+                          ? "Deleting..."
+                          : "Delete"}
                       </button>
 
                       <Link

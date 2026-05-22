@@ -326,6 +326,15 @@ export async function archiveBusinessContentPost(postId: number) {
   );
 }
 
+export async function deleteBusinessJobPost(postId: number) {
+  return apiFetch<{ ok: boolean; deleted: boolean }>(
+    `/api/business/posts/${postId}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
 export async function deleteBusinessContentPost(postId: number) {
   return apiFetch<{ ok: boolean; deleted: boolean }>(
     `/api/business/content/${postId}`,
