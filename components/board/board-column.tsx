@@ -18,6 +18,7 @@ export function BoardColumn({
   onSelectAllInColumn,
   onClearColumn,
   onMoveCandidate,
+  onCompleteStarted,
   onRejectCandidate,
 }: {
   title: string;
@@ -35,6 +36,7 @@ export function BoardColumn({
   onSelectAllInColumn: (ids: number[]) => void;
   onClearColumn: (ids: number[]) => void;
   onMoveCandidate: (id: number) => void;
+  onCompleteStarted: (application: BusinessApplication) => void;
   onRejectCandidate: (id: number) => void;
 }) {
   const columnIds = candidates.map((c) => c.id);
@@ -111,6 +113,7 @@ export function BoardColumn({
             onOpen={() => onOpenCandidate(candidate)}
             onDragStart={() => onDragCandidate(candidate.id)}
             onNextStage={() => onMoveCandidate(candidate.id)}
+            onCompleteStarted={() => onCompleteStarted(candidate)}
             onReject={() => onRejectCandidate(candidate.id)}
           />
         ))}

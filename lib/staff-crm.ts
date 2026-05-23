@@ -138,6 +138,42 @@ export type StaffBilling = {
   subscription?: Record<string, any> | null;
 };
 
+export type StaffStartedCandidate = {
+  id: number;
+  application_id: number;
+  candidate_name: string;
+  employer_name: string;
+  job_title: string;
+  start_date: string;
+  salary: number;
+  currency?: string | null;
+  fee_amount?: number | null;
+  fee_status?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+  stripe_invoice_item_id?: string | null;
+  business?: {
+    account_id?: number | null;
+    user_id?: number | null;
+    name?: string | null;
+    email?: string | null;
+    billing_email?: string | null;
+    stripe_customer_id?: string | null;
+  };
+  candidate?: {
+    user_id?: number | null;
+    name?: string | null;
+    email?: string | null;
+  };
+  job?: {
+    post_id?: number | null;
+    title?: string | null;
+    post_status?: string | null;
+    is_active?: boolean | null;
+  };
+};
+
 export type StaffBillingResponse = {
   ok: boolean;
   billing: StaffBilling;
@@ -379,6 +415,19 @@ export async function fetchFilteredStaffCrmReports(filter: string) {
 
 export function getMarketingOptInsCsvUrl() {
   return resolveApiUrl("/api/staff/crm-reports/marketing-opt-ins.csv");
+}
+
+export async function fetchStaffStartedCandidates(status: "pending_fee" | "completed" | "all" = "pending_fee") {
+  return apiFetch<{ ok: boolean; items: StaffStartedCandidate[] }>(
+    `/api/staff/started-candidates?status=${encodeURIComponent(status)}`
+  );
+}
+
+export async function chargeStaffCandidateFee(startedCandidateId: number | string) {
+  return apiFetch<{ ok: boolean; started_candidate: StaffStartedCandidate }>(
+    `/api/staff/started-candidates/${startedCandidateId}/charge-candidate-fee`,
+    { method: "POST" }
+  );
 }
 
 export async function createStaffAccount(payload: {

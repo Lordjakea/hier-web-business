@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  Banknote,
   BriefcaseBusiness,
   CheckCircle2,
   Loader2,
@@ -18,9 +19,12 @@ import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffAccount,
   createStaffBillingCheckout,
+  chargeStaffCandidateFee,
   fetchStaffCrmReports,
   fetchStaffMe,
+  fetchStaffStartedCandidates,
   searchStaffAccounts,
+  type StaffStartedCandidate,
   type StaffAccountSearchItem,
   type StaffBillingPlan,
   type StaffMe,
@@ -47,6 +51,15 @@ function accountLabel(account: StaffAccountSearchItem) {
 function statusPill(value?: string | boolean | null) {
   if (typeof value === "boolean") return value ? "Active" : "Inactive";
   return value || "—";
+}
+
+function formatMoney(value?: number | null, currency = "GBP") {
+  if (typeof value !== "number" || Number.isNaN(value)) return "â€”";
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function AccountRow({ account }: { account: StaffAccountSearchItem }) {
@@ -107,6 +120,9 @@ export default function StaffCrmPage() {
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [billingPlans, setBillingPlans] = useState<StaffBillingPlan[]>([]);
+  const [startedTab, setStartedTab] = useState<"pending_fee" | "completed">("pending_fee");
+  const [startedCandidates, setStartedCandidates] = useState<StaffStartedCandidate[]>([]);
+  const [chargingStartedId, setChargingStartedId] = useState<number | null>(null);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -155,6 +171,15 @@ export default function StaffCrmPage() {
       setLoading(false);
     }
   }, [query, role]);
+
+  const loadStartedCandidates = useCallback(async () => {
+    try {
+      const response = await fetchStaffStartedCandidates(startedTab);
+      setStartedCandidates(response.items || []);
+    } catch {
+      setStartedCandidates([]);
+    }
+  }, [startedTab]);
 
   const loadPlans = useCallback(async () => {
     try {
@@ -206,10 +231,35 @@ export default function StaffCrmPage() {
     const timeout = window.setTimeout(() => {
       void loadAccounts();
       void loadPlans();
+      void loadStartedCandidates();
     }, 250);
 
     return () => window.clearTimeout(timeout);
-  }, [loadAccounts, loadPlans]);
+  }, [loadAccounts, loadPlans, loadStartedCandidates]);
+
+  async function handleChargeCandidateFee(item: StaffStartedCandidate) {
+    setChargingStartedId(item.id);
+    setError(null);
+
+    try {
+      const response = await chargeStaffCandidateFee(item.id);
+      setStartedCandidates((current) => current.filter((candidate) => candidate.id !== item.id));
+      setCreateMessage(
+        `Candidate fee queued for ${response.started_candidate.candidate_name}'s next invoice.`
+      );
+      if (startedTab === "completed") {
+        await loadStartedCandidates();
+      }
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not queue the candidate fee."
+      );
+    } finally {
+      setChargingStartedId(null);
+    }
+  }
 
   async function handleCreateAccount(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -292,15 +342,15 @@ export default function StaffCrmPage() {
   const stats = useMemo(() => {
     const businesses = accounts.filter((account) => account.account_type === "business").length;
     const candidates = accounts.filter((account) => account.account_type !== "business").length;
-    const verified = accounts.filter((account) => account.email_verified).length;
+    const pendingFees = startedTab === "pending_fee" ? startedCandidates.length : 0;
 
     return [
       { label: "Visible results", value: String(accounts.length), icon: Users },
       { label: "Businesses", value: String(businesses), icon: BriefcaseBusiness },
       { label: "Candidates", value: String(candidates), icon: UserRound },
-      { label: "Verified emails", value: String(verified), icon: CheckCircle2 },
+      { label: "Pending candidate fees", value: String(pendingFees), icon: Banknote },
     ];
-  }, [accounts]);
+  }, [accounts, startedCandidates.length, startedTab]);
 
   return (
     <div className="space-y-8">
@@ -606,6 +656,94 @@ export default function StaffCrmPage() {
             <p className="mt-4 text-3xl font-semibold text-hier-text">{value}</p>
           </div>
         ))}
+      </section>
+
+      <section className="space-y-4 rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-hier-text">Started candidates</h2>
+            <p className="mt-1 text-sm text-hier-muted">
+              Track completed starts and queue the 2.5% candidate fee onto the next bill.
+            </p>
+          </div>
+          <div className="flex rounded-[18px] border border-hier-border bg-hier-panel p-1">
+            {[
+              ["pending_fee", "Pending fees"],
+              ["completed", "Completed"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setStartedTab(value as "pending_fee" | "completed")}
+                className={`rounded-[14px] px-4 py-2 text-sm font-semibold ${
+                  startedTab === value ? "bg-white text-hier-text shadow-sm" : "text-hier-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {startedCandidates.length ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-xs uppercase tracking-[0.16em] text-hier-muted">
+                <tr>
+                  <th className="py-3 pr-4">Candidate</th>
+                  <th className="py-3 pr-4">Business</th>
+                  <th className="py-3 pr-4">Job</th>
+                  <th className="py-3 pr-4">Start</th>
+                  <th className="py-3 pr-4">Salary</th>
+                  <th className="py-3 pr-4">Candidate fee</th>
+                  <th className="py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-hier-border">
+                {startedCandidates.map((item) => (
+                  <tr key={item.id}>
+                    <td className="py-4 pr-4">
+                      <p className="font-semibold text-hier-text">{item.candidate_name}</p>
+                      <p className="text-xs text-hier-muted">{item.candidate?.email || "No email"}</p>
+                    </td>
+                    <td className="py-4 pr-4">
+                      <Link href={`/staff/accounts/${item.business?.user_id || ""}`} className="font-semibold text-hier-primary">
+                        {item.employer_name}
+                      </Link>
+                      <p className="text-xs text-hier-muted">{item.business?.billing_email || item.business?.email || "No billing email"}</p>
+                    </td>
+                    <td className="py-4 pr-4 text-hier-text">{item.job_title}</td>
+                    <td className="py-4 pr-4 text-hier-muted">{formatDate(item.start_date)}</td>
+                    <td className="py-4 pr-4 text-hier-text">{formatMoney(item.salary, item.currency || "GBP")}</td>
+                    <td className="py-4 pr-4 font-semibold text-hier-text">
+                      {formatMoney(item.fee_amount, item.currency || "GBP")}
+                    </td>
+                    <td className="py-4 text-right">
+                      {startedTab === "pending_fee" ? (
+                        <button
+                          type="button"
+                          disabled={chargingStartedId === item.id}
+                          onClick={() => void handleChargeCandidateFee(item)}
+                          className="inline-flex h-10 items-center justify-center rounded-[16px] bg-hier-primary px-4 text-xs font-semibold text-white disabled:opacity-60"
+                        >
+                          {chargingStartedId === item.id ? "Queuing..." : "Charge fee"}
+                        </button>
+                      ) : (
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          Complete
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="rounded-[24px] border border-dashed border-hier-border bg-hier-panel p-6 text-sm text-hier-muted">
+            No started candidates in this tab yet.
+          </div>
+        )}
       </section>
 
       <section className="space-y-3">

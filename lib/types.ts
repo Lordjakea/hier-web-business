@@ -114,6 +114,28 @@ export type BusinessApplication = {
   first_cv_download_url?: string | null;
   attachments?: ApplicationAttachment[];
   job_post?: BusinessJobPost | null;
+  started_completion?: StartedCandidateCompletion | null;
+};
+
+export type StartedCandidateCompletion = {
+  id: number;
+  application_id: number;
+  candidate_name: string;
+  employer_name: string;
+  job_title: string;
+  start_date: string;
+  salary: number;
+  currency?: string | null;
+  fee_rate?: number | null;
+  fee_amount?: number | null;
+  fee_status?: string | null;
+  status?: string | null;
+  close_post_requested?: boolean;
+  post_archived_at?: string | null;
+  other_applicants_rejected_count?: number;
+  stripe_invoice_item_id?: string | null;
+  fee_charged_at?: string | null;
+  completed_at?: string | null;
 };
 
 export type PaginatedResponse<T> = {

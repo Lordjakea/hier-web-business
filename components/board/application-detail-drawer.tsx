@@ -372,6 +372,7 @@ export function ApplicationDetailDrawer({
     "CV";
   const applicantSummary = application?.applicant_summary || null;
   const hiScore = resolveHIScore(application);
+  const startedCompletion = application?.started_completion || null;
 
   useEffect(() => {
     if (!application) return;
@@ -812,6 +813,7 @@ export function ApplicationDetailDrawer({
                   <select
                     value={stage}
                     onChange={(event) => setStage(event.target.value as ApplicationStage)}
+                    disabled={Boolean(startedCompletion)}
                     className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
                   >
                     {stageOptions.map((option) => (
@@ -820,6 +822,11 @@ export function ApplicationDetailDrawer({
                       </option>
                     ))}
                   </select>
+                  {startedCompletion ? (
+                    <span className="text-xs font-medium text-emerald-700">
+                      Started details have been submitted.
+                    </span>
+                  ) : null}
                 </label>
 
                 <div className="space-y-2">

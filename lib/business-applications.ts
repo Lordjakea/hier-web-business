@@ -168,6 +168,35 @@ export async function updateBusinessApplicationNotes(
   return normalizeApplication(response);
 }
 
+export async function completeStartedCandidate(
+  appId: number,
+  payload: {
+    candidate_name: string;
+    employer_name: string;
+    job_title: string;
+    start_date: string;
+    salary: string | number;
+    currency?: string;
+    close_post: boolean;
+  },
+) {
+  const response = await apiFetch<{
+    ok: boolean;
+    application: BusinessApplication;
+    started_candidate: BusinessApplication["started_completion"];
+    post_archived: boolean;
+    other_applicants_rejected_count: number;
+  }>(`/api/business/applications/${appId}/started-completion`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  return {
+    ...response,
+    application: normalizeApplication(response.application),
+  };
+}
+
 export async function fetchCvPreviewUrl(downloadPath: string) {
   return apiFetch<CvPreviewResponse>(downloadPath, { method: "GET" });
 }

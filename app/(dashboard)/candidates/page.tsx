@@ -17,6 +17,7 @@ import {
   bulkArchiveBusinessApplications,
   bulkMoveBusinessApplicationsStage,
   bulkRejectBusinessApplications,
+  completeStartedCandidate,
 } from "@/lib/business-applications";
 import { resolveHIScore } from "@/lib/hi-score";
 import { boardColumns } from "@/lib/theme";
@@ -78,6 +79,16 @@ export default function CandidatesPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [shortlistMode, setShortlistMode] = useState<"broad" | "balanced" | "strict">("balanced");
   const [shortlistPreviewOpen, setShortlistPreviewOpen] = useState(false);
+  const [completionApplication, setCompletionApplication] = useState<BusinessApplication | null>(null);
+  const [completionStep, setCompletionStep] = useState<"details" | "close">("details");
+  const [completionSaving, setCompletionSaving] = useState(false);
+  const [completionForm, setCompletionForm] = useState({
+    candidate_name: "",
+    employer_name: "",
+    job_title: "",
+    start_date: "",
+    salary: "",
+  });
 
   const hasAutoOpenedRef = useRef(false);
 
@@ -438,6 +449,67 @@ export default function CandidatesPage() {
 
   async function rejectSingleCandidate(applicationId: number) {
     await moveApplication(applicationId, "rejected" as ApplicationStage);
+  }
+
+  function openStartedCompletion(application: BusinessApplication) {
+    const candidateName =
+      application.user?.display_name ||
+      application.user?.full_name ||
+      application.applicant_summary?.candidate_name ||
+      "Candidate";
+
+    setCompletionApplication(application);
+    setCompletionStep("details");
+    setCompletionForm({
+      candidate_name: candidateName,
+      employer_name: application.job_post?.company_name || "",
+      job_title: application.job_post?.title || application.applicant_summary?.job_title || "",
+      start_date: "",
+      salary: "",
+    });
+  }
+
+  async function submitStartedCompletion(closePost: boolean) {
+    if (!completionApplication) return;
+
+    setCompletionSaving(true);
+    setError(null);
+
+    try {
+      const response = await completeStartedCandidate(completionApplication.id, {
+        ...completionForm,
+        currency: "GBP",
+        close_post: closePost,
+      });
+      const updated = response.application;
+
+      setApplications((current) => {
+        const next = current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item));
+        return closePost
+          ? next.map((item) =>
+              item.job_post_id === updated.job_post_id && item.id !== updated.id
+                ? { ...item, stage: "rejected" as ApplicationStage, status: "rejected" }
+                : item
+            )
+          : next;
+      });
+
+      if (selectedApplication?.id === updated.id) {
+        setSelectedApplication((current) => (current ? { ...current, ...updated } : current));
+      }
+
+      setCompletionApplication(null);
+      setCompletionStep("details");
+      showToast(closePost ? "Candidate completed and post closed." : "Candidate completed.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not complete started candidate."
+      );
+    } finally {
+      setCompletionSaving(false);
+    }
   }
 
   function showToast(message: string) {
@@ -899,6 +971,7 @@ export default function CandidatesPage() {
           maxVisibleColumns={6}
           onOpenCandidate={openApplication}
           onMoveCandidate={moveApplication}
+          onCompleteStarted={openStartedCompletion}
           onRejectCandidate={rejectSingleCandidate}
           onDragCandidate={setDraggingApplicationId}
           onToggleSelect={toggleSelected}
@@ -926,6 +999,95 @@ export default function CandidatesPage() {
         onSave={saveDrawer}
         onOpenCv={openCvPreview}
       />
+
+      {completionApplication ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-hier-text/40 p-4">
+          <div className="w-full max-w-xl rounded-[28px] border border-hier-border bg-white p-6 shadow-panel">
+            {completionStep === "details" ? (
+              <>
+                <h2 className="text-xl font-semibold text-hier-text">Complete started candidate</h2>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  {[
+                    ["Name", "candidate_name", "text"],
+                    ["Employer", "employer_name", "text"],
+                    ["Job title", "job_title", "text"],
+                    ["Start date", "start_date", "date"],
+                    ["Salary", "salary", "number"],
+                  ].map(([label, field, type]) => (
+                    <label key={field} className="space-y-2 text-sm font-medium text-hier-text">
+                      {label}
+                      <input
+                        type={type}
+                        value={String(completionForm[field as keyof typeof completionForm] || "")}
+                        onChange={(event) =>
+                          setCompletionForm((current) => ({ ...current, [field]: event.target.value }))
+                        }
+                        required={field === "start_date" || field === "salary"}
+                        className="h-12 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCompletionApplication(null)}
+                    className="h-11 rounded-[18px] border border-hier-border px-4 text-sm font-semibold text-hier-text"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!completionForm.start_date || !completionForm.salary) {
+                        setError("Start date and salary are required.");
+                        return;
+                      }
+                      setCompletionStep("close");
+                    }}
+                    className="h-11 rounded-[18px] bg-hier-primary px-5 text-sm font-semibold text-white"
+                  >
+                    Next
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-semibold text-hier-text">Close this post?</h2>
+                <p className="mt-3 text-sm leading-6 text-hier-muted">
+                  You can archive the post and reject all other applicants, or leave the post open.
+                </p>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={completionSaving}
+                    onClick={() => void submitStartedCompletion(true)}
+                    className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-left text-sm font-semibold text-emerald-800 disabled:opacity-60"
+                  >
+                    Archive post and reject others
+                  </button>
+                  <button
+                    type="button"
+                    disabled={completionSaving}
+                    onClick={() => void submitStartedCompletion(false)}
+                    className="rounded-[20px] border border-hier-border bg-white px-4 py-4 text-left text-sm font-semibold text-hier-text disabled:opacity-60"
+                  >
+                    Leave post open
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  disabled={completionSaving}
+                  onClick={() => setCompletionStep("details")}
+                  className="mt-4 text-sm font-semibold text-hier-muted"
+                >
+                  Back
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

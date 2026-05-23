@@ -17,6 +17,7 @@ export function CandidateCard({
   onSelectChange,
   onOpen,
   onNextStage,
+  onCompleteStarted,
   onReject,
   onDragStart,
 }: {
@@ -25,6 +26,7 @@ export function CandidateCard({
   onSelectChange?: (checked: boolean) => void;
   onOpen: () => void;
   onNextStage?: () => void;
+  onCompleteStarted?: () => void;
   onReject?: () => void;
   onDragStart?: () => void;
 }) {
@@ -99,6 +101,28 @@ export function CandidateCard({
         Job Applied - {jobApplied}
       </p>
 
+      {candidate.stage === "started" ? (
+        <div className="mt-3">
+          {candidate.started_completion ? (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-center text-[11px] font-semibold text-emerald-700">
+              Started details submitted
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCompleteStarted?.();
+              }}
+              disabled={!onCompleteStarted}
+              className="inline-flex h-9 w-full items-center justify-center gap-1 rounded-xl border border-emerald-200 bg-emerald-600 px-2 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Complete
+            </button>
+          )}
+        </div>
+      ) : (
       <div className="mt-3 grid grid-cols-3 gap-2">
         <button
           type="button"
@@ -138,6 +162,7 @@ export function CandidateCard({
           Reject
         </button>
       </div>
+      )}
     </article>
   );
 }
