@@ -21,12 +21,15 @@ import { PageHeader } from "@/components/ui/page-header";
 import { resolveHIScore } from "@/lib/hi-score";
 import type { ApplicationStage, BusinessApplication, BusinessCandidate } from "@/lib/types";
 
+type LibrarySortMode = "score_desc" | "active_first" | "recent" | "name";
+
 export default function CandidateLibraryPage() {
   const [items, setItems] = useState<CandidateLibraryEntry[]>([]);
   const [jobs, setJobs] = useState<CandidateLibraryJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [query, setQuery] = useState("");
+  const [sortMode, setSortMode] = useState<LibrarySortMode>("score_desc");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +68,37 @@ export default function CandidateLibraryPage() {
     () => jobs.find((job) => job.id === selectedJobId) || null,
     [jobs, selectedJobId],
   );
+
+  const sortedItems = useMemo(() => {
+    const getScore = (item: CandidateLibraryEntry) => {
+      const score = resolveHIScore(item.hi_score ? { score: item.hi_score.score } : null).score;
+      return score ?? Number.NEGATIVE_INFINITY;
+    };
+
+    return items
+      .map((item, index) => ({ item, index }))
+      .sort((left, right) => {
+        if (sortMode === "score_desc") {
+          return getScore(right.item) - getScore(left.item) || left.index - right.index;
+        }
+
+        if (sortMode === "active_first") {
+          const activeDelta =
+            Number(!!right.item.candidate.active_looking_for_work) -
+            Number(!!left.item.candidate.active_looking_for_work);
+          return activeDelta || getScore(right.item) - getScore(left.item) || left.index - right.index;
+        }
+
+        if (sortMode === "name") {
+          const leftName = left.item.candidate.name || left.item.candidate.email || "";
+          const rightName = right.item.candidate.name || right.item.candidate.email || "";
+          return leftName.localeCompare(rightName) || left.index - right.index;
+        }
+
+        return left.index - right.index;
+      })
+      .map(({ item }) => item);
+  }, [items, sortMode]);
 
   const selectedCount = selectedIds.length;
 
@@ -216,7 +250,7 @@ export default function CandidateLibraryPage() {
       />
 
       <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card">
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px_auto]">
+        <div className="grid gap-4 lg:grid-cols-[1fr_260px_220px_auto]">
           <label className="block">
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
               Hiring for
@@ -251,6 +285,22 @@ export default function CandidateLibraryPage() {
                 className="w-full bg-transparent text-sm outline-none"
               />
             </div>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+              Sort by
+            </span>
+            <select
+              value={sortMode}
+              onChange={(event) => setSortMode(event.target.value as LibrarySortMode)}
+              className="mt-2 h-12 w-full rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text outline-none"
+            >
+              <option value="score_desc">Best HI Score</option>
+              <option value="active_first">Actively looking</option>
+              <option value="recent">Recently added</option>
+              <option value="name">Name A-Z</option>
+            </select>
           </label>
 
           <button
@@ -292,8 +342,8 @@ export default function CandidateLibraryPage() {
           Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="h-44 animate-pulse rounded-[28px] border border-hier-border bg-white" />
           ))
-        ) : items.length ? (
-          items.map((item) => {
+        ) : sortedItems.length ? (
+          sortedItems.map((item) => {
             const checked = selectedIds.includes(item.id);
             const scoreMeta = resolveHIScore(
               item.hi_score
