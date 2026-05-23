@@ -1,14 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brain, CheckCircle2, Loader2, Search, UserRoundCheck } from "lucide-react";
+import { Brain, CheckCircle2, Loader2, Search, UserRoundCheck, UserSquare2 } from "lucide-react";
 import {
   fetchCandidateLibrary,
   shortlistCandidateLibrary,
   type CandidateLibraryEntry,
   type CandidateLibraryJob,
 } from "@/lib/candidate-library";
+import {
+  fetchBusinessApplicationDetail,
+  fetchBusinessCandidateProfile,
+  fetchCvPreviewUrl,
+  markBusinessCvViewed,
+  updateBusinessApplicationNotes,
+  updateBusinessApplicationStage,
+} from "@/lib/business-applications";
+import { ApplicationDetailDrawer } from "@/components/board/application-detail-drawer";
 import { PageHeader } from "@/components/ui/page-header";
+import type { ApplicationStage, BusinessApplication, BusinessCandidate } from "@/lib/types";
 
 function scoreTone(score?: number | null) {
   const value = Number(score || 0);
@@ -27,8 +37,15 @@ export default function CandidateLibraryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [selectedApplication, setSelectedApplication] = useState<BusinessApplication | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<BusinessCandidate | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [cvPreviewUrl, setCvPreviewUrl] = useState<string | null>(null);
+  const [cvPreviewLoading, setCvPreviewLoading] = useState(false);
+  const [cvPreviewError, setCvPreviewError] = useState<string | null>(null);
 
-  async function load(nextJobId = selectedJobId) {
+  async function load(nextJobId: number | null = selectedJobId) {
     setError(null);
     setLoading(true);
     try {
@@ -38,7 +55,6 @@ export default function CandidateLibraryPage() {
       });
       setItems(response.items || []);
       setJobs(response.jobs || []);
-      if (!nextJobId && response.jobs?.[0]?.id) setSelectedJobId(response.jobs[0].id);
     } catch (e: any) {
       setError(e?.message || "Could not load candidate library.");
     } finally {
@@ -47,7 +63,7 @@ export default function CandidateLibraryPage() {
   }
 
   useEffect(() => {
-    void load();
+    void load(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -58,10 +74,11 @@ export default function CandidateLibraryPage() {
 
   const selectedCount = selectedIds.length;
 
-  async function handleScoreJob(jobId: number) {
-    setSelectedJobId(jobId);
+  async function handleScoreJob(jobId: number | null) {
+    const nextJobId = jobId && jobId > 0 ? jobId : null;
+    setSelectedJobId(nextJobId);
     setSelectedIds([]);
-    await load(jobId);
+    await load(nextJobId);
   }
 
   async function handleShortlist() {
@@ -92,12 +109,116 @@ export default function CandidateLibraryPage() {
     );
   }
 
+  async function openCandidateProfile(item: CandidateLibraryEntry) {
+    const applicationId = item.source_application_id;
+    if (!applicationId) {
+      setError("This candidate does not have an application profile to open yet.");
+      return;
+    }
+
+    setSelectedApplication({
+      id: applicationId,
+      stage: (item.last_stage as ApplicationStage) || "applied",
+      user: {
+        id: item.candidate.id || item.candidate_user_id,
+        display_name: item.candidate.name,
+        full_name: item.candidate.name,
+        email: item.candidate.email,
+        avatar_url: item.candidate.avatar_url,
+      },
+      job_post: item.source_job
+        ? {
+            id: item.source_job.id,
+            title: item.source_job.title,
+            location: item.source_job.location,
+          }
+        : null,
+    } as BusinessApplication);
+    setSelectedCandidate(null);
+    setCvPreviewUrl(null);
+    setCvPreviewError(null);
+    setDetailLoading(true);
+    setError(null);
+
+    try {
+      const detail = await fetchBusinessApplicationDetail(applicationId);
+      setSelectedApplication({
+        ...detail.application,
+        attachments: detail.attachments || [],
+      });
+
+      const userId = detail.application.user?.id || item.candidate.id || item.candidate_user_id;
+      if (userId) {
+        const response = await fetchBusinessCandidateProfile(userId);
+        setSelectedCandidate(response.candidate);
+      }
+    } catch (e: any) {
+      setError(e?.message || "Could not load candidate profile.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  async function saveDrawer(payload: {
+    stage: ApplicationStage;
+    rating: number | null;
+    recruiter_tags: string[];
+    internal_note: string | null;
+  }) {
+    if (!selectedApplication) return;
+    setSaving(true);
+    setError(null);
+
+    try {
+      let latest = selectedApplication;
+
+      if (payload.stage !== selectedApplication.stage) {
+        latest = await updateBusinessApplicationStage(selectedApplication.id, payload.stage);
+      }
+
+      latest = await updateBusinessApplicationNotes(selectedApplication.id, {
+        rating: payload.rating,
+        recruiter_tags: payload.recruiter_tags,
+        internal_note: payload.internal_note,
+      });
+
+      setSelectedApplication(latest);
+    } catch (e: any) {
+      setError(e?.message || "Could not save candidate updates.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function openCvPreview() {
+    if (!selectedApplication?.first_cv_download_url) {
+      setCvPreviewError("No CV is available for this candidate yet.");
+      return;
+    }
+
+    setCvPreviewLoading(true);
+    setCvPreviewError(null);
+
+    try {
+      const preview = await fetchCvPreviewUrl(selectedApplication.first_cv_download_url);
+      setCvPreviewUrl(preview.url || null);
+      await markBusinessCvViewed(selectedApplication.id);
+      setSelectedApplication((current) =>
+        current ? { ...current, cv_view_count: (current.cv_view_count || 0) + 1 } : current,
+      );
+    } catch (e: any) {
+      setCvPreviewError(e?.message || "Could not load CV preview right now.");
+    } finally {
+      setCvPreviewLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Candidate Library"
         title="Your saved CV library"
-        description="Candidates from completed roles are kept here so Pro and Hier teams can score them against new roles and move suitable active candidates into Applied."
+        description="Candidates who apply to your roles are kept here so Pro and Hier teams can score them against new roles and move suitable active candidates into Applied."
       />
 
       <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card">
@@ -108,7 +229,7 @@ export default function CandidateLibraryPage() {
             </span>
             <select
               value={selectedJobId || ""}
-              onChange={(event) => void handleScoreJob(Number(event.target.value))}
+              onChange={(event) => void handleScoreJob(Number(event.target.value || 0))}
               className="mt-2 h-12 w-full rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text outline-none"
             >
               <option value="">Select a live role</option>
@@ -153,7 +274,11 @@ export default function CandidateLibraryPage() {
           <div className="mt-4 rounded-[22px] border border-hier-border bg-hier-panel px-4 py-3 text-sm text-hier-muted">
             Hi Score AI is rating this library against <span className="font-semibold text-hier-text">{selectedJob.title}</span>.
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-4 rounded-[22px] border border-hier-border bg-hier-panel px-4 py-3 text-sm text-hier-muted">
+            Showing all library candidates. Select a live role to calculate Hi Scores.
+          </div>
+        )}
       </section>
 
       {notice ? (
@@ -192,14 +317,24 @@ export default function CandidateLibraryPage() {
                       {item.candidate.headline || item.candidate.email || "No headline yet"}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleEntry(item.id)}
-                    className={`inline-flex h-10 w-10 items-center justify-center rounded-[16px] border ${checked ? "border-hier-primary bg-hier-primary text-white" : "border-hier-border text-hier-muted"}`}
-                    aria-label="Select candidate"
-                  >
-                    <CheckCircle2 className="h-5 w-5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void openCandidateProfile(item)}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-[16px] border border-hier-border text-hier-muted transition hover:bg-hier-panel hover:text-hier-text"
+                      aria-label="Open candidate profile"
+                    >
+                      <UserSquare2 className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleEntry(item.id)}
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-[16px] border ${checked ? "border-hier-primary bg-hier-primary text-white" : "border-hier-border text-hier-muted"}`}
+                      aria-label="Select candidate"
+                    >
+                      <CheckCircle2 className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
@@ -216,7 +351,7 @@ export default function CandidateLibraryPage() {
                 </div>
 
                 <p className="mt-4 text-sm leading-6 text-hier-muted">
-                  From {item.source_job?.title || "a completed role"}
+                  From {item.source_job?.title || "an application"}
                   {item.source_job?.location ? ` · ${item.source_job.location}` : ""}
                 </p>
 
@@ -230,10 +365,29 @@ export default function CandidateLibraryPage() {
           })
         ) : (
           <div className="rounded-[28px] border border-hier-border bg-white p-8 text-sm text-hier-muted shadow-card xl:col-span-2">
-            No candidates in this library yet. Complete a started candidate on a role to begin building it.
+            No candidates in this library yet. Candidates will appear here as they apply to your roles.
           </div>
         )}
       </section>
+
+      <ApplicationDetailDrawer
+        open={Boolean(selectedApplication)}
+        application={selectedApplication}
+        candidate={selectedCandidate}
+        loading={detailLoading}
+        saving={saving}
+        cvPreviewUrl={cvPreviewUrl}
+        cvPreviewLoading={cvPreviewLoading}
+        cvPreviewError={cvPreviewError}
+        onClose={() => {
+          setSelectedApplication(null);
+          setSelectedCandidate(null);
+          setCvPreviewUrl(null);
+          setCvPreviewError(null);
+        }}
+        onSave={saveDrawer}
+        onOpenCv={openCvPreview}
+      />
     </div>
   );
 }
