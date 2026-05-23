@@ -118,6 +118,8 @@ export type StaffBilling = {
   plan_code?: string | null;
   trial_ends_at?: string | null;
   stripe_customer_id?: string | null;
+  candidate_fee_rate?: number | null;
+  candidate_fee_percent?: number | null;
   subscription_status?: string | null;
   subscription_current_period_end?: string | null;
   subscription_cancel_at_period_end?: boolean | null;
@@ -576,6 +578,7 @@ export async function updateStaffAccountBilling(
     monthly_boost_credits_used?: number;
     paid_boost_credits?: number;
     paid_boost_credits_used?: number;
+    candidate_fee_percent?: number;
     reason: string;
   }
 ) {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Banknote,
   Bell,
   BriefcaseBusiness,
   CreditCard,
@@ -49,6 +50,7 @@ const staffLinks = [
   { label: "Waitlist", href: "/staff/waitlist", icon: Mail, match: (path: string) => path.startsWith("/staff/waitlist") },
   { label: "Leads", href: "/staff/leads", icon: PhoneCall, match: (path: string) => path === "/staff/leads" },
   { label: "Hiring Intel", href: "/staff/leads/intelligence", icon: Radar, match: (path: string) => path.startsWith("/staff/leads/intelligence") },
+  { label: "Started candidates", href: "/staff/started-candidates", icon: Banknote, match: (path: string) => path.startsWith("/staff/started-candidates") },
   { label: "Follow-ups", href: "/staff/follow-ups", icon: CalendarClock, match: (path: string) => path.startsWith("/staff/follow-ups") },
   { label: "Cases", href: "/staff/cases", icon: BriefcaseBusiness, match: (path: string) => path.startsWith("/staff/cases") },
 ];

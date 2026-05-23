@@ -274,6 +274,11 @@ export default function StaffAccountDetailPage() {
     reason: "",
   });
   const [savingGoodwillCredit, setSavingGoodwillCredit] = useState(false);
+  const [candidateFeeForm, setCandidateFeeForm] = useState({
+    candidate_fee_percent: "2.5",
+    reason: "",
+  });
+  const [savingCandidateFee, setSavingCandidateFee] = useState(false);
   const [followUps, setFollowUps] = useState<StaffFollowUp[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffTeamUser[]>([]);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
@@ -357,6 +362,10 @@ export default function StaffAccountDetailPage() {
         setBillingPreview(null);
         setExtraBoostForm({
           paid_boost_credits: String(billingResponse.billing.paid_boost_credits ?? 0),
+          reason: "",
+        });
+        setCandidateFeeForm({
+          candidate_fee_percent: String(billingResponse.billing.candidate_fee_percent ?? 2.5),
           reason: "",
         });
 
@@ -849,6 +858,46 @@ export default function StaffAccountDetailPage() {
     }
   }
 
+  async function handleSaveCandidateFee(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId) return;
+
+    const reason = candidateFeeForm.reason.trim();
+    const candidateFeePercent = Number(candidateFeeForm.candidate_fee_percent || 0);
+
+    if (Number.isNaN(candidateFeePercent) || candidateFeePercent < 0 || candidateFeePercent > 100) {
+      setError("Candidate fee must be a percentage between 0 and 100.");
+      return;
+    }
+    if (reason.length < 10) {
+      setError("Please enter a candidate fee change reason of at least 10 characters.");
+      return;
+    }
+
+    setSavingCandidateFee(true);
+    setError(null);
+
+    try {
+      const response = await updateStaffAccountBilling(userId, {
+        candidate_fee_percent: candidateFeePercent,
+        reason,
+      });
+      setBilling(response.billing);
+      setCandidateFeeForm({
+        candidate_fee_percent: String(response.billing.candidate_fee_percent ?? candidateFeePercent),
+        reason: "",
+      });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update candidate fee."
+      );
+    } finally {
+      setSavingCandidateFee(false);
+    }
+  }
+
   async function handleCreateGoodwillCredit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!userId) return;
@@ -1188,6 +1237,10 @@ export default function StaffAccountDetailPage() {
                     value={billing.stripe_customer_id}
                   />
                   <DetailRow
+                    label="Candidate fee"
+                    value={`${billing.candidate_fee_percent ?? 2.5}%`}
+                  />
+                  <DetailRow
                     label="Billing provider"
                     value={billingProvider || "Not set"}
                   />
@@ -1397,6 +1450,58 @@ export default function StaffAccountDetailPage() {
                       Extra: {billing.paid_boost_credits_remaining ?? 0}
                     </p>
                   </div>
+
+                  <form
+                    className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                    onSubmit={handleSaveCandidateFee}
+                  >
+                    <p className="text-sm font-semibold text-hier-text">
+                      Candidate fee
+                    </p>
+                    <p className="mt-2 text-sm text-hier-muted">
+                      Default is 2.5%. This percentage is used when started candidates are completed.
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-[160px_1fr]">
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={candidateFeeForm.candidate_fee_percent}
+                          onChange={(event) =>
+                            setCandidateFeeForm((current) => ({
+                              ...current,
+                              candidate_fee_percent: event.target.value,
+                            }))
+                          }
+                          className="h-11 w-full rounded-[18px] border border-hier-border bg-white px-4 pr-9 text-sm outline-none focus:border-hier-primary"
+                        />
+                        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-hier-muted">
+                          %
+                        </span>
+                      </div>
+                      <input
+                        value={candidateFeeForm.reason}
+                        onChange={(event) =>
+                          setCandidateFeeForm((current) => ({
+                            ...current,
+                            reason: event.target.value,
+                          }))
+                        }
+                        placeholder="Reason for changing candidate fee"
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={savingCandidateFee || candidateFeeForm.reason.trim().length < 10}
+                      className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {savingCandidateFee ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save candidate fee
+                    </button>
+                  </form>
 
                   <form
                     className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
