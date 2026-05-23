@@ -316,12 +316,31 @@ export async function archiveBusinessPost(postId: number) {
   );
 }
 
+export async function restoreBusinessPost(postId: number) {
+  return apiFetch<{ ok: boolean; post: BusinessManagedJobPost; restored_applications?: number }>(
+    `/api/business/posts/${postId}/restore`,
+    {
+      method: "PATCH",
+    },
+  );
+}
+
 export async function archiveBusinessContentPost(postId: number) {
   return apiFetch<{ ok: boolean; post: BusinessContentPost }>(
     `/api/business/content/${postId}`,
     {
       method: "PATCH",
       body: JSON.stringify({ is_active: false }),
+    },
+  );
+}
+
+export async function restoreBusinessContentPost(postId: number) {
+  return apiFetch<{ ok: boolean; post: BusinessContentPost }>(
+    `/api/business/content/${postId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: true }),
     },
   );
 }

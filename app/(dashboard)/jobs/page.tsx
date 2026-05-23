@@ -13,6 +13,7 @@ import {
   PenSquare,
   Plus,
   RefreshCw,
+  RotateCcw,
   Trash2,
   Video,
 } from "lucide-react";
@@ -26,6 +27,8 @@ import {
   deleteBusinessJobPost,
   fetchBusinessContent,
   fetchBusinessJobs,
+  restoreBusinessContentPost,
+  restoreBusinessPost,
   type ManagedPostItem,
 } from "@/lib/business-posts";
 import { formatCurrency, formatCurrencyRange } from "@/lib/currency";
@@ -180,6 +183,24 @@ export default function JobsPage() {
       await load(false);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not archive post.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRestore(item: ManagedPostItem) {
+    try {
+      setBusyId(`restore-${item.kind}-${item.id}`);
+
+      if (item.kind === "job") {
+        await restoreBusinessPost(item.id);
+      } else {
+        await restoreBusinessContentPost(item.id);
+      }
+
+      await load(false);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not restore post.");
     } finally {
       setBusyId(null);
     }
@@ -509,6 +530,18 @@ export default function JobsPage() {
                             ? "Archiving…"
                             : "Archive"}
                       </button>
+
+                      {isArchived ? (
+                        <button
+                          type="button"
+                          disabled={busyId === `restore-${item.kind}-${item.id}`}
+                          onClick={() => void handleRestore(item)}
+                          className="inline-flex h-11 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          {busyId === `restore-${item.kind}-${item.id}` ? "Restoring..." : "Restore"}
+                        </button>
+                      ) : null}
 
                       <button
                         type="button"
