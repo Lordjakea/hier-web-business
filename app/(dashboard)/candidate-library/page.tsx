@@ -18,14 +18,8 @@ import {
 } from "@/lib/business-applications";
 import { ApplicationDetailDrawer } from "@/components/board/application-detail-drawer";
 import { PageHeader } from "@/components/ui/page-header";
+import { resolveHIScore } from "@/lib/hi-score";
 import type { ApplicationStage, BusinessApplication, BusinessCandidate } from "@/lib/types";
-
-function scoreTone(score?: number | null) {
-  const value = Number(score || 0);
-  if (value >= 45) return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (value >= 25) return "bg-amber-50 text-amber-700 border-amber-200";
-  return "bg-slate-50 text-slate-600 border-slate-200";
-}
 
 export default function CandidateLibraryPage() {
   const [items, setItems] = useState<CandidateLibraryEntry[]>([]);
@@ -301,7 +295,17 @@ export default function CandidateLibraryPage() {
         ) : items.length ? (
           items.map((item) => {
             const checked = selectedIds.includes(item.id);
-            const score = item.hi_score?.score ?? null;
+            const scoreMeta = resolveHIScore(
+              item.hi_score
+                ? {
+                    score: item.hi_score.score,
+                    score_band: item.hi_score.score_band,
+                    score_label: item.hi_score.score_label,
+                    score_colour: item.hi_score.score_colour,
+                    score_color: item.hi_score.score_color,
+                  }
+                : null,
+            );
             const activeLooking = !!item.candidate.active_looking_for_work;
             return (
               <article
@@ -338,9 +342,9 @@ export default function CandidateLibraryPage() {
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
-                  <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${scoreTone(score)}`}>
+                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${scoreMeta.badgeClass}`}>
                     <Brain className="h-3.5 w-3.5" />
-                    {score !== null ? `${score.toFixed(1)} Hi Score` : "Select role to score"}
+                    {scoreMeta.score !== null ? `HI ${scoreMeta.score.toFixed(1)}` : "Select role to score"}
                   </span>
                   <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${activeLooking ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
                     {activeLooking ? "Actively looking" : "Not actively looking"}

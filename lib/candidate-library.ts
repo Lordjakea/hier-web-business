@@ -24,8 +24,10 @@ export type CandidateLibraryEntry = {
   source_job?: CandidateLibraryJob | null;
   hi_score?: {
     score: number;
+    score_band?: string | null;
     score_label?: string | null;
     score_colour?: string | null;
+    score_color?: string | null;
     reasons?: string[];
   } | null;
   created_at?: string | null;
