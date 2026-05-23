@@ -20,6 +20,7 @@ import {
   Flag,
   PhoneCall,
   CalendarClock,
+  Library,
   Radar,
 } from "lucide-react";
 import clsx from "clsx";
@@ -30,6 +31,7 @@ import { useEffect, useState } from "react";
 
 const primaryLinks = [
   { label: "Candidates", href: "/candidates", icon: LayoutGrid },
+  { label: "Candidate Library", href: "/candidate-library", icon: Library },
   { label: "Analytics Pro", href: "/analytics", icon: BarChart3 },
   { label: "Posts", href: "/jobs", icon: BriefcaseBusiness },
   { label: "Promote", href: "/promote", icon: Megaphone },

@@ -779,8 +779,7 @@ export function ApplicationDetailDrawer({
               {onboardingEligible === false ? (
                 <div className="mt-5 rounded-[22px] border border-hier-border bg-hier-panel px-4 py-4">
                   <p className="text-sm leading-6 text-hier-muted">
-                    Upgrade to <span className="font-semibold text-hier-text">Hier</span> or{" "}
-                    <span className="font-semibold text-hier-text">Hier Pro</span> to
+                    Upgrade to <span className="font-semibold text-hier-text">Hier</span> to
                     onboard candidates, collect documents, share contracts, and manage
                     pre-start tasks.
                   </p>

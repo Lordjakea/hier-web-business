@@ -75,17 +75,30 @@ function formatStatus(value?: string | null) {
 }
 
 function planBullets(plan: BillingPlan) {
+  const jobPostLimit =
+    typeof plan.job_post_limit === "number" && plan.job_post_limit > 0
+      ? `${plan.job_post_limit} active job post${plan.job_post_limit === 1 ? "" : "s"}`
+      : "Unlimited job posts";
+  const applicantLimit =
+    typeof plan.application_limit_per_post === "number" &&
+    plan.application_limit_per_post > 0
+      ? `${plan.application_limit_per_post} applicants max limit`
+      : "Unlimited applicants per post";
+  const boostCredits = Number(plan.monthly_boost_credits || 0);
+
   return [
-    typeof plan.job_post_limit === "number"
-      ? `${plan.job_post_limit === 0 ? "Unlimited" : plan.job_post_limit} live job posts`
-      : null,
-    `${Number(plan.monthly_boost_credits || 0)} monthly boost credits`,
+    jobPostLimit,
+    applicantLimit,
+    boostCredits > 0 ? `${boostCredits} boost credit${boostCredits === 1 ? "" : "s"}` : null,
     plan.has_pipeline_tools ? "Pipeline tools included" : null,
     plan.has_applicant_rating ? "Applicant rating included" : null,
+    plan.code === "pro" || plan.code === "hier" ? "Candidate library included" : null,
     plan.has_analytics ? "Analytics included" : null,
     plan.has_analytics_pro ? "Advanced analytics included" : null,
     plan.has_messaging ? "Messaging included" : null,
     plan.has_interview_scheduling ? "Interview scheduling included" : null,
+    plan.code === "hier" ? "Onboarding journey included" : null,
+    plan.code === "hier" ? "Employee management system included" : null,
   ].filter(Boolean) as string[];
 }
 
@@ -344,7 +357,7 @@ export default function BillingPage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-hier-muted">Current plan</p>
                   <h2 className="mt-2 text-2xl font-semibold text-hier-text">{currentPlan?.name || formatStatus(currentPlanCode)}</h2>
                   <p className="mt-2 text-sm leading-7 text-hier-muted">
-                    {currentPlan ? `${formatMonthlyPrice(currentPlan.price_monthly, currentPlan.currency)} / month Ex VAT` : "Plan details unavailable right now."}
+                    {currentPlan ? `${formatMonthlyPrice(currentPlan.price_monthly, currentPlan.currency)} / month ex VAT` : "Plan details unavailable right now."}
                   </p>
                 </div>
 
@@ -594,7 +607,7 @@ export default function BillingPage() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {plans.map((plan) => {
                 const current = plan.code === currentPlanCode;
                 const isStarter = plan.code === "starter";
@@ -611,7 +624,7 @@ export default function BillingPage() {
                         <h3 className="text-base font-semibold text-hier-text">{plan.name}</h3>
                         <p className="mt-2 text-2xl font-semibold tracking-tight text-hier-text">
                           {formatMonthlyPrice(plan.price_monthly, plan.currency)}
-                          <span className="ml-1 text-xs font-medium text-hier-muted">/ month Ex VAT</span>
+                          <span className="ml-1 text-xs font-medium text-hier-muted">/ month ex VAT</span>
                         </p>
                       </div>
                       {current ? <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-hier-primary shadow-sm">Current</span> : null}
