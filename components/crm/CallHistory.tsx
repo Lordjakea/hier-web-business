@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 
 import {
@@ -53,36 +53,47 @@ export function CallHistory(props: CallHistoryProps) {
   const leadId = "leadId" in props ? props.leadId : null;
   const accountUserId = "accountUserId" in props ? props.accountUserId : null;
 
+  const loadCalls = useCallback(async () => {
+    if (!leadId && !accountUserId) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = leadId
+        ? await fetchStaffLeadCallActivities(leadId)
+        : await fetchStaffAccountCallActivities(accountUserId as number);
+      const nextItems = Array.isArray(response.items) ? response.items : [];
+      setItems(nextItems);
+      setEdits(
+        nextItems.reduce<Record<number, { outcome: string; notes: string }>>((acc, item) => {
+          acc[item.id] = { outcome: item.outcome || "", notes: item.notes || "" };
+          return acc;
+        }, {})
+      );
+    } catch (caughtError) {
+      setItems([]);
+      setEdits({});
+      setError(caughtError instanceof Error ? caughtError.message : "Could not load calls.");
+    } finally {
+      setLoading(false);
+    }
+  }, [leadId, accountUserId]);
+
   useEffect(() => {
-    async function loadCalls() {
-      if (!leadId && !accountUserId) return;
+    void loadCalls();
+  }, [loadCalls]);
 
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = leadId
-          ? await fetchStaffLeadCallActivities(leadId)
-          : await fetchStaffAccountCallActivities(accountUserId as number);
-        const nextItems = Array.isArray(response.items) ? response.items : [];
-        setItems(nextItems);
-        setEdits(
-          nextItems.reduce<Record<number, { outcome: string; notes: string }>>((acc, item) => {
-            acc[item.id] = { outcome: item.outcome || "", notes: item.notes || "" };
-            return acc;
-          }, {})
-        );
-      } catch (caughtError) {
-        setItems([]);
-        setEdits({});
-        setError(caughtError instanceof Error ? caughtError.message : "Could not load calls.");
-      } finally {
-        setLoading(false);
-      }
+  useEffect(() => {
+    function handleCreated(event: Event) {
+      const detail = (event as CustomEvent<{ leadId?: number | null; accountUserId?: number | null }>).detail;
+      if (leadId && detail?.leadId === leadId) void loadCalls();
+      if (accountUserId && detail?.accountUserId === accountUserId) void loadCalls();
     }
 
-    void loadCalls();
-  }, [leadId, accountUserId]);
+    window.addEventListener("hier:staff-call-created", handleCreated);
+    return () => window.removeEventListener("hier:staff-call-created", handleCreated);
+  }, [leadId, accountUserId, loadCalls]);
 
   function updateEdit(callId: number, patch: Partial<{ outcome: string; notes: string }>) {
     setEdits((current) => ({

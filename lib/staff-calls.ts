@@ -33,6 +33,17 @@ export async function fetchStaffAccountCallActivities(userId: number) {
   );
 }
 
+export async function createStaffCallActivity(payload: {
+  phone_number: string;
+  staff_lead_id?: number | null;
+  account_user_id?: number | null;
+}) {
+  return apiFetch<{ ok: boolean; call: CallActivity }>("/api/staff/calls", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function updateStaffCallActivity(
   callId: number,
   payload: { notes?: string | null; outcome?: string | null }

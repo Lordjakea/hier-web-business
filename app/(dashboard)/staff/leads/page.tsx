@@ -770,7 +770,7 @@ export default function StaffLeadsPage() {
                     <p className="mt-1 text-sm text-hier-muted">{selectedLead.email}</p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    <CallButton phoneNumber={selectedLead.phone} />
+                    <CallButton phoneNumber={selectedLead.phone} leadId={selectedLead.id} />
                     <select
                       value={selectedLead.status || "new"}
                       onChange={(event) => void handleStatusChange(selectedLead, event.target.value)}

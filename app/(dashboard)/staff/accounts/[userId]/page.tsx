@@ -1137,7 +1137,10 @@ export default function StaffAccountDetailPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_420px]">
         <div className="space-y-6">
           <InfoCard title="User account">
-            <CallButton phoneNumber={account.basic?.phone || account.business_profile?.contact_phone} />
+            <CallButton
+              phoneNumber={account.basic?.phone || account.business_profile?.contact_phone}
+              accountUserId={account.basic?.id || null}
+            />
             <DetailRow label="User ID" value={account.basic?.id} />
             <DetailRow label="Email" value={account.basic?.email} />
             <DetailRow label="Phone" value={account.basic?.phone} />
