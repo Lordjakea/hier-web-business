@@ -91,8 +91,8 @@ function formatMonthlyPrice(amount?: number | null, currency?: string | null) {
   if (!amount && amount !== 0) return "";
   return formatCurrency(amount, {
     currency,
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
   });
 }
 
