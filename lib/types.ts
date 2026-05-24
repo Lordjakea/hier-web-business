@@ -403,6 +403,9 @@ export type BillingAccount = {
   active_recruiter_seats?: number | null;
   available_recruiter_seats?: number | null;
   stripe_seat_subscription_item_id?: string | null;
+  recruiter_seat_price_id?: string | null;
+  recruiter_seat_price_monthly?: number | null;
+  recruiter_seat_price_currency?: string | null;
   plan?: BillingPlan | null;
   subscription?: BillingSubscription | null;
   created_at?: string | null;
@@ -456,6 +459,9 @@ export type BillingOverviewResponse = {
     active_recruiter_seats?: number | null;
     available_recruiter_seats?: number | null;
     stripe_seat_subscription_item_id?: string | null;
+    recruiter_seat_price_id?: string | null;
+    recruiter_seat_price_monthly?: number | null;
+    recruiter_seat_price_currency?: string | null;
     pricing_selected_at?: string | null;
     flags?: BillingFlags;
   };

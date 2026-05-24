@@ -40,10 +40,11 @@ import { formatCurrency } from "@/lib/currency";
 
 function formatMonthlyPrice(amount?: number | null, currency?: string | null) {
   if (!amount && amount !== 0) return "Custom";
+  const isFree = Number(amount) === 0;
   return formatCurrency(amount, {
     currency,
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
+    maximumFractionDigits: isFree ? 0 : 2,
+    minimumFractionDigits: isFree ? 0 : 2,
   });
 }
 
@@ -195,8 +196,16 @@ export default function BillingPage() {
         status?.account?.available_recruiter_seats ??
         Math.max(0, total - active)
     );
+    const seatPriceMonthly =
+      overview?.overview.recruiter_seat_price_monthly ??
+      status?.account?.recruiter_seat_price_monthly ??
+      null;
+    const seatPriceCurrency =
+      overview?.overview.recruiter_seat_price_currency ??
+      status?.account?.recruiter_seat_price_currency ??
+      "GBP";
 
-    return { included, extra, total, active, available };
+    return { included, extra, total, active, available, seatPriceMonthly, seatPriceCurrency };
   }, [overview, status]);
 
   const credits = useMemo(() => {
@@ -551,10 +560,27 @@ export default function BillingPage() {
             </div>
 
             <div className="mt-6 rounded-[24px] border border-hier-border bg-hier-panel p-4">
-              <p className="text-sm font-semibold text-hier-text">Purchased extra recruiter seats</p>
-              <p className="mt-2 text-sm leading-6 text-hier-muted">
-                Increase or reduce extra seat capacity. You cannot reduce below the number of seats already in use.
-              </p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-hier-text">Purchased extra recruiter seats</p>
+                  <p className="mt-2 text-sm leading-6 text-hier-muted">
+                    Increase or reduce extra seat capacity. You cannot reduce below the number of seats already in use.
+                  </p>
+                </div>
+                {recruiterSeats.seatPriceMonthly !== null && recruiterSeats.seatPriceMonthly !== undefined ? (
+                  <div className="rounded-[18px] border border-hier-border bg-white px-4 py-3 text-right">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">Extra seat price</p>
+                    <p className="mt-1 text-lg font-semibold text-hier-text">
+                      {formatCurrency(recruiterSeats.seatPriceMonthly, {
+                        currency: recruiterSeats.seatPriceCurrency,
+                        maximumFractionDigits: 2,
+                        minimumFractionDigits: 2,
+                      })}
+                      <span className="text-xs font-semibold text-hier-muted"> / month ex VAT</span>
+                    </p>
+                  </div>
+                ) : null}
+              </div>
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <button
