@@ -135,6 +135,11 @@ export function CallHistory(props: CallHistoryProps) {
         },
       }));
       setSavedCallId(call.id);
+      window.dispatchEvent(
+        new CustomEvent("hier:staff-call-updated", {
+          detail: { leadId, accountUserId, call: response.call },
+        })
+      );
       window.setTimeout(() => {
         setSavedCallId((current) => (current === call.id ? null : current));
       }, 1800);

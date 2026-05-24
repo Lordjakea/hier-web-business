@@ -395,6 +395,16 @@ export default function StaffAccountDetailPage() {
   }, [loadAccount]);
 
   useEffect(() => {
+    function handleCallUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ accountUserId?: number | null }>).detail;
+      if (userId && detail?.accountUserId === userId) void loadAccount();
+    }
+
+    window.addEventListener("hier:staff-call-updated", handleCallUpdated);
+    return () => window.removeEventListener("hier:staff-call-updated", handleCallUpdated);
+  }, [loadAccount, userId]);
+
+  useEffect(() => {
     if (!account?.basic?.id || account.account_type !== "business") return;
 
     window.sessionStorage.setItem("hier_staff_selected_account_id", String(account.basic.id));
