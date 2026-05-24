@@ -49,6 +49,7 @@ export function CallHistory(props: CallHistoryProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingCallId, setSavingCallId] = useState<number | null>(null);
+  const [savedCallId, setSavedCallId] = useState<number | null>(null);
 
   const leadId = "leadId" in props ? props.leadId : null;
   const accountUserId = "accountUserId" in props ? props.accountUserId : null;
@@ -123,6 +124,10 @@ export function CallHistory(props: CallHistoryProps) {
           notes: response.call.notes || "",
         },
       }));
+      setSavedCallId(call.id);
+      window.setTimeout(() => {
+        setSavedCallId((current) => (current === call.id ? null : current));
+      }, 1800);
     } catch (caughtError) {
       alert(caughtError instanceof Error ? caughtError.message : "Could not save call.");
     } finally {
@@ -174,9 +179,11 @@ export function CallHistory(props: CallHistoryProps) {
                       {fmtDateTime(call.started_at || call.created_at)}
                     </p>
                   </div>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-ink">
-                    {fmtDuration(call.duration_seconds)}
-                  </span>
+                  {call.duration_seconds != null ? (
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-ink">
+                      {fmtDuration(call.duration_seconds)}
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="mt-3 grid gap-2 text-sm text-hier-muted sm:grid-cols-2">
@@ -217,7 +224,7 @@ export function CallHistory(props: CallHistoryProps) {
                     className="inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {savingCallId === call.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {savingCallId === call.id ? "Saving..." : "Save call"}
+                    {savingCallId === call.id ? "Saving..." : savedCallId === call.id ? "Saved" : "Save call"}
                   </button>
                 </div>
               </article>

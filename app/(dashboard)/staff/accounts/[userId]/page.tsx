@@ -1136,106 +1136,122 @@ export default function StaffAccountDetailPage() {
 
       <section className="grid gap-6 xl:grid-cols-[1fr_420px]">
         <div className="space-y-6">
-          <InfoCard title="User account">
+          <InfoCard title="Account profile">
             <CallButton
               phoneNumber={account.basic?.phone || account.business_profile?.contact_phone}
               accountUserId={account.basic?.id || null}
             />
-            <DetailRow label="User ID" value={account.basic?.id} />
-            <DetailRow label="Email" value={account.basic?.email} />
-            <DetailRow label="Phone" value={account.basic?.phone} />
-            <DetailRow label="Full name" value={account.basic?.full_name} />
-            <DetailRow label="Role" value={account.basic?.role} />
-            <DetailRow
-              label="Email verified"
-              value={account.basic?.email_verified}
-            />
-            <DetailRow
-              label="Phone verified"
-              value={account.basic?.phone_verified}
-            />
-            <DetailRow
-              label="Marketing opt-in"
-              value={account.basic?.marketing_opt_in}
-            />
-            <DetailRow
-              label="Marketing opt-in date"
-              value={formatDate(account.basic?.marketing_opt_in_at)}
-            />
-            <DetailRow
-              label="Created"
-              value={formatDate(account.basic?.created_at)}
-            />
-            <DetailRow
-              label="Updated"
-              value={formatDate(account.basic?.updated_at)}
-            />
+
+            <div className="mt-5 grid gap-2 md:grid-cols-2">
+              <DetailRow label="User ID" value={account.basic?.id} />
+              <DetailRow label="Email" value={account.basic?.email} />
+              <DetailRow label="Phone" value={account.basic?.phone} />
+              <DetailRow label="Full name" value={account.basic?.full_name} />
+              <DetailRow label="Role" value={account.basic?.role} />
+              <DetailRow
+                label="Email verified"
+                value={account.basic?.email_verified}
+              />
+              <DetailRow
+                label="Phone verified"
+                value={account.basic?.phone_verified}
+              />
+              <DetailRow
+                label="Marketing opt-in"
+                value={account.basic?.marketing_opt_in}
+              />
+              <DetailRow
+                label="Marketing opt-in date"
+                value={formatDate(account.basic?.marketing_opt_in_at)}
+              />
+              <DetailRow
+                label="Created"
+                value={formatDate(account.basic?.created_at)}
+              />
+              <DetailRow
+                label="Updated"
+                value={formatDate(account.basic?.updated_at)}
+              />
+            </div>
+
+            <div className="mt-6 border-t border-hier-border pt-5">
+              <h3 className="text-sm font-semibold text-hier-text">
+                {account.account_type === "business" ? "Business profile" : "Candidate profile"}
+              </h3>
+
+              {account.account_type === "business" ? (
+                <div className="mt-3 grid gap-2">
+                  {businessProfileRows.map(([label, field, value]) => (
+                    <EditableBusinessRow
+                      key={field}
+                      label={label}
+                      field={field}
+                      value={value}
+                      editingField={editingField}
+                      editingValue={editingValue}
+                      editingBooleanValue={editingBooleanValue}
+                      editingReason={editingReason}
+                      saving={savingInlineEdit}
+                      onStart={startInlineEdit}
+                      onChangeValue={setEditingValue}
+                      onChangeBoolean={setEditingBooleanValue}
+                      onChangeReason={setEditingReason}
+                      onCancel={cancelInlineEdit}
+                      onSave={handleSaveBusinessProfileField}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <DetailRow
+                    label="First name"
+                    value={account.user_profile?.first_name}
+                  />
+                  <DetailRow
+                    label="Last name"
+                    value={account.user_profile?.last_name}
+                  />
+                  <DetailRow
+                    label="Headline"
+                    value={account.user_profile?.headline}
+                  />
+                  <DetailRow
+                    label="Summary"
+                    value={account.user_profile?.about || account.user_profile?.summary}
+                  />
+                  <DetailRow
+                    label="Location"
+                    value={
+                      account.user_profile?.address_text ||
+                      account.user_profile?.location
+                    }
+                  />
+                  <DetailRow
+                    label="Contact number"
+                    value={account.user_profile?.contact_number}
+                  />
+                  <DetailRow
+                    label="CV filename"
+                    value={account.user_profile?.cv_filename}
+                  />
+                  <DetailRow
+                    label="CV uploaded"
+                    value={formatDate(account.user_profile?.cv_uploaded_at)}
+                  />
+                </div>
+              )}
+            </div>
           </InfoCard>
 
           {account.account_type === "business" ? (
-            <InfoCard title="Business profile">
-              {businessProfileRows.map(([label, field, value]) => (
-                <EditableBusinessRow
-                  key={field}
-                  label={label}
-                  field={field}
-                  value={value}
-                  editingField={editingField}
-                  editingValue={editingValue}
-                  editingBooleanValue={editingBooleanValue}
-                  editingReason={editingReason}
-                  saving={savingInlineEdit}
-                  onStart={startInlineEdit}
-                  onChangeValue={setEditingValue}
-                  onChangeBoolean={setEditingBooleanValue}
-                  onChangeReason={setEditingReason}
-                  onCancel={cancelInlineEdit}
-                  onSave={handleSaveBusinessProfileField}
-                />
-              ))}
-            </InfoCard>
-          ) : (
-            <InfoCard title="Candidate profile">
-              <DetailRow
-                label="First name"
-                value={account.user_profile?.first_name}
-              />
-              <DetailRow
-                label="Last name"
-                value={account.user_profile?.last_name}
-              />
-              <DetailRow
-                label="Headline"
-                value={account.user_profile?.headline}
-              />
-              <DetailRow
-                label="Summary"
-                value={account.user_profile?.about || account.user_profile?.summary}
-              />
-              <DetailRow
-                label="Location"
-                value={
-                  account.user_profile?.address_text ||
-                  account.user_profile?.location
-                }
-              />
-              <DetailRow
-                label="Contact number"
-                value={account.user_profile?.contact_number}
-              />
-              <DetailRow
-                label="CV filename"
-                value={account.user_profile?.cv_filename}
-              />
-              <DetailRow
-                label="CV uploaded"
-                value={formatDate(account.user_profile?.cv_uploaded_at)}
-              />
-            </InfoCard>
-          )}
-
-          {account.account_type === "business" ? (
-            <InfoCard title="Billing controls">
+            <details className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold text-hier-text marker:hidden">
+                <span>Billing controls</span>
+                <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold capitalize text-hier-primary">
+                  {billing?.subscription_status || billingProvider || "Not set"}
+                </span>
+              </summary>
+              <div className="mt-5">
               {billing ? (
                 <div className="space-y-4">
                   <DetailRow
@@ -1635,7 +1651,8 @@ export default function StaffAccountDetailPage() {
                   Billing controls unavailable.
                 </p>
               )}
-            </InfoCard>
+              </div>
+            </details>
           ) : null}
 
           {account.account_type !== "business" ? (
