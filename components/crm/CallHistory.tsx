@@ -1,0 +1,219 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ExternalLink, Loader2 } from "lucide-react";
+
+import {
+  type CallActivity,
+  fetchStaffAccountCallActivities,
+  fetchStaffLeadCallActivities,
+  updateStaffCallActivity,
+} from "@/lib/staff-calls";
+
+type CallHistoryProps =
+  | { leadId: number; accountUserId?: never }
+  | { accountUserId: number; leadId?: never };
+
+function fmtDateTime(value?: string | null) {
+  if (!value) return "No time recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No time recorded";
+
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function fmtDuration(seconds?: number | null) {
+  if (seconds == null) return "No duration";
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  if (minutes <= 0) return `${remainingSeconds}s`;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+function callLabel(value?: string | null) {
+  const text = (value || "").trim();
+  return text ? text.replaceAll("_", " ") : "Call";
+}
+
+export function CallHistory(props: CallHistoryProps) {
+  const [items, setItems] = useState<CallActivity[]>([]);
+  const [edits, setEdits] = useState<Record<number, { outcome: string; notes: string }>>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savingCallId, setSavingCallId] = useState<number | null>(null);
+
+  const leadId = "leadId" in props ? props.leadId : null;
+  const accountUserId = "accountUserId" in props ? props.accountUserId : null;
+
+  useEffect(() => {
+    async function loadCalls() {
+      if (!leadId && !accountUserId) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = leadId
+          ? await fetchStaffLeadCallActivities(leadId)
+          : await fetchStaffAccountCallActivities(accountUserId as number);
+        const nextItems = Array.isArray(response.items) ? response.items : [];
+        setItems(nextItems);
+        setEdits(
+          nextItems.reduce<Record<number, { outcome: string; notes: string }>>((acc, item) => {
+            acc[item.id] = { outcome: item.outcome || "", notes: item.notes || "" };
+            return acc;
+          }, {})
+        );
+      } catch (caughtError) {
+        setItems([]);
+        setEdits({});
+        setError(caughtError instanceof Error ? caughtError.message : "Could not load calls.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadCalls();
+  }, [leadId, accountUserId]);
+
+  function updateEdit(callId: number, patch: Partial<{ outcome: string; notes: string }>) {
+    setEdits((current) => ({
+      ...current,
+      [callId]: {
+        outcome: current[callId]?.outcome || "",
+        notes: current[callId]?.notes || "",
+        ...patch,
+      },
+    }));
+  }
+
+  async function saveCall(call: CallActivity) {
+    const edit = edits[call.id] || { outcome: "", notes: "" };
+    setSavingCallId(call.id);
+
+    try {
+      const response = await updateStaffCallActivity(call.id, {
+        outcome: edit.outcome.trim() || null,
+        notes: edit.notes.trim() || null,
+      });
+      setItems((current) => current.map((item) => (item.id === call.id ? response.call : item)));
+      setEdits((current) => ({
+        ...current,
+        [call.id]: {
+          outcome: response.call.outcome || "",
+          notes: response.call.notes || "",
+        },
+      }));
+    } catch (caughtError) {
+      alert(caughtError instanceof Error ? caughtError.message : "Could not save call.");
+    } finally {
+      setSavingCallId(null);
+    }
+  }
+
+  return (
+    <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-hier-text">Call history</h2>
+        {items.length ? (
+          <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold text-hier-primary">
+            {items.length}
+          </span>
+        ) : null}
+      </div>
+
+      {loading ? (
+        <div className="mt-4 inline-flex items-center gap-2 text-sm text-hier-muted">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading calls...
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="mt-4 rounded-[18px] border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
+
+      {!loading && !error && !items.length ? (
+        <p className="mt-3 text-sm text-hier-muted">No calls logged yet.</p>
+      ) : null}
+
+      {items.length ? (
+        <div className="mt-4 space-y-4">
+          {items.map((call) => {
+            const edit = edits[call.id] || { outcome: call.outcome || "", notes: call.notes || "" };
+
+            return (
+              <article key={call.id} className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold capitalize text-hier-text">
+                      {callLabel(call.direction)}
+                    </p>
+                    <p className="mt-1 text-sm text-hier-muted">
+                      {fmtDateTime(call.started_at || call.created_at)}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-ink">
+                    {fmtDuration(call.duration_seconds)}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid gap-2 text-sm text-hier-muted sm:grid-cols-2">
+                  <span>{call.phone_number || "No phone number"}</span>
+                  <span className="capitalize">{callLabel(call.circleloop_event_type)}</span>
+                </div>
+
+                {call.recording_url ? (
+                  <a
+                    href={call.recording_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-hier-primary"
+                  >
+                    Recording
+                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                  </a>
+                ) : null}
+
+                <div className="mt-4 grid gap-3">
+                  <input
+                    value={edit.outcome}
+                    onChange={(event) => updateEdit(call.id, { outcome: event.target.value })}
+                    placeholder="Outcome"
+                    className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary"
+                  />
+                  <textarea
+                    value={edit.notes}
+                    onChange={(event) => updateEdit(call.id, { notes: event.target.value })}
+                    rows={3}
+                    placeholder="Call notes"
+                    className="resize-none rounded-[16px] border border-hier-border bg-white p-3 text-sm outline-none focus:border-hier-primary"
+                  />
+                  <button
+                    type="button"
+                    disabled={savingCallId === call.id}
+                    onClick={() => saveCall(call)}
+                    className="inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {savingCallId === call.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {savingCallId === call.id ? "Saving..." : "Save call"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}

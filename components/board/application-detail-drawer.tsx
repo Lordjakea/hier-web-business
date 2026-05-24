@@ -16,13 +16,7 @@ import {
 } from "lucide-react";
 
 import { CVViewerModal } from "@/components/board/cv-viewer-modal";
-import { CallButton } from "@/components/crm/CallButton";
 import { fetchOnboardingEligibility, startOnboarding } from "@/lib/business-onboarding";
-import {
-  fetchApplicationCallActivities,
-  updateCallActivity,
-  type CallActivity,
-} from "@/lib/business-calls";
 import { apiFetch } from "@/lib/api";
 import { resolveHIScore } from "@/lib/hi-score";
 import { boardColumns } from "@/lib/theme";
@@ -244,35 +238,6 @@ function getMeetingLink(slot?: InterviewSlot | null) {
   return slot?.meeting_link || slot?.meeting_url || null;
 }
 
-function fmtDateTime(value?: string | null) {
-  if (!value) return "No time recorded";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "No time recorded";
-
-  return date.toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function fmtDuration(seconds?: number | null) {
-  if (seconds == null) return "No duration";
-  const safeSeconds = Math.max(0, Number(seconds) || 0);
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-
-  if (minutes <= 0) return `${remainingSeconds}s`;
-  return `${minutes}m ${remainingSeconds}s`;
-}
-
-function callLabel(value?: string | null) {
-  const text = (value || "").trim();
-  return text ? text.replaceAll("_", " ") : "Call";
-}
-
 function getInterviewWith(slot?: InterviewSlot | null) {
   return slot?.interviewer_name || slot?.notes || null;
 }
@@ -349,11 +314,6 @@ export function ApplicationDetailDrawer({
   const [meetingLink, setMeetingLink] = useState("");
   const [interviewLocation, setInterviewLocation] = useState("");
   const [draftSlots, setDraftSlots] = useState<InterviewDraftSlot[]>(defaultSlots);
-  const [callActivities, setCallActivities] = useState<CallActivity[]>([]);
-  const [callActivitiesLoading, setCallActivitiesLoading] = useState(false);
-  const [callActivitiesError, setCallActivitiesError] = useState<string | null>(null);
-  const [callEdits, setCallEdits] = useState<Record<number, { outcome: string; notes: string }>>({});
-  const [savingCallId, setSavingCallId] = useState<number | null>(null);
 
   const parsedTags = useMemo(
     () =>
@@ -464,38 +424,6 @@ export function ApplicationDetailDrawer({
   }, [open, application?.id]);
 
   useEffect(() => {
-    async function loadCallActivities() {
-      if (!open || !application?.id) return;
-
-      setCallActivitiesLoading(true);
-      setCallActivitiesError(null);
-
-      try {
-        const response = await fetchApplicationCallActivities(application.id);
-        const items = Array.isArray(response.items) ? response.items : [];
-        setCallActivities(items);
-        setCallEdits(
-          items.reduce<Record<number, { outcome: string; notes: string }>>((acc, item) => {
-            acc[item.id] = {
-              outcome: item.outcome || "",
-              notes: item.notes || "",
-            };
-            return acc;
-          }, {})
-        );
-      } catch (error: any) {
-        setCallActivities([]);
-        setCallEdits({});
-        setCallActivitiesError(error?.message || "Could not load call history");
-      } finally {
-        setCallActivitiesLoading(false);
-      }
-    }
-
-    void loadCallActivities();
-  }, [open, application?.id]);
-
-  useEffect(() => {
     if (!application?.id) return;
 
     if (hasSentInterviewSlots) {
@@ -539,44 +467,6 @@ export function ApplicationDetailDrawer({
       setInterviewSlotsError(error?.message || "Could not load interview slots");
     } finally {
       setInterviewSlotsLoading(false);
-    }
-  }
-
-  function updateCallEdit(callId: number, patch: Partial<{ outcome: string; notes: string }>) {
-    setCallEdits((current) => ({
-      ...current,
-      [callId]: {
-        outcome: current[callId]?.outcome || "",
-        notes: current[callId]?.notes || "",
-        ...patch,
-      },
-    }));
-  }
-
-  async function saveCallActivity(call: CallActivity) {
-    const edit = callEdits[call.id] || { outcome: "", notes: "" };
-    setSavingCallId(call.id);
-
-    try {
-      const response = await updateCallActivity(call.id, {
-        outcome: edit.outcome.trim() || null,
-        notes: edit.notes.trim() || null,
-      });
-
-      setCallActivities((current) =>
-        current.map((item) => (item.id === call.id ? response.call : item))
-      );
-      setCallEdits((current) => ({
-        ...current,
-        [call.id]: {
-          outcome: response.call.outcome || "",
-          notes: response.call.notes || "",
-        },
-      }));
-    } catch (error: any) {
-      alert(error?.message || "Could not update call notes.");
-    } finally {
-      setSavingCallId(null);
     }
   }
 
@@ -784,153 +674,22 @@ export function ApplicationDetailDrawer({
                 </p>
               ) : null}
 
-              <div className="mt-5 flex flex-wrap gap-3">
-                <CallButton
-                  phoneNumber={phone}
-                  candidateId={candidate?.id || application?.user?.id || null}
-                  applicationId={application?.id || null}
-                />
-
-                {application?.first_cv_download_url ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCvModal(true);
-                      onOpenCv();
-                    }}
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-[20px] border border-hier-border px-5 text-sm font-medium text-hier-ink transition hover:bg-hier-panel"
-                  >
-                    {cvPreviewLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ExternalLink className="h-4 w-4" />
-                    )}
-                    Open CV
-                  </button>
-                ) : null}
-              </div>
-            </section>
-
-            <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold text-hier-text">Call history</h3>
-                {callActivities.length ? (
-                  <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold text-hier-primary">
-                    {callActivities.length}
-                  </span>
-                ) : null}
-              </div>
-
-              {callActivitiesLoading ? (
-                <div className="mt-5 inline-flex items-center gap-2 text-sm text-hier-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading call historyâ€¦
-                </div>
-              ) : null}
-
-              {callActivitiesError ? (
-                <div className="mt-5 rounded-[20px] border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {callActivitiesError}
-                </div>
-              ) : null}
-
-              {!callActivitiesLoading && !callActivities.length && !callActivitiesError ? (
-                <p className="mt-3 text-sm text-hier-muted">
-                  No calls have been logged for this applicant yet.
-                </p>
-              ) : null}
-
-              {callActivities.length ? (
-                <div className="mt-4 space-y-4">
-                  {callActivities.map((call) => {
-                    const edit = callEdits[call.id] || {
-                      outcome: call.outcome || "",
-                      notes: call.notes || "",
-                    };
-
-                    return (
-                      <article
-                        key={call.id}
-                        className="rounded-[22px] border border-hier-border bg-hier-panel px-4 py-4"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold capitalize text-hier-text">
-                              {callLabel(call.direction)}
-                            </p>
-                            <p className="mt-1 text-sm text-hier-muted">
-                              {fmtDateTime(call.started_at || call.created_at)}
-                            </p>
-                          </div>
-
-                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-ink">
-                            {fmtDuration(call.duration_seconds)}
-                          </span>
-                        </div>
-
-                        <div className="mt-3 grid gap-2 text-sm text-hier-muted sm:grid-cols-2">
-                          <span>{call.phone_number || "No phone number"}</span>
-                          <span className="capitalize">{callLabel(call.circleloop_event_type)}</span>
-                        </div>
-
-                        {call.recording_url ? (
-                          <a
-                            href={call.recording_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-hier-primary"
-                          >
-                            Recording
-                            <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                          </a>
-                        ) : null}
-
-                        <div className="mt-4 grid gap-3">
-                          <label className="block space-y-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-hier-muted">
-                              Outcome
-                            </span>
-                            <input
-                              value={edit.outcome}
-                              onChange={(event) =>
-                                updateCallEdit(call.id, { outcome: event.target.value })
-                              }
-                              placeholder="Reached, left voicemail, no answer"
-                              className="h-11 w-full rounded-2xl border border-hier-border bg-white px-3 text-sm text-hier-text outline-none focus:border-hier-primary"
-                            />
-                          </label>
-
-                          <label className="block space-y-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-hier-muted">
-                              Notes
-                            </span>
-                            <textarea
-                              value={edit.notes}
-                              onChange={(event) =>
-                                updateCallEdit(call.id, { notes: event.target.value })
-                              }
-                              rows={3}
-                              placeholder="Add follow-up notes"
-                              className="w-full rounded-[18px] border border-hier-border bg-white px-3 py-3 text-sm leading-6 text-hier-text outline-none focus:border-hier-primary"
-                            />
-                          </label>
-
-                          <button
-                            type="button"
-                            disabled={savingCallId === call.id}
-                            onClick={() => saveCallActivity(call)}
-                            className="inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {savingCallId === call.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : null}
-                            {savingCallId === call.id ? "Savingâ€¦" : "Save call notes"}
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
+              {application?.first_cv_download_url ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCvModal(true);
+                    onOpenCv();
+                  }}
+                  className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-[20px] border border-hier-border px-5 text-sm font-medium text-hier-ink transition hover:bg-hier-panel"
+                >
+                  {cvPreviewLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-4 w-4" />
+                  )}
+                  Open CV
+                </button>
               ) : null}
             </section>
 

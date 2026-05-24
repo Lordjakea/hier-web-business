@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CalendarClock, Check, Download, Loader2, MessageSquarePlus, Pencil, Plus, Search, Upload } from "lucide-react";
+import { CallButton } from "@/components/crm/CallButton";
+import { CallHistory } from "@/components/crm/CallHistory";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   convertStaffLead,
@@ -768,6 +770,7 @@ export default function StaffLeadsPage() {
                     <p className="mt-1 text-sm text-hier-muted">{selectedLead.email}</p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
+                    <CallButton phoneNumber={selectedLead.phone} />
                     <select
                       value={selectedLead.status || "new"}
                       onChange={(event) => void handleStatusChange(selectedLead, event.target.value)}
@@ -1051,6 +1054,8 @@ export default function StaffLeadsPage() {
                   </button>
                 </div>
               </section>
+
+              <CallHistory leadId={selectedLead.id} />
 
               <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-hier-text">

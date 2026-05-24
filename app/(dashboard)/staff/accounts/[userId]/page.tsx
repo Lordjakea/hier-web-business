@@ -21,6 +21,8 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { CallButton } from "@/components/crm/CallButton";
+import { CallHistory } from "@/components/crm/CallHistory";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   createStaffSupportSession,
@@ -1135,6 +1137,7 @@ export default function StaffAccountDetailPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_420px]">
         <div className="space-y-6">
           <InfoCard title="User account">
+            <CallButton phoneNumber={account.basic?.phone || account.business_profile?.contact_phone} />
             <DetailRow label="User ID" value={account.basic?.id} />
             <DetailRow label="Email" value={account.basic?.email} />
             <DetailRow label="Phone" value={account.basic?.phone} />
@@ -1663,6 +1666,8 @@ export default function StaffAccountDetailPage() {
         </div>
 
         <aside className="space-y-6">
+          {account.basic?.id ? <CallHistory accountUserId={account.basic.id} /> : null}
+
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
