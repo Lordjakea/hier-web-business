@@ -55,6 +55,7 @@ export function CallHistory(props: CallHistoryProps) {
   const [savingCallId, setSavingCallId] = useState<number | null>(null);
   const [savedCallId, setSavedCallId] = useState<number | null>(null);
   const [saveErrorByCallId, setSaveErrorByCallId] = useState<Record<number, string>>({});
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const leadId = "leadId" in props ? props.leadId : null;
   const accountUserId = "accountUserId" in props ? props.accountUserId : null;
@@ -92,9 +93,25 @@ export function CallHistory(props: CallHistoryProps) {
 
   useEffect(() => {
     function handleCreated(event: Event) {
-      const detail = (event as CustomEvent<{ leadId?: number | null; accountUserId?: number | null }>).detail;
-      if (leadId && detail?.leadId === leadId) void loadCalls();
-      if (accountUserId && detail?.accountUserId === accountUserId) void loadCalls();
+      const detail = (
+        event as CustomEvent<{ leadId?: number | null; accountUserId?: number | null; call?: CallActivity }>
+      ).detail;
+      const matchesLead = Boolean(leadId && detail?.leadId === leadId);
+      const matchesAccount = Boolean(accountUserId && detail?.accountUserId === accountUserId);
+      if (!matchesLead && !matchesAccount) return;
+
+      if (detail?.call) {
+        setItems((current) => [detail.call as CallActivity, ...current.filter((item) => item.id !== detail.call?.id)]);
+        setEdits((current) => ({
+          ...current,
+          [detail.call!.id]: {
+            outcome: detail.call!.outcome || "",
+            notes: detail.call!.notes || "",
+          },
+        }));
+      } else {
+        void loadCalls();
+      }
     }
 
     window.addEventListener("hier:staff-call-created", handleCreated);
@@ -134,6 +151,7 @@ export function CallHistory(props: CallHistoryProps) {
           notes: response.call.notes || "",
         },
       }));
+      setStatusMessage("Call saved to account history.");
       setSavedCallId(call.id);
       window.dispatchEvent(
         new CustomEvent("hier:staff-call-updated", {
@@ -142,6 +160,7 @@ export function CallHistory(props: CallHistoryProps) {
       );
       window.setTimeout(() => {
         setSavedCallId((current) => (current === call.id ? null : current));
+        setStatusMessage(null);
       }, 1800);
     } catch (caughtError) {
       setSaveErrorByCallId((current) => ({
@@ -153,13 +172,17 @@ export function CallHistory(props: CallHistoryProps) {
     }
   }
 
+  const actionableItems = items.filter(
+    (call) => !(call.outcome || "").trim() && !(call.notes || "").trim()
+  );
+
   return (
     <section className={props.embedded ? "" : "rounded-[28px] border border-hier-border bg-white p-5 shadow-card"}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-hier-text">Call history</h2>
-        {items.length ? (
+        {actionableItems.length ? (
           <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold text-hier-primary">
-            {items.length}
+            {actionableItems.length}
           </span>
         ) : null}
       </div>
@@ -177,13 +200,19 @@ export function CallHistory(props: CallHistoryProps) {
         </div>
       ) : null}
 
-      {!loading && !error && !items.length ? (
-        <p className="mt-3 text-sm text-hier-muted">No calls logged yet.</p>
+      {statusMessage ? (
+        <p className="mt-3 rounded-[16px] border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+          {statusMessage}
+        </p>
       ) : null}
 
-      {items.length ? (
+      {!loading && !error && !actionableItems.length ? (
+        <p className="mt-3 text-sm text-hier-muted">No open call actions.</p>
+      ) : null}
+
+      {actionableItems.length ? (
         <div className="mt-4 space-y-4">
-          {items.map((call) => {
+          {actionableItems.map((call) => {
             const edit = edits[call.id] || { outcome: call.outcome || "", notes: call.notes || "" };
             const saveError = saveErrorByCallId[call.id];
 

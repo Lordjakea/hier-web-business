@@ -48,18 +48,23 @@ export function CallButton({
       data-application-id={applicationId ?? undefined}
       data-lead-id={leadId ?? undefined}
       data-account-user-id={accountUserId ?? undefined}
-      onClick={() => {
-        void createStaffCallActivity({
-          phone_number: cleaned,
-          staff_lead_id: leadId ?? null,
-          account_user_id: accountUserId ?? null,
-        }).then(() => {
+      onClick={async (event) => {
+        event.preventDefault();
+
+        try {
+          const response = await createStaffCallActivity({
+            phone_number: cleaned,
+            staff_lead_id: leadId ?? null,
+            account_user_id: accountUserId ?? null,
+          });
           window.dispatchEvent(
             new CustomEvent("hier:staff-call-created", {
-              detail: { leadId, accountUserId },
+              detail: { leadId, accountUserId, call: response.call },
             })
           );
-        });
+        } finally {
+          window.location.href = telHref(cleaned);
+        }
       }}
       className={`${baseClass} bg-hier-primary text-white hover:brightness-95 ${className}`}
     >
