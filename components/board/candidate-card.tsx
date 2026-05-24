@@ -1,4 +1,4 @@
-import { Brain, CheckCircle2, Eye, XCircle } from "lucide-react";
+import { Brain, CheckCircle2, ExternalLink, Eye, XCircle } from "lucide-react";
 import { resolveHIScore } from "@/lib/hi-score";
 import type { BusinessApplication } from "@/lib/types";
 
@@ -16,6 +16,7 @@ export function CandidateCard({
   selected,
   onSelectChange,
   onOpen,
+  onOpenCv,
   onNextStage,
   onCompleteStarted,
   onReject,
@@ -25,6 +26,7 @@ export function CandidateCard({
   selected?: boolean;
   onSelectChange?: (checked: boolean) => void;
   onOpen: () => void;
+  onOpenCv?: () => void;
   onNextStage?: () => void;
   onCompleteStarted?: () => void;
   onReject?: () => void;
@@ -123,7 +125,7 @@ export function CandidateCard({
           )}
         </div>
       ) : (
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="mt-3 grid grid-cols-4 gap-2">
         <button
           type="button"
           onClick={(event) => {
@@ -134,6 +136,19 @@ export function CandidateCard({
         >
           <Eye className="h-3.5 w-3.5" />
           Open
+        </button>
+
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenCv?.();
+          }}
+          disabled={!onOpenCv || !candidate.first_cv_download_url}
+          className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-hier-border bg-white px-2 text-[11px] font-semibold text-hier-text transition hover:bg-hier-soft disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          CV
         </button>
 
         <button

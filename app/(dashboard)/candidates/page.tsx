@@ -451,6 +451,42 @@ export default function CandidatesPage() {
     await moveApplication(applicationId, "rejected" as ApplicationStage);
   }
 
+  async function openCvPreviewForCard(application: BusinessApplication) {
+    if (!application.first_cv_download_url) {
+      setError("No CV is available for this candidate yet.");
+      return;
+    }
+
+    const popup = window.open("", "_blank", "noopener,noreferrer");
+    setError(null);
+
+    try {
+      const preview = await fetchCvPreviewUrl(application.first_cv_download_url);
+      if (popup && preview.url) {
+        popup.location.href = preview.url;
+      } else if (preview.url) {
+        window.open(preview.url, "_blank", "noopener,noreferrer");
+      }
+
+      await markBusinessCvViewed(application.id);
+
+      setApplications((current) =>
+        current.map((item) =>
+          item.id === application.id
+            ? { ...item, cv_view_count: (item.cv_view_count || 0) + 1 }
+            : item
+        )
+      );
+    } catch (caughtError) {
+      popup?.close();
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not load CV preview right now."
+      );
+    }
+  }
+
   function openStartedCompletion(application: BusinessApplication) {
     const candidateName =
       application.user?.display_name ||
@@ -970,6 +1006,7 @@ export default function CandidatesPage() {
           selectedIds={selectedIds}
           maxVisibleColumns={6}
           onOpenCandidate={openApplication}
+          onOpenCandidateCv={openCvPreviewForCard}
           onMoveCandidate={moveApplication}
           onCompleteStarted={openStartedCompletion}
           onRejectCandidate={rejectSingleCandidate}

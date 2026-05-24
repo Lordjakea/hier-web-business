@@ -16,6 +16,7 @@ export function CandidateBoard({
   selectedIds,
   maxVisibleColumns = 6,
   onOpenCandidate,
+  onOpenCandidateCv,
   onMoveCandidate,
   onCompleteStarted,
   onRejectCandidate,
@@ -30,6 +31,7 @@ export function CandidateBoard({
   selectedIds: number[];
   maxVisibleColumns?: number;
   onOpenCandidate: (application: BusinessApplication) => void;
+  onOpenCandidateCv?: (application: BusinessApplication) => void;
   onMoveCandidate: (applicationId: number, stage: ApplicationStage) => void;
   onCompleteStarted: (application: BusinessApplication) => void;
   onRejectCandidate: (applicationId: number) => void;
@@ -92,6 +94,7 @@ export function CandidateBoard({
               onSelectAllInColumn={onSelectMany}
               onClearColumn={onClearMany}
               onOpenCandidate={onOpenCandidate}
+              onOpenCandidateCv={onOpenCandidateCv}
               onDragCandidate={onDragCandidate}
               onMoveCandidate={handleMoveNext}
               onCompleteStarted={onCompleteStarted}

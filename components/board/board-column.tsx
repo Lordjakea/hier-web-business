@@ -9,6 +9,7 @@ export function BoardColumn({
   candidates,
   fluid = false,
   onOpenCandidate,
+  onOpenCandidateCv,
   onDropCard,
   onDragCandidate,
 
@@ -27,6 +28,7 @@ export function BoardColumn({
   candidates: BusinessApplication[];
   fluid?: boolean;
   onOpenCandidate: (application: BusinessApplication) => void;
+  onOpenCandidateCv?: (application: BusinessApplication) => void;
   onDropCard: () => void;
   onDragCandidate: (applicationId: number) => void;
 
@@ -111,6 +113,9 @@ export function BoardColumn({
               onToggleSelect(candidate.id, checked)
             }
             onOpen={() => onOpenCandidate(candidate)}
+            onOpenCv={
+              onOpenCandidateCv ? () => onOpenCandidateCv(candidate) : undefined
+            }
             onDragStart={() => onDragCandidate(candidate.id)}
             onNextStage={() => onMoveCandidate(candidate.id)}
             onCompleteStarted={() => onCompleteStarted(candidate)}
