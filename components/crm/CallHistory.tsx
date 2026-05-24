@@ -10,9 +10,13 @@ import {
   updateStaffCallActivity,
 } from "@/lib/staff-calls";
 
-type CallHistoryProps =
+type CallHistoryScope =
   | { leadId: number; accountUserId?: never }
   | { accountUserId: number; leadId?: never };
+
+type CallHistoryProps = CallHistoryScope & {
+  embedded?: boolean;
+};
 
 function fmtDateTime(value?: string | null) {
   if (!value) return "No time recorded";
@@ -50,6 +54,7 @@ export function CallHistory(props: CallHistoryProps) {
   const [error, setError] = useState<string | null>(null);
   const [savingCallId, setSavingCallId] = useState<number | null>(null);
   const [savedCallId, setSavedCallId] = useState<number | null>(null);
+  const [saveErrorByCallId, setSaveErrorByCallId] = useState<Record<number, string>>({});
 
   const leadId = "leadId" in props ? props.leadId : null;
   const accountUserId = "accountUserId" in props ? props.accountUserId : null;
@@ -110,6 +115,11 @@ export function CallHistory(props: CallHistoryProps) {
   async function saveCall(call: CallActivity) {
     const edit = edits[call.id] || { outcome: "", notes: "" };
     setSavingCallId(call.id);
+    setSaveErrorByCallId((current) => {
+      const next = { ...current };
+      delete next[call.id];
+      return next;
+    });
 
     try {
       const response = await updateStaffCallActivity(call.id, {
@@ -129,14 +139,17 @@ export function CallHistory(props: CallHistoryProps) {
         setSavedCallId((current) => (current === call.id ? null : current));
       }, 1800);
     } catch (caughtError) {
-      alert(caughtError instanceof Error ? caughtError.message : "Could not save call.");
+      setSaveErrorByCallId((current) => ({
+        ...current,
+        [call.id]: caughtError instanceof Error ? caughtError.message : "Could not save call.",
+      }));
     } finally {
       setSavingCallId(null);
     }
   }
 
   return (
-    <section className="rounded-[28px] border border-hier-border bg-white p-5 shadow-card">
+    <section className={props.embedded ? "" : "rounded-[28px] border border-hier-border bg-white p-5 shadow-card"}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-hier-text">Call history</h2>
         {items.length ? (
@@ -167,6 +180,7 @@ export function CallHistory(props: CallHistoryProps) {
         <div className="mt-4 space-y-4">
           {items.map((call) => {
             const edit = edits[call.id] || { outcome: call.outcome || "", notes: call.notes || "" };
+            const saveError = saveErrorByCallId[call.id];
 
             return (
               <article key={call.id} className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
@@ -221,11 +235,21 @@ export function CallHistory(props: CallHistoryProps) {
                     type="button"
                     disabled={savingCallId === call.id}
                     onClick={() => saveCall(call)}
-                    className="inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                    className={`inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] px-4 text-sm font-semibold text-white disabled:opacity-50 ${
+                      savedCallId === call.id ? "bg-emerald-700" : "bg-hier-primary"
+                    }`}
                   >
                     {savingCallId === call.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {savingCallId === call.id ? "Saving..." : savedCallId === call.id ? "Saved" : "Save call"}
                   </button>
+                  {savedCallId === call.id ? (
+                    <p className="text-xs font-semibold text-emerald-700">Saved to account history.</p>
+                  ) : null}
+                  {saveError ? (
+                    <p className="rounded-[14px] border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                      {saveError}
+                    </p>
+                  ) : null}
                 </div>
               </article>
             );

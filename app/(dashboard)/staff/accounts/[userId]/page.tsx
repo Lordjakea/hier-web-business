@@ -10,6 +10,7 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  ChevronDown,
   KeyRound,
   Loader2,
   Mail,
@@ -300,6 +301,7 @@ export default function StaffAccountDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [savingNote, setSavingNote] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
   const [note, setNote] = useState("");
   const [mentionedStaffUserIds, setMentionedStaffUserIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -412,6 +414,7 @@ export default function StaffAccountDetailPage() {
     if (!trimmed || !userId) return;
 
     setSavingNote(true);
+    setNoteSaved(false);
     setError(null);
 
     try {
@@ -428,6 +431,8 @@ export default function StaffAccountDetailPage() {
 
       setNote("");
       setMentionedStaffUserIds([]);
+      setNoteSaved(true);
+      window.setTimeout(() => setNoteSaved(false), 1800);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -1244,9 +1249,12 @@ export default function StaffAccountDetailPage() {
           </InfoCard>
 
           {account.account_type === "business" ? (
-            <details className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+            <details className="group rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold text-hier-text marker:hidden">
-                <span>Billing controls</span>
+                <span className="inline-flex items-center gap-2">
+                  Billing controls
+                  <ChevronDown className="h-4 w-4 text-hier-muted transition group-open:rotate-180" aria-hidden="true" />
+                </span>
                 <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold capitalize text-hier-primary">
                   {billing?.subscription_status || billingProvider || "Not set"}
                 </span>
@@ -1655,6 +1663,83 @@ export default function StaffAccountDetailPage() {
             </details>
           ) : null}
 
+          <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-hier-text">Account history</h2>
+                <p className="mt-1 text-sm text-hier-muted">
+                  Stored internal notes, previous calls and cases for this account.
+                </p>
+              </div>
+              <span className="rounded-full bg-hier-soft px-3 py-1 text-xs font-semibold text-hier-primary">
+                {account.notes?.length || 0} notes / {cases.length} cases
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr]">
+              <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">
+                {account.basic?.id ? <CallHistory accountUserId={account.basic.id} embedded /> : null}
+              </div>
+
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-sm font-semibold text-hier-text">Internal notes</h3>
+                  <div className="mt-3 space-y-2">
+                    {account.notes?.length ? (
+                      account.notes.map((item) => (
+                        <article
+                          key={item.id}
+                          className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-semibold text-hier-text">
+                              {item.author_name || item.author_email || "Hier staff"}
+                            </p>
+                            <p className="text-xs font-semibold text-hier-muted">
+                              {formatDate(item.created_at)}
+                            </p>
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap text-hier-muted">{item.note}</p>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                        No internal notes saved yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-hier-text">Cases</h3>
+                  <div className="mt-3 space-y-2">
+                    {cases.length ? (
+                      cases.map((item) => (
+                        <Link
+                          key={item.id}
+                          href={`/staff/cases/${item.id}`}
+                          className="block rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm transition hover:border-hier-primary"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-semibold text-hier-text">#{item.id} {item.title}</p>
+                            <p className="text-xs font-semibold capitalize text-hier-primary">{item.status}</p>
+                          </div>
+                          <p className="mt-1 text-hier-muted">
+                            {item.owner_staff_name || "Unassigned"} / {formatDate(item.updated_at || item.created_at)}
+                          </p>
+                        </Link>
+                      ))
+                    ) : (
+                      <p className="rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                        No cases yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           {account.account_type !== "business" ? (
             <InfoCard title="Recent applications">
               {recentApplications.length ? (
@@ -1686,8 +1771,6 @@ export default function StaffAccountDetailPage() {
         </div>
 
         <aside className="space-y-6">
-          {account.basic?.id ? <CallHistory accountUserId={account.basic.id} /> : null}
-
           <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
@@ -2129,14 +2212,16 @@ export default function StaffAccountDetailPage() {
               <button
                 type="submit"
                 disabled={savingNote || !note.trim()}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] px-4 text-sm font-semibold text-white shadow-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  noteSaved ? "bg-emerald-700" : "bg-hier-primary"
+                }`}
               >
                 {savingNote ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <StickyNote className="h-4 w-4" />
                 )}
-                Save internal note
+                {savingNote ? "Saving..." : noteSaved ? "Saved to account history" : "Save internal note"}
               </button>
             </form>
           </section>
