@@ -59,6 +59,7 @@ export default function MessagesPage() {
   const [contactBusy, setContactBusy] = useState(false);
   const [billingStatus, setBillingStatus] = useState<any | null>(null);
   const [billingLoading, setBillingLoading] = useState(true);
+  const [chatHeight, setChatHeight] = useState(720);
   const [error, setError] = useState<string | null>(null);
   const listEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -265,14 +266,29 @@ export default function MessagesPage() {
         title="Messages"
         description="Send and receive candidate messages from the dashboard. Conversations stay in sync with the mobile app."
         action={
-          <button
-            type="button"
-            onClick={() => void loadConversations(false)}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink transition hover:bg-hier-panel"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="flex h-10 items-center gap-3 rounded-lg border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink">
+              <span className="whitespace-nowrap">Chat size</span>
+              <input
+                type="range"
+                min="520"
+                max="920"
+                step="20"
+                value={chatHeight}
+                onChange={(event) => setChatHeight(Number(event.target.value))}
+                className="w-32 accent-hier-primary"
+                aria-label="Adjust chat box height"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void loadConversations(false)}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink transition hover:bg-hier-panel"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+          </div>
         }
       />
 
@@ -307,7 +323,10 @@ export default function MessagesPage() {
       ) : null}
 
       {billingLoading || canUseMessaging ? (
-      <section className="grid min-h-[680px] overflow-hidden rounded-lg border border-hier-border bg-white shadow-card lg:grid-cols-[360px_1fr]">
+      <section
+        className="grid overflow-hidden rounded-lg border border-hier-border bg-white shadow-card lg:grid-cols-[360px_1fr]"
+        style={{ height: chatHeight }}
+      >
         <aside className="flex min-h-0 flex-col border-b border-hier-border lg:border-b-0 lg:border-r">
           <div className="border-b border-hier-border p-4">
             <div className="flex h-11 items-center gap-2 rounded-lg border border-hier-border bg-hier-panel px-3">
@@ -321,7 +340,7 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
             {loading ? (
               <div className="p-5 text-sm text-hier-muted">Loading messages...</div>
             ) : filteredConversations.length ? (
@@ -376,7 +395,7 @@ export default function MessagesPage() {
           </div>
         </aside>
 
-        <div className="flex min-h-0 flex-col">
+        <div className="flex min-h-0 flex-col overflow-hidden">
           {selectedConversation ? (
             <>
               <div className="flex items-center justify-between gap-4 border-b border-hier-border px-5 py-4">
@@ -426,7 +445,7 @@ export default function MessagesPage() {
                 </div>
               ) : null}
 
-              <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfbfd] px-5 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fbfbfd] px-5 py-5 [scrollbar-gutter:stable]">
                 {threadLoading ? (
                   <div className="text-sm text-hier-muted">Loading conversation...</div>
                 ) : messages.length ? (
