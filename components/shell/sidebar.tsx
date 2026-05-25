@@ -21,6 +21,7 @@ import {
   PhoneCall,
   CalendarClock,
   Library,
+  MessageSquare,
   Radar,
 } from "lucide-react";
 import clsx from "clsx";
@@ -34,6 +35,7 @@ const primaryLinks = [
   { label: "Candidate Library", href: "/candidate-library", icon: Library },
   { label: "Analytics Pro", href: "/analytics", icon: BarChart3 },
   { label: "Posts", href: "/jobs", icon: BriefcaseBusiness },
+  { label: "Messages", href: "/messages", icon: MessageSquare },
   { label: "Promote", href: "/promote", icon: Megaphone },
   { label: "Billing", href: "/billing", icon: CreditCard },
   { label: "Onboarding", href: "/onboarding", icon: ClipboardCheck },
