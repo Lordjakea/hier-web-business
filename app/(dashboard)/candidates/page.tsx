@@ -19,6 +19,7 @@ import {
   bulkRejectBusinessApplications,
   completeStartedCandidate,
 } from "@/lib/business-applications";
+import { startOnboarding } from "@/lib/business-onboarding";
 import { resolveHIScore } from "@/lib/hi-score";
 import { boardColumns } from "@/lib/theme";
 import type {
@@ -329,15 +330,34 @@ export default function CandidatesPage() {
             current ? { ...current, ...updated } : current
           );
         }
+
+        if (stage === "offered") {
+          const failedCount = await startOnboardingForOfferedApplications([
+            updated.id,
+          ]);
+
+          if (!failedCount) {
+            showToast("Candidate moved to Offered and onboarding started.");
+          }
+        }
       } else {
         const result = await bulkMoveBusinessApplicationsStage({
           application_ids: idsThatNeedMoving,
           stage,
         });
 
+        let onboardingFailed = 0;
+        if (stage === "offered") {
+          onboardingFailed = await startOnboardingForOfferedApplications(
+            idsThatNeedMoving,
+          );
+        }
+
         setSelectedIds([]);
         showToast(
-          `Moved ${result.updated || idsThatNeedMoving.length} candidates successfully.`
+          stage === "offered" && !onboardingFailed
+            ? `Moved ${result.updated || idsThatNeedMoving.length} candidates and started onboarding.`
+            : `Moved ${result.updated || idsThatNeedMoving.length} candidates successfully.`
         );
       }
     } catch (caughtError) {
@@ -381,6 +401,19 @@ export default function CandidatesPage() {
       setApplications((current) =>
         current.map((item) => (item.id === latest.id ? { ...item, ...latest } : item))
       );
+
+      if (
+        payload.stage === "offered" &&
+        payload.stage !== selectedApplication.stage
+      ) {
+        const failedCount = await startOnboardingForOfferedApplications([
+          latest.id,
+        ]);
+
+        if (!failedCount) {
+          showToast("Candidate moved to Offered and onboarding started.");
+        }
+      }
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -553,6 +586,28 @@ export default function CandidatesPage() {
     window.setTimeout(() => setToast(null), 3000);
   }
 
+  async function startOnboardingForOfferedApplications(
+    applicationIds: number[],
+  ) {
+    if (!applicationIds.length) return 0;
+
+    const results = await Promise.allSettled(
+      applicationIds.map((applicationId) => startOnboarding(applicationId)),
+    );
+
+    const failedCount = results.filter((result) => result.status === "rejected").length;
+
+    if (failedCount) {
+      setError(
+        failedCount === 1
+          ? "Candidate moved to Offered, but onboarding could not be started automatically."
+          : `${failedCount} candidates moved to Offered, but onboarding could not be started automatically for them.`,
+      );
+    }
+
+    return failedCount;
+  }
+
   async function runBulkStageMove() {
     if (!selectedIds.length) return;
 
@@ -575,11 +630,20 @@ export default function CandidatesPage() {
         stage: bulkStage,
       });
 
+      let onboardingFailed = 0;
+      if (bulkStage === "offered") {
+        onboardingFailed = await startOnboardingForOfferedApplications(idsToUpdate);
+      }
+
       setSelectedIds([]);
       showToast(
-        `Moved ${result.updated || selectedCount} candidate${
-          (result.updated || selectedCount) === 1 ? "" : "s"
-        } successfully.`
+        bulkStage === "offered" && !onboardingFailed
+          ? `Moved ${result.updated || selectedCount} candidate${
+              (result.updated || selectedCount) === 1 ? "" : "s"
+            } and started onboarding.`
+          : `Moved ${result.updated || selectedCount} candidate${
+              (result.updated || selectedCount) === 1 ? "" : "s"
+            } successfully.`
       );
     } catch (caughtError) {
       setApplications(previous);
