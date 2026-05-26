@@ -44,6 +44,18 @@ function StatusBadge({ value }: { value?: string | null }) {
   );
 }
 
+function inviteEmailFailed(response: {
+  warning?: string;
+  warnings?: string[];
+  email_sent?: boolean;
+}) {
+  return (
+    response.warning === "email_send_failed" ||
+    response.warnings?.includes("email_send_failed") ||
+    response.email_sent === false
+  );
+}
+
 export default function StaffTeamPage() {
   const [staff, setStaff] = useState<StaffTeamUser[]>([]);
   const [invites, setInvites] = useState<StaffInvite[]>([]);
@@ -97,7 +109,11 @@ export default function StaffTeamPage() {
       const response = await createStaffInvite(email, staffRole);
       setEmail("");
       setStaffRole("support");
-      setSuccess(response.warning === "email_send_failed" ? "Invite created, but email sending failed. Use the dev link shown below." : "Invite sent.");
+      setSuccess(
+        inviteEmailFailed(response)
+          ? "Invite created, but email sending failed. Use the invite link shown below."
+          : "Invite created and email delivery requested."
+      );
       setDevInviteUrl(response.invite_url || null);
       await loadTeam();
     } catch (caughtError) {
@@ -433,7 +449,7 @@ export default function StaffTeamPage() {
                   </div>
                   <StatusBadge value={invite.status} />
                 </div>
-                <p className="mt-3 text-xs text-hier-muted">Sent {formatDate(invite.created_at)} · Expires {formatDate(invite.expires_at)}</p>
+                <p className="mt-3 text-xs text-hier-muted">Created {formatDate(invite.created_at)} · Expires {formatDate(invite.expires_at)}</p>
               </div>
             ))}
           </div>

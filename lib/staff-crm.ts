@@ -1131,6 +1131,8 @@ export async function createStaffInvite(email: string, staffRole: string) {
     invite: StaffInvite;
     invite_url?: string;
     warning?: string;
+    warnings?: string[];
+    email_sent?: boolean;
   }>("/api/staff/invites", {
     method: "POST",
     body: JSON.stringify({ email, staff_role: staffRole }),
