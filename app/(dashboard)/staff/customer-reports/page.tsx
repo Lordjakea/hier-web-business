@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, ArrowLeft, CheckCircle2, Megaphone, RefreshCw } from "lucide-react";
+import { AlertCircle, ArrowLeft, Megaphone, PhoneCall, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   fetchFilteredStaffCrmReports,
@@ -10,13 +10,53 @@ import {
   getMarketingOptInsCsvUrl,
   type StaffCrmReportResponse,
 } from "@/lib/staff-crm";
+import {
+  fetchStaffCallAnalytics,
+  type CallAnalyticsPeriod,
+  type CallAnalyticsResponse,
+} from "@/lib/staff-calls";
 import { getAuthToken } from "@/lib/auth";
+
+const CALL_PERIOD_OPTIONS: Array<{ value: CallAnalyticsPeriod; label: string }> = [
+  { value: "day", label: "Daily" },
+  { value: "week", label: "Weekly" },
+  { value: "month", label: "Monthly" },
+  { value: "year", label: "Yearly" },
+  { value: "all", label: "All time" },
+];
 
 export default function StaffCustomerReportsPage() {
   const [reports, setReports] = useState<StaffCrmReportResponse | null>(null);
   const [reportFilter, setReportFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [callAnalytics, setCallAnalytics] = useState<CallAnalyticsResponse | null>(null);
+  const [callPeriod, setCallPeriod] = useState<CallAnalyticsPeriod>("month");
+  const [callLoading, setCallLoading] = useState(true);
+  const [callError, setCallError] = useState<string | null>(null);
+
+  const loadCallAnalytics = useCallback(async () => {
+    setCallLoading(true);
+    setCallError(null);
+
+    try {
+      const response = await fetchStaffCallAnalytics(callPeriod);
+      setCallAnalytics(response);
+    } catch (caughtError) {
+      setCallError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not load call analytics."
+      );
+    } finally {
+      setCallLoading(false);
+    }
+  }, [callPeriod]);
+
+  useEffect(() => {
+    void loadCallAnalytics();
+  }, [loadCallAnalytics]);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
@@ -205,6 +245,104 @@ export default function StaffCustomerReportsPage() {
             )}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-hier-soft p-2 text-hier-primary">
+              <PhoneCall className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-hier-text">Call analytics</h2>
+              <p className="mt-1 text-sm text-hier-muted">
+                Call outcomes by adviser. Switch between daily, weekly, monthly and yearly views.
+              </p>
+            </div>
+          </div>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-hier-text">Period</span>
+            <select
+              value={callPeriod}
+              onChange={(event) => setCallPeriod(event.target.value as CallAnalyticsPeriod)}
+              className="h-11 w-44 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+            >
+              {CALL_PERIOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {callError ? (
+          <div className="mt-4 flex items-start gap-3 rounded-[20px] border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{callError}</p>
+          </div>
+        ) : null}
+
+        {callLoading ? (
+          <div className="mt-4 rounded-[20px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+            Loading call analytics...
+          </div>
+        ) : callAnalytics && callAnalytics.totals.total > 0 ? (
+          <div className="mt-5 overflow-x-auto">
+            {(() => {
+              const columns = [...callAnalytics.outcomes, ...callAnalytics.extra_buckets];
+              return (
+                <table className="min-w-[820px] w-full text-left text-sm">
+                  <thead className="bg-hier-panel text-xs uppercase tracking-[0.12em] text-hier-muted">
+                    <tr>
+                      <th className="px-4 py-3">Adviser</th>
+                      {columns.map((column) => (
+                        <th key={column} className="px-3 py-3 text-center">{column}</th>
+                      ))}
+                      <th className="px-4 py-3 text-center">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-hier-border">
+                    {callAnalytics.advisers.map((adviser) => (
+                      <tr key={adviser.staff_user_id ?? "unattributed"}>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-hier-text">{adviser.name}</p>
+                          {adviser.email ? (
+                            <p className="mt-0.5 truncate text-xs text-hier-muted">{adviser.email}</p>
+                          ) : null}
+                        </td>
+                        {columns.map((column) => (
+                          <td key={column} className="px-3 py-3 text-center text-hier-text">
+                            {adviser.outcomes[column] ?? 0}
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-center font-semibold text-hier-text">
+                          {adviser.total}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-hier-border bg-hier-panel font-semibold text-hier-text">
+                      <td className="px-4 py-3">All advisers</td>
+                      {columns.map((column) => (
+                        <td key={column} className="px-3 py-3 text-center">
+                          {callAnalytics.totals.outcomes[column] ?? 0}
+                        </td>
+                      ))}
+                      <td className="px-4 py-3 text-center">{callAnalytics.totals.total}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              );
+            })()}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-[20px] border border-dashed border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+            No calls recorded for this period.
+          </p>
+        )}
       </section>
     </div>
   );

@@ -1050,7 +1050,7 @@ export default function StaffHiringIntelligencePage() {
           )}
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 2xl:sticky 2xl:top-6 2xl:max-h-[calc(100vh-3rem)] 2xl:self-start 2xl:overflow-y-auto 2xl:pr-1">
           {selectedRecord ? (
             <>
               <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">

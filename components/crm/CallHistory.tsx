@@ -10,6 +10,16 @@ import {
   updateStaffCallActivity,
 } from "@/lib/staff-calls";
 
+export const CALL_OUTCOME_OPTIONS = [
+  "Connected",
+  "No Answer",
+  "Voicemail Left",
+  "Invalid Number",
+  "Gatekeeper reached",
+  "Wrong contact",
+  "Call back requested",
+] as const;
+
 type CallHistoryScope =
   | { leadId: number; accountUserId?: never }
   | { accountUserId: number; leadId?: never };
@@ -252,12 +262,18 @@ export function CallHistory(props: CallHistoryProps) {
                 ) : null}
 
                 <div className="mt-4 grid gap-3">
-                  <input
+                  <select
                     value={edit.outcome}
                     onChange={(event) => updateEdit(call.id, { outcome: event.target.value })}
-                    placeholder="Outcome"
                     className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary"
-                  />
+                  >
+                    <option value="">Select call outcome</option>
+                    {CALL_OUTCOME_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                   <textarea
                     value={edit.notes}
                     onChange={(event) => updateEdit(call.id, { notes: event.target.value })}

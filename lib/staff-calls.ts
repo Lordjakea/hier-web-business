@@ -53,3 +53,29 @@ export async function updateStaffCallActivity(
     body: JSON.stringify(payload),
   });
 }
+
+export type CallAnalyticsPeriod = "day" | "week" | "month" | "year" | "all";
+
+export type CallAnalyticsAdviser = {
+  staff_user_id: number | null;
+  name: string;
+  email?: string | null;
+  total: number;
+  outcomes: Record<string, number>;
+};
+
+export type CallAnalyticsResponse = {
+  ok: boolean;
+  period: CallAnalyticsPeriod;
+  range: { from?: string | null; to?: string | null };
+  outcomes: string[];
+  extra_buckets: string[];
+  advisers: CallAnalyticsAdviser[];
+  totals: { total: number; outcomes: Record<string, number> };
+};
+
+export async function fetchStaffCallAnalytics(period: CallAnalyticsPeriod = "month") {
+  return apiFetch<CallAnalyticsResponse>(
+    `/api/staff/calls/analytics?period=${encodeURIComponent(period)}`
+  );
+}

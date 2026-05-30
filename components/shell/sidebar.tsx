@@ -52,7 +52,7 @@ const staffLinks = [
   { label: "CRM", href: "/staff", icon: LifeBuoy, match: (path: string) => path === "/staff" || path.startsWith("/staff/accounts") },
   { label: "Notifications", href: "/staff/notifications", icon: Bell, match: (path: string) => path.startsWith("/staff/notifications") },
   { label: "Waitlist", href: "/staff/waitlist", icon: Mail, match: (path: string) => path.startsWith("/staff/waitlist") },
-  { label: "Leads", href: "/staff/leads", icon: PhoneCall, match: (path: string) => path === "/staff/leads" },
+  { label: "Leads", href: "/staff/leads", icon: PhoneCall, match: (path: string) => path === "/staff/leads" || /^\/staff\/leads\/\d+$/.test(path) },
   { label: "Hiring Intel", href: "/staff/leads/intelligence", icon: Radar, match: (path: string) => path.startsWith("/staff/leads/intelligence") },
   { label: "Started candidates", href: "/staff/started-candidates", icon: Banknote, match: (path: string) => path.startsWith("/staff/started-candidates") },
   { label: "Follow-ups", href: "/staff/follow-ups", icon: CalendarClock, match: (path: string) => path.startsWith("/staff/follow-ups") },

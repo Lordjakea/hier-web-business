@@ -609,6 +609,10 @@ export async function fetchStaffLeads(params?: {
   );
 }
 
+export async function fetchStaffLead(leadId: number | string) {
+  return apiFetch<{ ok: boolean; lead: StaffLead }>(`/api/staff/leads/${leadId}`);
+}
+
 export async function fetchStaffHiringIntelligenceLeads(params?: {
   q?: string;
   platform?: string;
