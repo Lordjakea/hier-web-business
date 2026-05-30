@@ -234,6 +234,145 @@ export type StaffCrmReportResponse = {
   }>;
 };
 
+export type StaffMarketingCampaignSummary = {
+  id: number;
+  name: string;
+  slug: string;
+  subject?: string | null;
+  resend_audience_id?: string | null;
+  resend_broadcast_id?: string | null;
+  created_at?: string | null;
+  sent_at?: string | null;
+  lead_count?: number;
+  emails_sent?: number;
+  sent_count: number;
+  delivered_count: number;
+  open_count: number;
+  click_count: number;
+  bounce_count: number;
+  complaint_count: number;
+  business_signups_attributed: number;
+  paid_businesses?: number;
+  conversion_rate: number;
+  open_rate?: number;
+  ctr?: number;
+  signup_rate?: number;
+  paid_conversion_rate?: number;
+  funnel?: StaffMarketingFunnel;
+};
+
+export type StaffMarketingCampaignRecipient = {
+  id: number;
+  campaign_id: number;
+  lead_id?: number | null;
+  email: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  company_name?: string | null;
+  job_title?: string | null;
+  city?: string | null;
+  resend_email_id?: string | null;
+  delivered_at?: string | null;
+  opened_at?: string | null;
+  clicked_at?: string | null;
+  bounced_at?: string | null;
+  complained_at?: string | null;
+  utm_content_clicked?: string | null;
+  signup_status?: "converted" | "not_converted" | string | null;
+  linked_business_account?: {
+    id?: number | null;
+    user_id?: number | null;
+    name?: string | null;
+    email?: string | null;
+  } | null;
+  created_at?: string | null;
+};
+
+export type StaffMarketingLead = {
+  id: number;
+  email: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  company_name?: string | null;
+  job_title?: string | null;
+  city?: string | null;
+  campaign?: string | null;
+  resend_contact_id?: string | null;
+  converted_at?: string | null;
+  paid_at?: string | null;
+  created_at?: string | null;
+};
+
+export type StaffMarketingFunnel = {
+  leads_imported: number;
+  emails_delivered: number;
+  emails_opened: number;
+  emails_clicked: number;
+  businesses_signed_up: number;
+  paid_businesses: number;
+  open_rate: number;
+  ctr: number;
+  signup_rate: number;
+  paid_conversion_rate: number;
+};
+
+export type StaffMarketingCampaignDetail = StaffMarketingCampaignSummary & {
+  recipients: StaffMarketingCampaignRecipient[];
+  leads?: StaffMarketingCampaignRecipient[];
+};
+
+export type StaffMarketingAttribution = {
+  id: number;
+  business_account_id?: number | null;
+  user_id?: number | null;
+  email?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_content?: string | null;
+  landing_path?: string | null;
+  first_seen_at?: string | null;
+  converted_at?: string | null;
+  campaign_id?: number | null;
+  recipient_id?: number | null;
+  campaign_name?: string | null;
+  business_name?: string | null;
+};
+
+export type StaffMarketingCampaignsResponse = {
+  ok: boolean;
+  campaigns: StaffMarketingCampaignSummary[];
+};
+
+export type StaffMarketingCampaignDetailResponse = {
+  ok: boolean;
+  campaign: StaffMarketingCampaignDetail;
+};
+
+export type StaffMarketingAttributionResponse = {
+  ok: boolean;
+  items: StaffMarketingAttribution[];
+};
+
+export type StaffMarketingLeadImportRow = {
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  job_title?: string;
+  city?: string;
+  campaign?: string;
+};
+
+export type StaffMarketingLeadImportResponse = {
+  ok: boolean;
+  imported: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; email?: string | null; error: string }>;
+  leads: StaffMarketingLead[];
+};
+
 export type StaffLead = {
   id: number;
   name: string;
@@ -417,6 +556,52 @@ export async function fetchFilteredStaffCrmReports(filter: string) {
 
 export function getMarketingOptInsCsvUrl() {
   return resolveApiUrl("/api/staff/crm-reports/marketing-opt-ins.csv");
+}
+
+export async function fetchStaffMarketingCampaigns() {
+  return apiFetch<StaffMarketingCampaignsResponse>("/api/staff/marketing/campaigns");
+}
+
+export async function fetchStaffMarketingCampaign(campaignId: number | string) {
+  return apiFetch<StaffMarketingCampaignDetailResponse>(
+    `/api/staff/marketing/campaigns/${campaignId}`
+  );
+}
+
+export async function fetchStaffMarketingAttribution(params?: {
+  campaign_id?: number | string;
+  converted?: boolean;
+}) {
+  const search = new URLSearchParams();
+
+  if (params?.campaign_id) search.set("campaign_id", String(params.campaign_id));
+  if (typeof params?.converted === "boolean") {
+    search.set("converted", params.converted ? "true" : "false");
+  }
+
+  const query = search.toString();
+
+  return apiFetch<StaffMarketingAttributionResponse>(
+    `/api/staff/marketing/attribution${query ? `?${query}` : ""}`
+  );
+}
+
+export async function importStaffMarketingLeads(rows: StaffMarketingLeadImportRow[]) {
+  return apiFetch<StaffMarketingLeadImportResponse>("/api/staff/marketing/leads/import", {
+    method: "POST",
+    body: JSON.stringify({ rows }),
+  });
+}
+
+export async function syncStaffMarketingCampaignMetrics(campaignId?: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    synced_campaigns?: number;
+    campaign?: StaffMarketingCampaignDetail;
+  }>("/api/staff/marketing/campaigns/sync", {
+    method: "POST",
+    body: JSON.stringify(campaignId ? { campaign_id: campaignId } : {}),
+  });
 }
 
 export async function fetchStaffStartedCandidates(status: "pending_fee" | "completed" | "all" = "pending_fee") {

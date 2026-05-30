@@ -7,3 +7,5 @@ node_modules/
 venv/
 *.log
 *.zip
+__pycache__/
+*.pyc

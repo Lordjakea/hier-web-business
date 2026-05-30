@@ -8,6 +8,11 @@ import { HierBrand } from "@/components/ui/brand";
 import { apiFetch } from "@/lib/api";
 import { searchAddresses, type AddressOption } from "@/lib/address-lookup";
 
+const UTM_STORAGE_KEY = "hier_business_signup_utm";
+const UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_content"] as const;
+
+type SignupUtmValues = Partial<Record<(typeof UTM_FIELDS)[number], string>>;
+
 type SignupResponse = {
   id?: number;
   email?: string;
@@ -42,6 +47,30 @@ export default function BusinessSignupPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [utmValues, setUtmValues] = useState<SignupUtmValues>({});
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextValues: SignupUtmValues = {};
+
+    UTM_FIELDS.forEach((field) => {
+      const value = params.get(field);
+      if (value) nextValues[field] = value;
+    });
+
+    if (Object.keys(nextValues).length) {
+      window.localStorage.setItem(UTM_STORAGE_KEY, JSON.stringify(nextValues));
+      setUtmValues(nextValues);
+      return;
+    }
+
+    try {
+      const stored = window.localStorage.getItem(UTM_STORAGE_KEY);
+      if (stored) setUtmValues(JSON.parse(stored) as SignupUtmValues);
+    } catch {
+      setUtmValues({});
+    }
+  }, []);
 
   useEffect(() => {
     if (manualAddress) return;
@@ -134,6 +163,7 @@ export default function BusinessSignupPage() {
           accepted_terms: acceptedTerms,
           terms_version: "2026-04",
           marketing_opt_in: marketingOptIn,
+          ...utmValues,
         }),
       });
 
