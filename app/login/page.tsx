@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LockKeyhole, Mail } from "lucide-react";
 import { HierBrand } from "@/components/ui/brand";
 import { loginBusinessUser } from "@/lib/business-applications";
-import { setAuthToken, setStoredUser } from "@/lib/auth";
+import { clearSession, setAuthToken, setStoredUser } from "@/lib/auth";
 
 type LoginResponseUser = {
   id?: number;
@@ -32,6 +33,14 @@ type LoginResponseUser = {
   } | null;
 };
 
+const APPLE_APP_URL = "https://apps.apple.com/us/app/hier-jobs/id6762534279";
+const ANDROID_APP_URL =
+  "https://play.google.com/store/apps/details?id=com.hier.mobile&hl=en_GB";
+
+function isCandidateAccount(role?: string | null) {
+  return ["user", "candidate"].includes(String(role || "").toLowerCase());
+}
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,6 +50,7 @@ function LoginPageContent() {
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [candidateAccountNotice, setCandidateAccountNotice] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const showIdleTimeout = reason === "idle_timeout";
@@ -49,6 +59,7 @@ function LoginPageContent() {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setCandidateAccountNotice(false);
 
     try {
       const normalizedEmail = email.trim().toLowerCase();
@@ -64,15 +75,19 @@ function LoginPageContent() {
 
       const response = await loginBusinessUser(normalizedEmail, trimmedPassword);
       const token = response.access_token || response.token || response.access;
+      const rawUser: LoginResponseUser = (response.user || {}) as LoginResponseUser;
 
       if (!token) {
         throw new Error("Login succeeded but no access token was returned.");
       }
 
+      if (isCandidateAccount(rawUser.role)) {
+        clearSession();
+        setCandidateAccountNotice(true);
+        return;
+      }
+
       setAuthToken(token);
-
-      const rawUser: LoginResponseUser = (response.user || {}) as LoginResponseUser;
-
       setStoredUser({
         id: rawUser.id,
         email: rawUser.email || normalizedEmail,
@@ -211,6 +226,46 @@ function LoginPageContent() {
               {error ? (
                 <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {error}
+                </div>
+              ) : null}
+
+              {candidateAccountNotice ? (
+                <div className="rounded-[20px] border border-hier-border bg-hier-soft px-4 py-4">
+                  <p className="text-sm font-semibold text-hier-text">
+                    This is a candidate account, please login to the app.
+                  </p>
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                    <a
+                      href={APPLE_APP_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Download Hier Jobs on the App Store"
+                      className="inline-flex h-[52px] items-center justify-center rounded-2xl bg-black px-3 shadow-sm transition hover:translate-y-[-1px]"
+                    >
+                      <Image
+                        src="/app-store-badge.svg"
+                        alt="Download on the App Store"
+                        width={156}
+                        height={46}
+                        className="h-[46px] w-auto"
+                      />
+                    </a>
+                    <a
+                      href={ANDROID_APP_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Get Hier Jobs on Google Play"
+                      className="inline-flex h-[52px] items-center justify-center rounded-2xl bg-black px-3 shadow-sm transition hover:translate-y-[-1px]"
+                    >
+                      <Image
+                        src="/google-play-badge.svg"
+                        alt="Get it on Google Play"
+                        width={156}
+                        height={46}
+                        className="h-[46px] w-auto"
+                      />
+                    </a>
+                  </div>
                 </div>
               ) : null}
 

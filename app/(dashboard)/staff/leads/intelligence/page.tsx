@@ -36,6 +36,8 @@ import {
   fetchStaffHiringIntelligenceSources,
   enrichStaffHiringIntelligenceDecisionMakers,
   ignoreStaffHiringIntelligenceLead,
+  manuallySetStaffHiringIntelligenceEmployer,
+  resolveStaffHiringIntelligenceEmployer,
   runStaffHiringIntelligenceScan,
   updateStaffLeadContact,
   type StaffLeadContact,
@@ -68,6 +70,18 @@ function formatStatus(value?: string | null) {
 
 function formatScore(value?: number | null) {
   return typeof value === "number" ? `${Math.round(value)}` : "-";
+}
+
+function displayEmployer(record: StaffHiringIntelligenceLead) {
+  return record.resolved_company_name || record.company_name || "Unresolved employer";
+}
+
+function displaySource(record: StaffHiringIntelligenceLead) {
+  return record.source_platform || record.job_platform || record.raw_company_name || record.company_name || "Unknown source";
+}
+
+function needsEmployerReview(record: StaffHiringIntelligenceLead) {
+  return !record.resolved_company_name || (record.employer_resolution_confidence ?? 0) < 70;
 }
 
 function isToday(value?: string | null) {
@@ -168,6 +182,16 @@ function blankDiscoveryForm() {
     query: "",
     location_hint: "",
     platform_hint: "",
+    max_results_per_query: "100",
+  };
+}
+
+function blankEmployerForm() {
+  return {
+    resolved_company_name: "",
+    employer_website: "",
+    employer_domain: "",
+    reason: "",
   };
 }
 
@@ -199,6 +223,8 @@ export default function StaffHiringIntelligencePage() {
   const [decisionMakerSaving, setDecisionMakerSaving] = useState(false);
   const [showDecisionMakerForm, setShowDecisionMakerForm] = useState(false);
   const [decisionMakerForm, setDecisionMakerForm] = useState(blankDecisionMakerForm);
+  const [showEmployerForm, setShowEmployerForm] = useState(false);
+  const [employerForm, setEmployerForm] = useState(blankEmployerForm);
   const [sourceForm, setSourceForm] = useState(blankSourceForm);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [sourceEditForm, setSourceEditForm] = useState(blankSourceForm);
@@ -208,6 +234,19 @@ export default function StaffHiringIntelligencePage() {
     () => records.find((record) => record.id === selectedRecordId) || records[0] || null,
     [records, selectedRecordId],
   );
+
+  useEffect(() => {
+    if (!selectedRecord) {
+      setEmployerForm(blankEmployerForm());
+      return;
+    }
+    setEmployerForm({
+      resolved_company_name: selectedRecord.resolved_company_name || "",
+      employer_website: selectedRecord.employer_website || selectedRecord.website_url || "",
+      employer_domain: selectedRecord.employer_domain || "",
+      reason: "",
+    });
+  }, [selectedRecord]);
 
   const summary = useMemo(() => {
     return {
@@ -363,6 +402,7 @@ export default function StaffHiringIntelligencePage() {
         query: discoveryForm.query,
         location_hint: discoveryForm.location_hint || null,
         platform_hint: discoveryForm.platform_hint || null,
+        max_results_per_query: Number(discoveryForm.max_results_per_query || 100),
         is_enabled: true,
       });
       setDiscoveryQueries((current) => [response.query, ...current]);
@@ -559,6 +599,55 @@ export default function StaffHiringIntelligencePage() {
     }
   }
 
+  async function handleResolveEmployer() {
+    if (!selectedRecord) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await resolveStaffHiringIntelligenceEmployer(selectedRecord.id);
+      if (response.item) {
+        setRecords((current) =>
+          current.map((record) => (record.id === selectedRecord.id ? response.item! : record)),
+        );
+      }
+      setNotice("Employer resolution updated.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not resolve the employer.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleManualEmployerSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedRecord) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await manuallySetStaffHiringIntelligenceEmployer(selectedRecord.id, {
+        resolved_company_name: employerForm.resolved_company_name.trim(),
+        employer_website: employerForm.employer_website.trim() || null,
+        employer_domain: employerForm.employer_domain.trim() || null,
+        reason: employerForm.reason.trim() || null,
+      });
+      if (response.item) {
+        setRecords((current) =>
+          current.map((record) => (record.id === selectedRecord.id ? response.item! : record)),
+        );
+      }
+      setShowEmployerForm(false);
+      setNotice("Employer manually updated.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not save the employer.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleFindDecisionMakers() {
     if (!selectedRecord) return;
     setDecisionMakerSaving(true);
@@ -592,7 +681,7 @@ export default function StaffHiringIntelligencePage() {
     setNotice(null);
 
     const payload: StaffLeadContactPayload = {
-      company_name: selectedRecord.company_name,
+      company_name: selectedRecord.resolved_company_name || selectedRecord.company_name,
       contact_name: decisionMakerForm.contact_name.trim(),
       contact_title: decisionMakerForm.contact_title.trim() || null,
       contact_type: decisionMakerForm.contact_type || "other",
@@ -659,7 +748,7 @@ export default function StaffHiringIntelligencePage() {
 
   async function handleDeleteRecord() {
     if (!selectedRecord) return;
-    if (!window.confirm(`Delete the hiring signal for ${selectedRecord.company_name}?`)) return;
+    if (!window.confirm(`Delete the hiring signal for ${displayEmployer(selectedRecord)}?`)) return;
 
     setSaving(true);
     setError(null);
@@ -687,6 +776,17 @@ export default function StaffHiringIntelligencePage() {
       "company_name",
       "website_url",
       "lead_id",
+      "source_platform",
+      "source_url",
+      "raw_company_name",
+      "resolved_company_name",
+      "employer_resolution_status",
+      "employer_resolution_confidence",
+      "employer_resolution_reason",
+      "employer_domain",
+      "employer_website",
+      "employer_careers_url",
+      "resolved_at",
       "job_title",
       "job_location",
       "job_platform",
@@ -727,7 +827,8 @@ export default function StaffHiringIntelligencePage() {
   }
 
   const jobUrl = externalUrl(selectedRecord?.job_url);
-  const websiteUrl = externalUrl(selectedRecord?.website_url);
+  const websiteUrl = externalUrl(selectedRecord?.employer_website || selectedRecord?.website_url);
+  const careersUrl = externalUrl(selectedRecord?.employer_careers_url);
   const contactSourceUrl = externalUrl(selectedRecord?.contact_source_url);
 
   return (
@@ -1079,6 +1180,17 @@ export default function StaffHiringIntelligencePage() {
               placeholder="Platform hint"
               className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
             />
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={discoveryForm.max_results_per_query}
+              onChange={(event) =>
+                setDiscoveryForm((current) => ({ ...current, max_results_per_query: event.target.value }))
+              }
+              placeholder="Max results"
+              className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+            />
           </div>
           <button
             type="submit"
@@ -1104,6 +1216,9 @@ export default function StaffHiringIntelligencePage() {
                       <p className="truncate text-sm font-semibold text-hier-text">{query.query}</p>
                       <p className="mt-1 text-xs text-hier-muted">
                         {query.location_hint || "No location"} - {query.platform_hint || "Any platform"}
+                      </p>
+                      <p className="mt-1 text-xs text-hier-muted">
+                        Max results: {query.max_results_per_query ?? 100}
                       </p>
                       <p className="mt-2 text-xs text-hier-muted">
                         {query.last_run_status || "Not run"} - {query.last_results_count ?? 0} results
@@ -1152,16 +1267,16 @@ export default function StaffHiringIntelligencePage() {
             <div className="p-8 text-sm text-hier-muted">Loading hiring intelligence...</div>
           ) : records.length ? (
             <div className="overflow-x-auto">
-              <table className="min-w-[980px] w-full text-left text-sm">
+              <table className="min-w-[1120px] w-full text-left text-sm">
                 <thead className="bg-hier-panel text-xs uppercase tracking-[0.12em] text-hier-muted">
                   <tr>
-                    <th className="px-4 py-3">Company</th>
+                    <th className="px-4 py-3">Resolved employer</th>
                     <th className="px-4 py-3">Job title</th>
                     <th className="px-4 py-3">Location</th>
-                    <th className="px-4 py-3">Platform</th>
+                    <th className="px-4 py-3">Raw source</th>
+                    <th className="px-4 py-3">Resolution</th>
                     <th className="px-4 py-3">Posted / detected</th>
                     <th className="px-4 py-3">Best contact</th>
-                    <th className="px-4 py-3">Confidence</th>
                     <th className="px-4 py-3">Hiring score</th>
                     <th className="px-4 py-3">Status</th>
                   </tr>
@@ -1176,14 +1291,25 @@ export default function StaffHiringIntelligencePage() {
                       }`}
                     >
                       <td className="px-4 py-4">
-                        <p className="font-semibold text-hier-text">{record.company_name}</p>
+                        <p className="font-semibold text-hier-text">{displayEmployer(record)}</p>
                         <p className="mt-1 text-xs text-hier-muted">
-                          {record.source_count ? `${record.source_count} sources` : "Source pending"}
+                          {needsEmployerReview(record) ? "Needs review" : "Ready for lead"}
                         </p>
                       </td>
                       <td className="px-4 py-4 text-hier-text">{record.job_title || "-"}</td>
                       <td className="px-4 py-4 text-hier-muted">{record.job_location || "-"}</td>
-                      <td className="px-4 py-4 text-hier-muted">{record.job_platform || "-"}</td>
+                      <td className="px-4 py-4 text-hier-muted">
+                        <p>{displaySource(record)}</p>
+                        <p className="mt-1 text-xs">{record.raw_company_name || record.company_name || "-"}</p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="rounded-full border border-hier-border bg-white px-2.5 py-1 text-xs font-semibold text-hier-text">
+                          {formatStatus(record.employer_resolution_status)}
+                        </span>
+                        <p className="mt-1 text-xs text-hier-muted">
+                          {formatScore(record.employer_resolution_confidence)}%
+                        </p>
+                      </td>
                       <td className="px-4 py-4 text-hier-muted">
                         <p>{formatDate(record.job_posted_at)}</p>
                         <p className="mt-1 text-xs">{formatDate(record.job_detected_at)}</p>
@@ -1191,11 +1317,6 @@ export default function StaffHiringIntelligencePage() {
                       <td className="px-4 py-4 text-hier-muted">
                         <p className="font-medium text-hier-text">{record.contact_name || "-"}</p>
                         <p className="mt-1 text-xs">{record.contact_role || record.contact_email || "-"}</p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-full border border-hier-border bg-white px-2.5 py-1 text-xs font-semibold text-hier-text">
-                          {record.contact_confidence || "-"}
-                        </span>
                       </td>
                       <td className="px-4 py-4 font-semibold text-hier-text">
                         {formatScore(record.hiring_signal_score)}
@@ -1226,7 +1347,7 @@ export default function StaffHiringIntelligencePage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-hier-muted">
                       Company details
                     </p>
-                    <h2 className="mt-2 text-xl font-semibold text-hier-text">{selectedRecord.company_name}</h2>
+                    <h2 className="mt-2 text-xl font-semibold text-hier-text">{displayEmployer(selectedRecord)}</h2>
                     <p className="mt-1 text-sm text-hier-muted">{selectedRecord.job_location || "Location pending"}</p>
                   </div>
                   <span className="rounded-full border border-hier-border bg-hier-panel px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-hier-muted">
@@ -1257,15 +1378,114 @@ export default function StaffHiringIntelligencePage() {
                       Website
                     </a>
                   ) : null}
+                  {careersUrl ? (
+                    <a
+                      href={careersUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Careers
+                    </a>
+                  ) : null}
                 </div>
 
                 <div className="mt-5 grid gap-4 text-sm text-hier-muted sm:grid-cols-2">
+                  <p><span className="block font-semibold text-hier-text">Source platform</span>{selectedRecord.source_platform || selectedRecord.job_platform || "-"}</p>
+                  <p><span className="block font-semibold text-hier-text">Raw company name</span>{selectedRecord.raw_company_name || selectedRecord.company_name || "-"}</p>
+                  <p><span className="block font-semibold text-hier-text">Resolved employer</span>{selectedRecord.resolved_company_name || "Needs review"}</p>
+                  <p><span className="block font-semibold text-hier-text">Employer website</span>{selectedRecord.employer_website || selectedRecord.website_url || "-"}</p>
+                  <p><span className="block font-semibold text-hier-text">Resolution status</span>{formatStatus(selectedRecord.employer_resolution_status)}</p>
+                  <p><span className="block font-semibold text-hier-text">Resolution confidence</span>{formatScore(selectedRecord.employer_resolution_confidence)}%</p>
                   <p><span className="block font-semibold text-hier-text">Job title</span>{selectedRecord.job_title || "-"}</p>
                   <p><span className="block font-semibold text-hier-text">Platform</span>{selectedRecord.job_platform || "-"}</p>
                   <p><span className="block font-semibold text-hier-text">Posted</span>{formatDate(selectedRecord.job_posted_at)}</p>
                   <p><span className="block font-semibold text-hier-text">Detected</span>{formatDate(selectedRecord.job_detected_at)}</p>
                   <p><span className="block font-semibold text-hier-text">Last seen hiring</span>{formatDate(selectedRecord.last_seen_hiring_at)}</p>
                   <p><span className="block font-semibold text-hier-text">Hiring score</span>{formatScore(selectedRecord.hiring_signal_score)}</p>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-hier-muted">
+                  <span className="font-semibold text-hier-text">Reason: </span>
+                  {selectedRecord.employer_resolution_reason || "Employer resolution has not run yet."}
+                </p>
+
+                <div className="mt-5 grid gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleResolveEmployer()}
+                      disabled={saving}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] bg-hier-primary px-3 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Resolve employer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleResolveEmployer()}
+                      disabled={saving}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border border-hier-border bg-white px-3 text-sm font-semibold text-hier-text disabled:opacity-50"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Re-run resolution
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowEmployerForm((current) => !current)}
+                      disabled={saving}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border border-hier-border bg-white px-3 text-sm font-semibold text-hier-text disabled:opacity-50"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Manually set employer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleRecordAction("convert")}
+                      disabled={saving || needsEmployerReview(selectedRecord)}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 disabled:opacity-50"
+                    >
+                      <Check className="h-4 w-4" />
+                      Approve as lead
+                    </button>
+                  </div>
+                  {showEmployerForm ? (
+                    <form className="grid gap-3 rounded-[20px] border border-hier-border bg-hier-panel p-4" onSubmit={handleManualEmployerSubmit}>
+                      <input
+                        required
+                        value={employerForm.resolved_company_name}
+                        onChange={(event) => setEmployerForm((current) => ({ ...current, resolved_company_name: event.target.value }))}
+                        placeholder="Resolved employer"
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary"
+                      />
+                      <input
+                        value={employerForm.employer_website}
+                        onChange={(event) => setEmployerForm((current) => ({ ...current, employer_website: event.target.value }))}
+                        placeholder="Employer website"
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary"
+                      />
+                      <input
+                        value={employerForm.employer_domain}
+                        onChange={(event) => setEmployerForm((current) => ({ ...current, employer_domain: event.target.value }))}
+                        placeholder="Employer domain"
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary"
+                      />
+                      <textarea
+                        value={employerForm.reason}
+                        onChange={(event) => setEmployerForm((current) => ({ ...current, reason: event.target.value }))}
+                        placeholder="Reason"
+                        className="min-h-20 rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm outline-none focus:border-hier-primary"
+                      />
+                      <button
+                        type="submit"
+                        disabled={saving || !employerForm.resolved_company_name.trim()}
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        Save employer
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               </section>
 
@@ -1495,7 +1715,7 @@ export default function StaffHiringIntelligencePage() {
                   <button
                     type="button"
                     onClick={() => void handleRecordAction("convert")}
-                    disabled={saving || selectedRecord.intelligence_status === "converted"}
+                    disabled={saving || selectedRecord.intelligence_status === "converted" || needsEmployerReview(selectedRecord)}
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}

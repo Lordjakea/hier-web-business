@@ -486,6 +486,17 @@ export type StaffHiringIntelligenceLead = {
   company_name: string;
   website_url?: string | null;
   lead_id?: number | null;
+  source_platform?: string | null;
+  source_url?: string | null;
+  raw_company_name?: string | null;
+  resolved_company_name?: string | null;
+  employer_resolution_status?: "pending" | "resolved" | "unresolved" | "aggregator_only" | "failed" | string | null;
+  employer_resolution_confidence?: number | null;
+  employer_resolution_reason?: string | null;
+  employer_domain?: string | null;
+  employer_website?: string | null;
+  employer_careers_url?: string | null;
+  resolved_at?: string | null;
   job_title?: string | null;
   job_location?: string | null;
   job_platform?: string | null;
@@ -534,6 +545,7 @@ export type StaffHiringIntelligenceDiscoveryQuery = {
   query: string;
   location_hint?: string | null;
   platform_hint?: string | null;
+  max_results_per_query?: number | null;
   is_enabled?: boolean | null;
   last_run_at?: string | null;
   last_run_status?: string | null;
@@ -1014,6 +1026,7 @@ export async function createStaffHiringIntelligenceDiscoveryQuery(payload: {
   query: string;
   location_hint?: string | null;
   platform_hint?: string | null;
+  max_results_per_query?: number | null;
   is_enabled?: boolean;
 }) {
   return apiFetch<{
@@ -1029,7 +1042,7 @@ export async function updateStaffHiringIntelligenceDiscoveryQuery(
   id: number | string,
   payload: Partial<Pick<
     StaffHiringIntelligenceDiscoveryQuery,
-    "query" | "location_hint" | "platform_hint" | "is_enabled"
+    "query" | "location_hint" | "platform_hint" | "max_results_per_query" | "is_enabled"
   >>
 ) {
   return apiFetch<{
@@ -1111,6 +1124,33 @@ export async function deleteStaffHiringIntelligenceLead(id: number | string) {
     item_id: number | string;
   }>(`/api/staff/leads/intelligence/${id}`, {
     method: "DELETE",
+  });
+}
+
+export async function resolveStaffHiringIntelligenceEmployer(id: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    item?: StaffHiringIntelligenceLead;
+  }>(`/api/staff/hiring-intel/intelligence/${id}/resolve-employer`, {
+    method: "POST",
+  });
+}
+
+export async function manuallySetStaffHiringIntelligenceEmployer(
+  id: number | string,
+  payload: {
+    resolved_company_name: string;
+    employer_website?: string | null;
+    employer_domain?: string | null;
+    reason?: string | null;
+  }
+) {
+  return apiFetch<{
+    ok: boolean;
+    item?: StaffHiringIntelligenceLead;
+  }>(`/api/staff/hiring-intel/intelligence/${id}/employer`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }
 

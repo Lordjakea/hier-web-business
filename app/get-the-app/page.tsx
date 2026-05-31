@@ -1,7 +1,12 @@
 "use client";
 
 import { HierBrand } from "@/components/ui/brand";
+import Image from "next/image";
 import Link from "next/link";
+
+const APPLE_APP_URL = "https://apps.apple.com/us/app/hier-jobs/id6762534279";
+const ANDROID_APP_URL =
+  "https://play.google.com/store/apps/details?id=com.hier.mobile&hl=en_GB";
 
 export default function GetTheAppPage() {
   return (
@@ -24,19 +29,35 @@ export default function GetTheAppPage() {
         {/* Buttons */}
         <div className="mt-10 space-y-4">
           <a
-            href="https://apps.apple.com" // replace later
+            href={APPLE_APP_URL}
             target="_blank"
-            className="flex h-14 w-full items-center justify-center rounded-[22px] bg-hier-primary text-sm font-semibold text-white shadow-card transition hover:translate-y-[-1px]"
+            rel="noopener noreferrer"
+            aria-label="Download Hier Jobs on the App Store"
+            className="flex h-14 w-full items-center justify-center rounded-[22px] bg-black text-sm font-semibold text-white shadow-card transition hover:translate-y-[-1px]"
           >
-            Download on the App Store
+            <Image
+              src="/app-store-badge.svg"
+              alt="Download on the App Store"
+              width={156}
+              height={46}
+              className="h-[46px] w-auto"
+            />
           </a>
 
           <a
-            href="https://play.google.com" // replace later
+            href={ANDROID_APP_URL}
             target="_blank"
-            className="flex h-14 w-full items-center justify-center rounded-[22px] border border-hier-border bg-white text-sm font-semibold text-hier-text shadow-card transition hover:bg-hier-soft"
+            rel="noopener noreferrer"
+            aria-label="Get Hier Jobs on Google Play"
+            className="flex h-14 w-full items-center justify-center rounded-[22px] bg-black text-sm font-semibold text-white shadow-card transition hover:translate-y-[-1px]"
           >
-            Get it on Google Play
+            <Image
+              src="/google-play-badge.svg"
+              alt="Get it on Google Play"
+              width={156}
+              height={46}
+              className="h-[46px] w-auto"
+            />
           </a>
         </div>
 
