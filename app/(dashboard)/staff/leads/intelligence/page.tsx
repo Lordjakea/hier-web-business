@@ -5,31 +5,41 @@ import {
   AlertCircle,
   Ban,
   Check,
+  Copy,
   Download,
   Pencil,
   ExternalLink,
   Loader2,
+  Mail,
   Plus,
   RefreshCw,
   Search,
+  Star,
   Trash2,
   X,
   UserPlus,
+  Users,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { getStoredUser } from "@/lib/auth";
 import {
   approveStaffHiringIntelligenceLead,
+  createStaffHiringIntelligenceContact,
   createStaffHiringIntelligenceDiscoveryQuery,
   convertStaffHiringIntelligenceLeadToLead,
   createStaffHiringIntelligenceSource,
   deleteStaffHiringIntelligenceLead,
   deleteStaffHiringIntelligenceSource,
   fetchStaffHiringIntelligenceDiscoveryQueries,
+  fetchStaffHiringIntelligenceContacts,
   fetchStaffHiringIntelligenceLeads,
   fetchStaffHiringIntelligenceSources,
+  enrichStaffHiringIntelligenceDecisionMakers,
   ignoreStaffHiringIntelligenceLead,
   runStaffHiringIntelligenceScan,
+  updateStaffLeadContact,
+  type StaffLeadContact,
+  type StaffLeadContactPayload,
   updateStaffHiringIntelligenceDiscoveryQuery,
   type StaffHiringIntelligenceDiscoveryQuery,
   updateStaffHiringIntelligenceSource,
@@ -77,6 +87,38 @@ function externalUrl(value?: string | null) {
 function escapeCsv(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+type DecisionMakerForm = {
+  contact_name: string;
+  contact_title: string;
+  contact_type: string;
+  email: string;
+  phone: string;
+  linkedin_url: string;
+  source_url: string;
+  notes: string;
+  is_primary: boolean;
+};
+
+function blankDecisionMakerForm(): DecisionMakerForm {
+  return {
+    contact_name: "",
+    contact_title: "",
+    contact_type: "other",
+    email: "",
+    phone: "",
+    linkedin_url: "",
+    source_url: "",
+    notes: "",
+    is_primary: false,
+  };
+}
+
+function formatContactType(value?: string | null) {
+  return String(value || "other")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function updateRecordFromResponse(
@@ -152,6 +194,11 @@ export default function StaffHiringIntelligencePage() {
   const [scanLoading, setScanLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [decisionMakers, setDecisionMakers] = useState<StaffLeadContact[]>([]);
+  const [loadingDecisionMakers, setLoadingDecisionMakers] = useState(false);
+  const [decisionMakerSaving, setDecisionMakerSaving] = useState(false);
+  const [showDecisionMakerForm, setShowDecisionMakerForm] = useState(false);
+  const [decisionMakerForm, setDecisionMakerForm] = useState(blankDecisionMakerForm);
   const [sourceForm, setSourceForm] = useState(blankSourceForm);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [sourceEditForm, setSourceEditForm] = useState(blankSourceForm);
@@ -170,6 +217,22 @@ export default function StaffHiringIntelligencePage() {
       convertedToLeads: records.filter((record) => record.intelligence_status === "converted" || record.lead_id).length,
     };
   }, [records]);
+
+  const loadDecisionMakers = useCallback(async (record: StaffHiringIntelligenceLead | null) => {
+    if (!record) {
+      setDecisionMakers([]);
+      return;
+    }
+    setLoadingDecisionMakers(true);
+    try {
+      const response = await fetchStaffHiringIntelligenceContacts(record.id);
+      setDecisionMakers(response.items || []);
+    } catch {
+      setDecisionMakers(record.lead_contacts || record.decision_maker_contacts || []);
+    } finally {
+      setLoadingDecisionMakers(false);
+    }
+  }, []);
 
   const loadRecords = useCallback(
     async (showLoading = true) => {
@@ -249,6 +312,12 @@ export default function StaffHiringIntelligencePage() {
   useEffect(() => {
     void loadDiscoveryQueries();
   }, [loadDiscoveryQueries]);
+
+  useEffect(() => {
+    void loadDecisionMakers(selectedRecord);
+    setShowDecisionMakerForm(false);
+    setDecisionMakerForm(blankDecisionMakerForm());
+  }, [loadDecisionMakers, selectedRecord]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -488,6 +557,104 @@ export default function StaffHiringIntelligencePage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleFindDecisionMakers() {
+    if (!selectedRecord) return;
+    setDecisionMakerSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await enrichStaffHiringIntelligenceDecisionMakers(selectedRecord.id);
+      if (response.item) {
+        setRecords((current) =>
+          current.map((record) => (record.id === selectedRecord.id ? response.item! : record)),
+        );
+      }
+      setDecisionMakers(response.items || response.contacts || response.item?.lead_contacts || []);
+      setNotice(response.message || "Decision maker enrichment completed.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not enrich this hiring signal.",
+      );
+    } finally {
+      setDecisionMakerSaving(false);
+    }
+  }
+
+  async function handleCreateDecisionMaker(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedRecord) return;
+    setDecisionMakerSaving(true);
+    setError(null);
+    setNotice(null);
+
+    const payload: StaffLeadContactPayload = {
+      company_name: selectedRecord.company_name,
+      contact_name: decisionMakerForm.contact_name.trim(),
+      contact_title: decisionMakerForm.contact_title.trim() || null,
+      contact_type: decisionMakerForm.contact_type || "other",
+      email: decisionMakerForm.email.trim() || null,
+      phone: decisionMakerForm.phone.trim() || null,
+      linkedin_url: decisionMakerForm.linkedin_url.trim() || null,
+      source_url: decisionMakerForm.source_url.trim() || selectedRecord.job_url || null,
+      source_type: "manual",
+      confidence_score: 90,
+      email_confidence_score: decisionMakerForm.email.trim() ? 90 : null,
+      is_primary: decisionMakerForm.is_primary,
+      is_verified: true,
+      last_checked_at: new Date().toISOString(),
+      notes: decisionMakerForm.notes.trim() || null,
+    };
+
+    try {
+      const response = await createStaffHiringIntelligenceContact(selectedRecord.id, payload);
+      setDecisionMakers((current) => {
+        const withoutPrimary = payload.is_primary
+          ? current.map((contact) => ({ ...contact, is_primary: false }))
+          : current;
+        return [response.contact, ...withoutPrimary];
+      });
+      if (response.item) {
+        setRecords((current) =>
+          current.map((record) => (record.id === selectedRecord.id ? response.item! : record)),
+        );
+      }
+      setDecisionMakerForm(blankDecisionMakerForm());
+      setShowDecisionMakerForm(false);
+      setNotice("Decision maker added to this hiring signal.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not add that contact.");
+    } finally {
+      setDecisionMakerSaving(false);
+    }
+  }
+
+  async function handleMarkPrimary(contact: StaffLeadContact) {
+    setDecisionMakerSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await updateStaffLeadContact(contact.id, { is_primary: true });
+      setDecisionMakers((current) =>
+        current.map((item) =>
+          item.id === contact.id ? response.contact : { ...item, is_primary: false },
+        ),
+      );
+      setNotice("Primary decision maker updated.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not mark that contact as primary.");
+    } finally {
+      setDecisionMakerSaving(false);
+    }
+  }
+
+  async function handleCopyEmail(email?: string | null) {
+    if (!email) return;
+    await navigator.clipboard.writeText(email);
+    setNotice("Email copied.");
   }
 
   async function handleDeleteRecord() {
@@ -1103,22 +1270,190 @@ export default function StaffHiringIntelligencePage() {
               </section>
 
               <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
-                <h2 className="text-base font-semibold text-hier-text">Contact details</h2>
-                <div className="mt-4 grid gap-3 text-sm text-hier-muted">
-                  <p><span className="block font-semibold text-hier-text">Best contact</span>{selectedRecord.contact_name || "-"}</p>
-                  <p><span className="block font-semibold text-hier-text">Role</span>{selectedRecord.contact_role || "-"}</p>
-                  <p><span className="block font-semibold text-hier-text">Email</span>{selectedRecord.contact_email || "-"}</p>
-                  <p><span className="block font-semibold text-hier-text">Phone</span>{selectedRecord.contact_phone || "-"}</p>
-                  {selectedRecord.contact_linkedin_url ? (
-                    <a
-                      href={externalUrl(selectedRecord.contact_linkedin_url)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold text-hier-primary"
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-base font-semibold text-hier-text">
+                      <Users className="h-4 w-4" />
+                      Decision Makers
+                    </h2>
+                    <p className="mt-1 text-sm text-hier-muted">
+                      Attached to this Hiring Intel signal.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleFindDecisionMakers()}
+                      disabled={decisionMakerSaving}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] bg-hier-primary px-3 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      LinkedIn profile
-                    </a>
-                  ) : null}
+                      {decisionMakerSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      Find
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDecisionMakerForm((current) => !current)}
+                      disabled={decisionMakerSaving}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border border-hier-border bg-white px-3 text-sm font-semibold text-hier-text disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {showDecisionMakerForm ? (
+                  <form className="mt-5 grid gap-3" onSubmit={handleCreateDecisionMaker}>
+                    <input
+                      required
+                      value={decisionMakerForm.contact_name}
+                      onChange={(event) => setDecisionMakerForm((current) => ({ ...current, contact_name: event.target.value }))}
+                      placeholder="Contact name"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={decisionMakerForm.contact_title}
+                      onChange={(event) => setDecisionMakerForm((current) => ({ ...current, contact_title: event.target.value }))}
+                      placeholder="Job title"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <select
+                      value={decisionMakerForm.contact_type}
+                      onChange={(event) => setDecisionMakerForm((current) => ({ ...current, contact_type: event.target.value }))}
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    >
+                      <option value="recruiter">Recruiter</option>
+                      <option value="hr">HR</option>
+                      <option value="talent_acquisition">Talent acquisition</option>
+                      <option value="hiring_manager">Hiring manager</option>
+                      <option value="operations_manager">Operations manager</option>
+                      <option value="store_manager">Store manager</option>
+                      <option value="general_manager">General manager</option>
+                      <option value="practice_manager">Practice manager</option>
+                      <option value="registered_manager">Registered manager</option>
+                      <option value="founder">Founder</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <input
+                      value={decisionMakerForm.email}
+                      onChange={(event) => setDecisionMakerForm((current) => ({ ...current, email: event.target.value }))}
+                      placeholder="Email"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={decisionMakerForm.phone}
+                      onChange={(event) => setDecisionMakerForm((current) => ({ ...current, phone: event.target.value }))}
+                      placeholder="Phone"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <input
+                      value={decisionMakerForm.linkedin_url}
+                      onChange={(event) => setDecisionMakerForm((current) => ({ ...current, linkedin_url: event.target.value }))}
+                      placeholder="LinkedIn URL"
+                      className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    />
+                    <label className="flex items-center gap-3 rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
+                      <input
+                        type="checkbox"
+                        checked={decisionMakerForm.is_primary}
+                        onChange={(event) => setDecisionMakerForm((current) => ({ ...current, is_primary: event.target.checked }))}
+                      />
+                      Mark as primary
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={decisionMakerSaving || !decisionMakerForm.contact_name.trim()}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {decisionMakerSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      Save contact
+                    </button>
+                  </form>
+                ) : null}
+
+                <div className="mt-5 grid gap-3">
+                  {loadingDecisionMakers ? (
+                    <div className="flex items-center gap-2 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading contacts...
+                    </div>
+                  ) : decisionMakers.length ? (
+                    decisionMakers.map((contact) => {
+                      const linkedinUrl = externalUrl(contact.linkedin_url);
+                      const sourceUrl = externalUrl(contact.source_url);
+                      return (
+                        <div key={contact.id} className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-hier-text">{contact.contact_name || "Unnamed contact"}</p>
+                                {contact.is_primary ? (
+                                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                                    Primary
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="mt-1 text-sm text-hier-muted">
+                                {contact.contact_title || "No title"} - {formatContactType(contact.contact_type)}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-hier-border bg-white px-2.5 py-1 text-xs font-semibold text-hier-text">
+                              {contact.confidence_score ?? 0}%
+                            </span>
+                          </div>
+                          <div className="mt-4 grid gap-2 text-sm text-hier-text">
+                            <p className="break-all"><span className="block font-semibold">Email</span>{contact.email || "-"}</p>
+                            <p><span className="block font-semibold">Phone</span>{contact.phone || "-"}</p>
+                            <p><span className="block font-semibold">Source</span>{formatContactType(contact.source_type)}</p>
+                          </div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleMarkPrimary(contact)}
+                              disabled={decisionMakerSaving || Boolean(contact.is_primary)}
+                              className="inline-flex h-9 items-center justify-center gap-2 rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                            >
+                              <Star className="h-3.5 w-3.5" />
+                              Primary
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleCopyEmail(contact.email)}
+                              disabled={!contact.email}
+                              className="inline-flex h-9 items-center justify-center gap-2 rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              Copy
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNotice("Outreach handoff is ready for the campaign flow integration.")}
+                              className="inline-flex h-9 items-center justify-center gap-2 rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text"
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                              Outreach
+                            </button>
+                            {linkedinUrl ? (
+                              <a href={linkedinUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                LinkedIn
+                              </a>
+                            ) : null}
+                            {sourceUrl ? (
+                              <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Source
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-[18px] border border-dashed border-hier-border bg-hier-panel p-5 text-sm text-hier-muted">
+                      No decision makers attached to this hiring signal yet.
+                    </div>
+                  )}
                 </div>
               </section>
 

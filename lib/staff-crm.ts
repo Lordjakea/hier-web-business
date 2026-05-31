@@ -439,6 +439,7 @@ export type StaffLeadContactSourceType =
 export type StaffLeadContact = {
   id: number;
   lead_id?: number | null;
+  intelligence_lead_id?: number | null;
   company_lead_id?: number | null;
   company_name?: string | null;
   contact_name?: string | null;
@@ -501,6 +502,12 @@ export type StaffHiringIntelligenceLead = {
   contact_confidence?: "high" | "medium" | "low" | string | null;
   hiring_signal_score?: number | null;
   intelligence_status?: "new" | "reviewed" | "approved" | "converted" | "ignored" | string | null;
+  enrichment_status?: "pending" | "running" | "enriched" | "partial" | "failed" | "skipped" | string | null;
+  enrichment_error?: string | null;
+  enriched_at?: string | null;
+  enrichment_attempts?: number | null;
+  lead_contacts?: StaffLeadContact[];
+  decision_maker_contacts?: StaffLeadContact[];
   source_count?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -875,6 +882,38 @@ export async function fetchStaffLeadContacts(leadId: number | string) {
   return apiFetch<{ ok: boolean; items: StaffLeadContact[] }>(
     `/api/staff/hiring-intel/leads/${leadId}/contacts`
   );
+}
+
+export async function fetchStaffHiringIntelligenceContacts(recordId: number | string) {
+  return apiFetch<{ ok: boolean; items: StaffLeadContact[] }>(
+    `/api/staff/hiring-intel/intelligence/${recordId}/contacts`
+  );
+}
+
+export async function enrichStaffHiringIntelligenceDecisionMakers(recordId: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    item?: StaffHiringIntelligenceLead;
+    items?: StaffLeadContact[];
+    contacts?: StaffLeadContact[];
+    message?: string;
+  }>(`/api/staff/hiring-intel/intelligence/${recordId}/enrich`, {
+    method: "POST",
+  });
+}
+
+export async function createStaffHiringIntelligenceContact(
+  recordId: number | string,
+  payload: StaffLeadContactPayload
+) {
+  return apiFetch<{
+    ok: boolean;
+    contact: StaffLeadContact;
+    item?: StaffHiringIntelligenceLead;
+  }>(`/api/staff/hiring-intel/intelligence/${recordId}/contacts`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function enrichStaffLeadDecisionMakers(leadId: number | string) {
