@@ -401,11 +401,84 @@ export type StaffLead = {
   owner_staff_user_id?: number | null;
   created_by_staff_user_id?: number | null;
   converted_user_id?: number | null;
+  enrichment_status?: "pending" | "running" | "enriched" | "partial" | "failed" | "skipped" | string | null;
+  enrichment_error?: string | null;
+  enriched_at?: string | null;
+  enrichment_attempts?: number | null;
+  lead_contacts?: StaffLeadContact[];
+  decision_maker_contacts?: StaffLeadContact[];
   notes?: StaffNote[];
   follow_ups?: StaffFollowUp[];
   created_at?: string | null;
   updated_at?: string | null;
 };
+
+export type StaffLeadContactType =
+  | "recruiter"
+  | "hr"
+  | "talent_acquisition"
+  | "hiring_manager"
+  | "operations_manager"
+  | "store_manager"
+  | "general_manager"
+  | "practice_manager"
+  | "registered_manager"
+  | "founder"
+  | "other"
+  | string;
+
+export type StaffLeadContactSourceType =
+  | "company_website"
+  | "linkedin"
+  | "job_post"
+  | "search_result"
+  | "manual"
+  | "inferred"
+  | string;
+
+export type StaffLeadContact = {
+  id: number;
+  lead_id?: number | null;
+  company_lead_id?: number | null;
+  company_name?: string | null;
+  contact_name?: string | null;
+  contact_title?: string | null;
+  contact_type?: StaffLeadContactType | null;
+  email?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  source_url?: string | null;
+  source_type?: StaffLeadContactSourceType | null;
+  confidence_score?: number | null;
+  email_confidence_score?: number | null;
+  is_primary?: boolean | null;
+  is_verified?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  last_checked_at?: string | null;
+  notes?: string | null;
+};
+
+export type StaffLeadContactPayload = Partial<
+  Pick<
+    StaffLeadContact,
+    | "company_name"
+    | "contact_name"
+    | "contact_title"
+    | "contact_type"
+    | "email"
+    | "phone"
+    | "linkedin_url"
+    | "source_url"
+    | "source_type"
+    | "confidence_score"
+    | "email_confidence_score"
+    | "is_primary"
+    | "is_verified"
+    | "last_checked_at"
+    | "notes"
+  >
+>;
 
 export type StaffHiringIntelligenceLead = {
   id: number;
@@ -796,6 +869,57 @@ export async function fetchStaffLeads(params?: {
 
 export async function fetchStaffLead(leadId: number | string) {
   return apiFetch<{ ok: boolean; lead: StaffLead }>(`/api/staff/leads/${leadId}`);
+}
+
+export async function fetchStaffLeadContacts(leadId: number | string) {
+  return apiFetch<{ ok: boolean; items: StaffLeadContact[] }>(
+    `/api/staff/hiring-intel/leads/${leadId}/contacts`
+  );
+}
+
+export async function enrichStaffLeadDecisionMakers(leadId: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    lead?: StaffLead;
+    items?: StaffLeadContact[];
+    contacts?: StaffLeadContact[];
+    message?: string;
+  }>(`/api/staff/hiring-intel/leads/${leadId}/enrich`, {
+    method: "POST",
+  });
+}
+
+export async function createStaffLeadContact(
+  leadId: number | string,
+  payload: StaffLeadContactPayload
+) {
+  return apiFetch<{ ok: boolean; contact: StaffLeadContact }>(
+    `/api/staff/hiring-intel/leads/${leadId}/contacts`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function updateStaffLeadContact(
+  contactId: number | string,
+  payload: StaffLeadContactPayload
+) {
+  return apiFetch<{ ok: boolean; contact: StaffLeadContact }>(
+    `/api/staff/hiring-intel/contacts/${contactId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function deleteStaffLeadContact(contactId: number | string) {
+  return apiFetch<{ ok: boolean; deleted: boolean; contact_id: number | string }>(
+    `/api/staff/hiring-intel/contacts/${contactId}`,
+    { method: "DELETE" }
+  );
 }
 
 export async function fetchStaffHiringIntelligenceLeads(params?: {
