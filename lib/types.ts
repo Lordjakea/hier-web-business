@@ -69,6 +69,8 @@ export type ApplicantSummary = {
   strengths?: string[];
   flags?: string[];
   recommended_next_action?: string | null;
+  recommended_next_action_label?: string | null;
+  fit_label?: string | null;
   summary?: string | null;
 };
 

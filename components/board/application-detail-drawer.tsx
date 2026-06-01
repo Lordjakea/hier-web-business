@@ -754,7 +754,8 @@ export function ApplicationDetailDrawer({
                   <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-hier-muted">
                     Next action:{" "}
                     <span className="text-hier-text">
-                      {applicantSummary.recommended_next_action.replaceAll("_", " ")}
+                      {applicantSummary.recommended_next_action_label ||
+                        applicantSummary.recommended_next_action.replaceAll("_", " ")}
                     </span>
                   </p>
                 ) : null}
