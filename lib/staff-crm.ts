@@ -1230,7 +1230,7 @@ export async function updateStaffHiringIntelligenceNote(
     method: "PATCH",
     body: JSON.stringify({
       note,
-      entity_type: "hiring_intelligence_lead",
+      entity_type: "staff_hiring_intelligence_lead",
       entity_id: id,
     }),
   });
