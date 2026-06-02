@@ -202,11 +202,8 @@ export function CallHistory(props: CallHistoryProps) {
   const actionableItems = items.filter(
     (call) => !(call.outcome || "").trim() && !(call.notes || "").trim()
   );
-  const historyItems = items.filter(
-    (call) => (call.outcome || "").trim() || (call.notes || "").trim()
-  );
 
-  function renderCall(call: CallActivity, isOpen: boolean) {
+  function renderCall(call: CallActivity) {
     const edit = edits[call.id] || { outcome: call.outcome || "", notes: call.notes || "" };
     const saveError = saveErrorByCallId[call.id];
 
@@ -227,15 +224,9 @@ export function CallHistory(props: CallHistoryProps) {
                 {fmtDuration(call.duration_seconds)}
               </span>
             ) : null}
-            {isOpen ? (
-              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                Needs notes
-              </span>
-            ) : (
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                Saved
-              </span>
-            )}
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+              Needs notes
+            </span>
           </div>
         </div>
 
@@ -289,9 +280,7 @@ export function CallHistory(props: CallHistoryProps) {
               ? "Saving..."
               : savedCallId === call.id
                 ? "Saved"
-                : isOpen
-                  ? "Save call"
-                  : "Update call"}
+                : "Save call"}
           </button>
           {savedCallId === call.id ? (
             <p className="text-xs font-semibold text-emerald-700">Saved to account history.</p>
@@ -336,37 +325,13 @@ export function CallHistory(props: CallHistoryProps) {
         </p>
       ) : null}
 
-      {!loading && !error && !items.length ? (
-        <p className="mt-3 text-sm text-hier-muted">No call history yet.</p>
+      {!loading && !error && !actionableItems.length ? (
+        <p className="mt-3 text-sm text-hier-muted">No open call actions.</p>
       ) : null}
 
-      {items.length ? (
-        <div className="mt-4 space-y-5">
-          <div>
-            <h3 className="text-sm font-semibold text-hier-text">Open call actions</h3>
-            {actionableItems.length ? (
-              <div className="mt-3 space-y-4">
-                {actionableItems.map((call) => renderCall(call, true))}
-              </div>
-            ) : (
-              <p className="mt-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
-                No open call actions.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-hier-text">Previous calls</h3>
-            {historyItems.length ? (
-              <div className="mt-3 space-y-4">
-                {historyItems.map((call) => renderCall(call, false))}
-              </div>
-            ) : (
-              <p className="mt-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
-                No previous calls saved yet.
-              </p>
-            )}
-          </div>
+      {actionableItems.length ? (
+        <div className="mt-4 space-y-4">
+          {actionableItems.map((call) => renderCall(call))}
         </div>
       ) : null}
     </section>
