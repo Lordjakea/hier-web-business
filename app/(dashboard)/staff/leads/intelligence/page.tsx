@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Loader2,
   Mail,
+  MessageSquarePlus,
   Plus,
   RefreshCw,
   Search,
@@ -26,6 +27,7 @@ import {
   approveStaffHiringIntelligenceLead,
   createStaffHiringIntelligenceContact,
   createStaffHiringIntelligenceDiscoveryQuery,
+  createStaffHiringIntelligenceNote,
   convertStaffHiringIntelligenceLeadToLead,
   createStaffHiringIntelligenceSource,
   deleteStaffHiringIntelligenceLead,
@@ -48,6 +50,7 @@ import {
   type StaffHiringIntelligenceLead,
   type StaffHiringIntelligenceSearchUsage,
   type StaffHiringIntelligenceSource,
+  updateStaffHiringIntelligenceNote,
 } from "@/lib/staff-crm";
 
 function formatDate(value?: string | null) {
@@ -59,6 +62,20 @@ function formatDate(value?: string | null) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  }).format(date);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(date);
 }
 
@@ -225,6 +242,10 @@ export default function StaffHiringIntelligencePage() {
   const [decisionMakerForm, setDecisionMakerForm] = useState(blankDecisionMakerForm);
   const [showEmployerForm, setShowEmployerForm] = useState(false);
   const [employerForm, setEmployerForm] = useState(blankEmployerForm);
+  const [note, setNote] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNote, setEditingNote] = useState("");
+  const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
   const [sourceForm, setSourceForm] = useState(blankSourceForm);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [sourceEditForm, setSourceEditForm] = useState(blankSourceForm);
@@ -356,6 +377,9 @@ export default function StaffHiringIntelligencePage() {
     void loadDecisionMakers(selectedRecord);
     setShowDecisionMakerForm(false);
     setDecisionMakerForm(blankDecisionMakerForm());
+    setNote("");
+    setEditingNoteId(null);
+    setEditingNote("");
   }, [loadDecisionMakers, selectedRecord]);
 
   useEffect(() => {
@@ -737,6 +761,79 @@ export default function StaffHiringIntelligencePage() {
       setError(caughtError instanceof Error ? caughtError.message : "Could not mark that contact as primary.");
     } finally {
       setDecisionMakerSaving(false);
+    }
+  }
+
+  async function handleAddNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedRecord || !note.trim()) return;
+
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await createStaffHiringIntelligenceNote(selectedRecord.id, note.trim());
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === selectedRecord.id
+            ? response.item || {
+                ...record,
+                notes: [response.note, ...(record.notes || [])],
+              }
+            : record,
+        ),
+      );
+      setNote("");
+      setNotice("Note added to this hiring signal.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not add note.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEditNote(noteId: number, value: string) {
+    setEditingNoteId(noteId);
+    setEditingNote(value);
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null);
+    setEditingNote("");
+  }
+
+  async function handleSaveNoteEdit(noteId: number) {
+    if (!selectedRecord || !editingNote.trim()) return;
+
+    setSavingNoteId(noteId);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await updateStaffHiringIntelligenceNote(
+        selectedRecord.id,
+        noteId,
+        editingNote.trim(),
+      );
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === selectedRecord.id
+            ? response.item || {
+                ...record,
+                notes: (record.notes || []).map((item) =>
+                  item.id === noteId ? response.note : item,
+                ),
+              }
+            : record,
+        ),
+      );
+      cancelEditNote();
+      setNotice("Note updated.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not update note.");
+    } finally {
+      setSavingNoteId(null);
     }
   }
 
@@ -1282,52 +1379,64 @@ export default function StaffHiringIntelligencePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-hier-border">
-                  {records.map((record) => (
-                    <tr
-                      key={record.id}
-                      onClick={() => setSelectedRecordId(record.id)}
-                      className={`cursor-pointer transition ${
-                        selectedRecord?.id === record.id ? "bg-hier-soft" : "hover:bg-hier-panel"
-                      }`}
-                    >
-                      <td className="px-4 py-4">
-                        <p className="font-semibold text-hier-text">{displayEmployer(record)}</p>
-                        <p className="mt-1 text-xs text-hier-muted">
-                          {needsEmployerReview(record) ? "Needs review" : "Ready for lead"}
-                        </p>
-                      </td>
-                      <td className="px-4 py-4 text-hier-text">{record.job_title || "-"}</td>
-                      <td className="px-4 py-4 text-hier-muted">{record.job_location || "-"}</td>
-                      <td className="px-4 py-4 text-hier-muted">
-                        <p>{displaySource(record)}</p>
-                        <p className="mt-1 text-xs">{record.raw_company_name || record.company_name || "-"}</p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-full border border-hier-border bg-white px-2.5 py-1 text-xs font-semibold text-hier-text">
-                          {formatStatus(record.employer_resolution_status)}
-                        </span>
-                        <p className="mt-1 text-xs text-hier-muted">
-                          {formatScore(record.employer_resolution_confidence)}%
-                        </p>
-                      </td>
-                      <td className="px-4 py-4 text-hier-muted">
-                        <p>{formatDate(record.job_posted_at)}</p>
-                        <p className="mt-1 text-xs">{formatDate(record.job_detected_at)}</p>
-                      </td>
-                      <td className="px-4 py-4 text-hier-muted">
-                        <p className="font-medium text-hier-text">{record.contact_name || "-"}</p>
-                        <p className="mt-1 text-xs">{record.contact_role || record.contact_email || "-"}</p>
-                      </td>
-                      <td className="px-4 py-4 font-semibold text-hier-text">
-                        {formatScore(record.hiring_signal_score)}
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-full border border-hier-border bg-hier-panel px-2.5 py-1 text-xs font-semibold text-hier-muted">
-                          {formatStatus(record.intelligence_status)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {records.map((record) => {
+                    const isSelected = selectedRecord?.id === record.id;
+                    const primaryTextClass = isSelected ? "text-white" : "text-hier-text";
+                    const secondaryTextClass = isSelected ? "text-white/80" : "text-hier-muted";
+                    const badgeClass = isSelected
+                      ? "border-white/30 bg-white/15 text-white"
+                      : "border-hier-border bg-white text-hier-text";
+                    const statusBadgeClass = isSelected
+                      ? "border-white/30 bg-white/15 text-white"
+                      : "border-hier-border bg-hier-panel text-hier-muted";
+
+                    return (
+                      <tr
+                        key={record.id}
+                        onClick={() => setSelectedRecordId(record.id)}
+                        className={`cursor-pointer transition ${
+                          isSelected ? "bg-hier-primary" : "hover:bg-hier-panel"
+                        }`}
+                      >
+                        <td className="px-4 py-4">
+                          <p className={`font-semibold ${primaryTextClass}`}>{displayEmployer(record)}</p>
+                          <p className={`mt-1 text-xs ${secondaryTextClass}`}>
+                            {needsEmployerReview(record) ? "Needs review" : "Ready for lead"}
+                          </p>
+                        </td>
+                        <td className={`px-4 py-4 ${primaryTextClass}`}>{record.job_title || "-"}</td>
+                        <td className={`px-4 py-4 ${secondaryTextClass}`}>{record.job_location || "-"}</td>
+                        <td className={`px-4 py-4 ${secondaryTextClass}`}>
+                          <p>{displaySource(record)}</p>
+                          <p className="mt-1 text-xs">{record.raw_company_name || record.company_name || "-"}</p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
+                            {formatStatus(record.employer_resolution_status)}
+                          </span>
+                          <p className={`mt-1 text-xs ${secondaryTextClass}`}>
+                            {formatScore(record.employer_resolution_confidence)}%
+                          </p>
+                        </td>
+                        <td className={`px-4 py-4 ${secondaryTextClass}`}>
+                          <p>{formatDate(record.job_posted_at)}</p>
+                          <p className="mt-1 text-xs">{formatDate(record.job_detected_at)}</p>
+                        </td>
+                        <td className={`px-4 py-4 ${secondaryTextClass}`}>
+                          <p className={`font-medium ${primaryTextClass}`}>{record.contact_name || "-"}</p>
+                          <p className="mt-1 text-xs">{record.contact_role || record.contact_email || "-"}</p>
+                        </td>
+                        <td className={`px-4 py-4 font-semibold ${primaryTextClass}`}>
+                          {formatScore(record.hiring_signal_score)}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClass}`}>
+                            {formatStatus(record.intelligence_status)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1672,6 +1781,89 @@ export default function StaffHiringIntelligencePage() {
                   ) : (
                     <div className="rounded-[18px] border border-dashed border-hier-border bg-hier-panel p-5 text-sm text-hier-muted">
                       No decision makers attached to this hiring signal yet.
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-hier-text">
+                  <MessageSquarePlus className="h-4 w-4" />
+                  Notes
+                </h2>
+                <form className="mt-4 space-y-3" onSubmit={handleAddNote}>
+                  <textarea
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    rows={4}
+                    className="w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                    placeholder="Add hiring intel note"
+                  />
+                  <button
+                    type="submit"
+                    disabled={saving || !note.trim()}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    Add note
+                  </button>
+                </form>
+                <div className="mt-4 space-y-2">
+                  {selectedRecord.notes?.length ? (
+                    selectedRecord.notes.map((item) => (
+                      <div key={item.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
+                        {editingNoteId === item.id ? (
+                          <div className="space-y-3">
+                            <textarea
+                              value={editingNote}
+                              onChange={(event) => setEditingNote(event.target.value)}
+                              rows={4}
+                              className="w-full resize-none rounded-[16px] border border-hier-border bg-white p-3 text-sm outline-none focus:border-hier-primary"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                disabled={savingNoteId === item.id || !editingNote.trim()}
+                                onClick={() => void handleSaveNoteEdit(item.id)}
+                                className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-[14px] bg-hier-primary px-3 text-xs font-semibold text-white disabled:opacity-50"
+                              >
+                                {savingNoteId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingNoteId === item.id}
+                                onClick={cancelEditNote}
+                                className="inline-flex h-9 flex-1 items-center justify-center rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="whitespace-pre-wrap">{item.note}</p>
+                              <button
+                                type="button"
+                                onClick={() => startEditNote(item.id, item.note)}
+                                className="rounded-xl border border-hier-border bg-white p-1.5 text-hier-muted transition hover:bg-hier-soft hover:text-hier-text"
+                                aria-label="Edit note"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <p className="mt-2 text-xs text-hier-muted">
+                              {item.author_name ? `${item.author_name} - ` : null}
+                              {formatDateTime(item.created_at)}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-[18px] border border-dashed border-hier-border bg-hier-panel p-5 text-sm text-hier-muted">
+                      No notes saved for this hiring signal yet.
                     </div>
                   )}
                 </div>

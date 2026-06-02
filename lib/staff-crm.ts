@@ -541,6 +541,7 @@ export type StaffHiringIntelligenceLead = {
   enrichment_attempts?: number | null;
   lead_contacts?: StaffLeadContact[];
   decision_maker_contacts?: StaffLeadContact[];
+  notes?: StaffNote[];
   source_count?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -1202,6 +1203,36 @@ export async function convertStaffHiringIntelligenceLeadToLead(id: number | stri
     lead?: StaffLead;
   }>(`/api/staff/leads/intelligence/${id}/convert-to-lead`, {
     method: "POST",
+  });
+}
+
+export async function createStaffHiringIntelligenceNote(id: number | string, note: string) {
+  return apiFetch<{
+    ok: boolean;
+    note: StaffNote;
+    item?: StaffHiringIntelligenceLead;
+  }>(`/api/staff/hiring-intel/intelligence/${id}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export async function updateStaffHiringIntelligenceNote(
+  id: number | string,
+  noteId: number | string,
+  note: string
+) {
+  return apiFetch<{
+    ok: boolean;
+    note: StaffNote;
+    item?: StaffHiringIntelligenceLead;
+  }>(`/api/staff/notes/${noteId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      note,
+      entity_type: "hiring_intelligence",
+      entity_id: id,
+    }),
   });
 }
 
