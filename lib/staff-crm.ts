@@ -1299,10 +1299,10 @@ export async function updateStaffLeadNote(
   note: string
 ) {
   return apiFetch<{ ok: boolean; note: StaffNote }>(
-    `/api/staff/leads/${leadId}/notes/${noteId}`,
+    `/api/staff/notes/${noteId}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note, entity_type: "lead", entity_id: leadId }),
     }
   );
 }
@@ -1372,10 +1372,15 @@ export async function updateStaffAccountNote(
   mentionedStaffUserIds: Array<number | string> = []
 ) {
   return apiFetch<{ ok: boolean; note: StaffNote }>(
-    `/api/staff/accounts/${userId}/notes/${noteId}`,
+    `/api/staff/notes/${noteId}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ note, mentioned_staff_user_ids: mentionedStaffUserIds }),
+      body: JSON.stringify({
+        note,
+        entity_type: "account",
+        entity_id: userId,
+        mentioned_staff_user_ids: mentionedStaffUserIds,
+      }),
     }
   );
 }
