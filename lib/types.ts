@@ -408,6 +408,8 @@ export type BillingAccount = {
   recruiter_seat_price_id?: string | null;
   recruiter_seat_price_monthly?: number | null;
   recruiter_seat_price_currency?: string | null;
+  package_addons?: BillingPackageAddon[];
+  active_package_addons?: string[];
   plan?: BillingPlan | null;
   subscription?: BillingSubscription | null;
   created_at?: string | null;
@@ -432,8 +434,24 @@ export type BillingStatusResponse = {
   account?: BillingAccount | null;
   plan?: BillingPlan | null;
   subscription?: BillingSubscription | null;
+  package_addons?: BillingPackageAddon[];
+  active_package_addons?: string[];
   flags?: BillingFlags;
   generated_at?: string | null;
+};
+
+export type BillingPackageAddon = {
+  code: string;
+  name?: string | null;
+  description?: string | null;
+  price_monthly?: number | null;
+  currency?: string | null;
+  stripe_price_id?: string | null;
+  stripe_subscription_item_id?: string | null;
+  is_active?: boolean;
+  enabled?: boolean;
+  quantity?: number | null;
+  metadata?: Record<string, unknown>;
 };
 
 export type BillingOverviewResponse = {
@@ -464,6 +482,8 @@ export type BillingOverviewResponse = {
     recruiter_seat_price_id?: string | null;
     recruiter_seat_price_monthly?: number | null;
     recruiter_seat_price_currency?: string | null;
+    package_addons?: BillingPackageAddon[];
+    active_package_addons?: string[];
     pricing_selected_at?: string | null;
     flags?: BillingFlags;
   };
@@ -516,6 +536,8 @@ export type BillingMutationResponse = {
   account?: BillingAccount | null;
   subscription?: BillingSubscription | null;
   plan?: BillingPlan | null;
+  package_addons?: BillingPackageAddon[];
+  active_package_addons?: string[];
   effective_at?: string | null;
   current_period_end?: string | null;
   mode?: string | null;

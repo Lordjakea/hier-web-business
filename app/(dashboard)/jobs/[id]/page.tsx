@@ -112,7 +112,7 @@ export default function JobDetailPage() {
                 ? e.message
                 : e instanceof Error
                   ? e.message
-                  : "Could not load Hier Intelligence."
+                  : "Could not load Hier AI."
             );
           } finally {
             setShortlistLoading(false);
@@ -226,7 +226,7 @@ export default function JobDetailPage() {
                   <div>
                     <div className="inline-flex items-center gap-2 rounded-full bg-hier-soft px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-hier-primary">
                       <Sparkles className="h-3.5 w-3.5" />
-                      Hier Intelligence
+                      Hier AI
                     </div>
 
                     <h3 className="mt-3 text-xl font-semibold text-hier-text">
@@ -234,7 +234,7 @@ export default function JobDetailPage() {
                     </h3>
 
                     <p className="mt-2 text-sm text-hier-muted">
-                      A premium Hier Intelligence spotlight showing the strongest current match.
+                      A premium Hier AI spotlight showing the strongest current match.
                     </p>
                   </div>
                 </div>
@@ -315,7 +315,7 @@ export default function JobDetailPage() {
                   </div>
                 ) : (
                   <div className="mt-5 rounded-[24px] border border-dashed border-hier-border bg-hier-panel px-4 py-5 text-sm text-hier-muted">
-                    No Hier Intelligence ranking is available for this role yet.
+                    No Hier AI ranking is available for this role yet.
                   </div>
                 )}
               </section>

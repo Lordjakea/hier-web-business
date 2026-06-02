@@ -92,6 +92,22 @@ export function updateRecruiterSeats(extraRecruiterSeats: number) {
   });
 }
 
+export function updateCustomPackage(
+  addonCodes: string[],
+  promoCode?: string,
+  addonQuantities?: Record<string, number>,
+) {
+  return apiFetch<BillingMutationResponse>("/api/business/billing/custom-package", {
+    method: "POST",
+    body: JSON.stringify({
+      addon_codes: addonCodes,
+      addon_quantities: addonQuantities,
+      promo_code: promoCode?.trim() || undefined,
+      proration_behavior: "always_invoice",
+    }),
+  });
+}
+
 export function createBoostCheckout(credits: number) {
   return apiFetch<{ checkout_url?: string }>(
     "/api/business/billing/boosts/checkout",

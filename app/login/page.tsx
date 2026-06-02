@@ -141,7 +141,7 @@ function LoginPageContent() {
                 Manage applicants with a cleaner, faster Kanban workflow.
               </h1>
               <p className="max-w-xl text-lg leading-8 text-hier-muted">
-                Hier Intelligence Applicant tracking, candidate onboarding and
+                Hier AI Applicant tracking, candidate onboarding and
                 Analytics Pro await inside.
               </p>
             </div>

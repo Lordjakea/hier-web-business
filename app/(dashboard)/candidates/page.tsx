@@ -790,7 +790,7 @@ export default function CandidatesPage() {
       });
 
       showToast(
-        `Hier Intelligence shortlisted ${result.updated || candidatesToMove.length} candidate${
+        `Hier AI shortlisted ${result.updated || candidatesToMove.length} candidate${
           (result.updated || candidatesToMove.length) === 1 ? "" : "s"
         }.`
       );
@@ -799,7 +799,7 @@ export default function CandidatesPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Could not run Hier Intelligence shortlist."
+          : "Could not run Hier AI shortlist."
       );
     } finally {
       setBulkBusy(false);
@@ -857,7 +857,7 @@ export default function CandidatesPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-hier-primary">
-              Hier Intelligence Shortlist
+              Hier AI Shortlist
             </p>
             <h3 className="mt-1 text-xl font-semibold text-hier-text">
               Find strong applicants still in Applied
@@ -959,7 +959,7 @@ export default function CandidatesPage() {
 
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${scoreMeta.badgeClass}`}
-                          title={scoreMeta.label || "Hier Intelligence Score"}
+                          title={scoreMeta.label || "Hier AI Score"}
                         >
                           HI {typeof score === "number" ? score.toFixed(1) : "—"}
                         </span>

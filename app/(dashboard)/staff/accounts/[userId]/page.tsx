@@ -16,7 +16,10 @@ import {
   Mail,
   MessageSquarePlus,
   MonitorCog,
+  Minus,
+  PackagePlus,
   Pencil,
+  Plus,
   StickyNote,
   Trash2,
   UserRound,
@@ -48,6 +51,7 @@ import {
   updateStaffAccountBilling,
   updateStaffAccountIdentity,
   updateStaffBusinessProfile,
+  updateStaffCustomPackage,
   verifyStaffAccountEmailCode,
   type StaffAccountDetail,
   type StaffBilling,
@@ -267,6 +271,10 @@ export default function StaffAccountDetailPage() {
   const [billingAction, setBillingAction] = useState<"checkout" | "portal" | "resume" | null>(null);
   const [billingPreview, setBillingPreview] = useState<StaffBillingPreview | null>(null);
   const [previewingBilling, setPreviewingBilling] = useState(false);
+  const [customPackageDraft, setCustomPackageDraft] = useState<string[]>([]);
+  const [customPackageQuantities, setCustomPackageQuantities] = useState<Record<string, number>>({});
+  const [customPackageReason, setCustomPackageReason] = useState("");
+  const [savingCustomPackage, setSavingCustomPackage] = useState(false);
   const [extraBoostForm, setExtraBoostForm] = useState({
     paid_boost_credits: "0",
     reason: "",
@@ -393,6 +401,31 @@ export default function StaffAccountDetailPage() {
   useEffect(() => {
     void loadAccount();
   }, [loadAccount]);
+
+  useEffect(() => {
+    const activeCodes = new Set<string>();
+    const quantities: Record<string, number> = {};
+
+    (billing?.active_package_addons || []).forEach((code) => {
+      activeCodes.add(String(code).toLowerCase());
+    });
+
+    (billing?.package_addons || []).forEach((addon) => {
+      const code = String(addon.code || "").toLowerCase();
+      if (!code) return;
+      if (addon.enabled || addon.is_active) activeCodes.add(code);
+      const quantity = Number(addon.quantity || 0);
+      if (Number.isFinite(quantity) && quantity > 0) {
+        quantities[code] = Math.max(1, Math.floor(quantity));
+      }
+    });
+
+    setCustomPackageDraft(Array.from(activeCodes));
+    setCustomPackageQuantities({
+      ...quantities,
+      extra_active_job_advert: quantities.extra_active_job_advert || 0,
+    });
+  }, [billing?.active_package_addons, billing?.package_addons]);
 
   useEffect(() => {
     function handleCallUpdated(event: Event) {
@@ -952,6 +985,64 @@ export default function StaffAccountDetailPage() {
     }
   }
 
+  function toggleCustomPackageAddon(code: string) {
+    if (code === "extra_active_job_advert") {
+      updateCustomPackageQuantity(code, Number(customPackageQuantities[code] || 0) > 0 ? 0 : 1);
+      return;
+    }
+
+    setCustomPackageDraft((current) =>
+      current.includes(code)
+        ? current.filter((item) => item !== code)
+        : [...current, code]
+    );
+  }
+
+  function updateCustomPackageQuantity(code: string, quantity: number) {
+    const nextQuantity = Math.max(0, Math.min(99, Math.floor(Number(quantity) || 0)));
+    setCustomPackageQuantities((current) => ({ ...current, [code]: nextQuantity }));
+    setCustomPackageDraft((current) => {
+      const withoutCode = current.filter((item) => item !== code);
+      return nextQuantity > 0 ? [...withoutCode, code] : withoutCode;
+    });
+  }
+
+  async function handleSaveCustomPackage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId) return;
+
+    const reason = customPackageReason.trim();
+    if (reason.length < 10) {
+      setError("Please enter a custom package change reason of at least 10 characters.");
+      return;
+    }
+
+    setSavingCustomPackage(true);
+    setError(null);
+    setActionMessage(null);
+
+    try {
+      const response = await updateStaffCustomPackage(userId, {
+        addon_codes: customPackageDraft,
+        addon_quantities: {
+          extra_active_job_advert: Number(customPackageQuantities.extra_active_job_advert || 0),
+        },
+        reason,
+      });
+      setBilling(response.billing);
+      setCustomPackageReason("");
+      setActionMessage(response.message || "Custom package updated.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update custom package."
+      );
+    } finally {
+      setSavingCustomPackage(false);
+    }
+  }
+
   async function handleCreateAccountFollowUp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!userId || !followUpForm.title.trim() || !followUpForm.due_at) return;
@@ -1053,6 +1144,31 @@ export default function StaffAccountDetailPage() {
   const isEndedStripeSubscription =
     canUseStripeBilling &&
     String(billing?.subscription_status || "").toLowerCase() === "canceled";
+  const customPackageCatalog = billing?.custom_package_catalog || [];
+  const planCode = String(billing?.plan_code || "starter").toLowerCase();
+  const planIncludedAddonCodes = new Set<string>(
+    planCode === "hier" || planCode === "hier_pro"
+      ? customPackageCatalog.map((addon) => addon.code)
+      : [
+          ...(planCode === "pro" ? ["analytics", "messaging", "candidate_library"] : []),
+        ]
+  );
+  const customPackageMonthlyTotal = customPackageDraft.reduce((total, code) => {
+    const addon = customPackageCatalog.find((item) => item.code === code);
+    if (!addon) return total;
+    const quantity = code === "extra_active_job_advert"
+      ? Math.max(1, Number(customPackageQuantities[code] || 0))
+      : 1;
+    return total + Number(addon.price_monthly || 0) * quantity;
+  }, 0);
+  const activePackageAddons = new Set(
+    [
+      ...(billing?.active_package_addons || []),
+      ...(billing?.package_addons || [])
+        .filter((addon) => addon.enabled || addon.is_active)
+        .map((addon) => addon.code),
+    ].map((code) => String(code).toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -1414,6 +1530,149 @@ export default function StaffAccountDetailPage() {
                       Manage in Stripe
                     </button>
                   </div>
+
+                  <form
+                    className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                    onSubmit={handleSaveCustomPackage}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="inline-flex items-center gap-2 text-sm font-semibold text-hier-text">
+                          <PackagePlus className="h-4 w-4 text-hier-primary" />
+                          Custom package add-ons
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-hier-muted">
+                          Add or remove billed features from this customer&apos;s Stripe subscription. Changes are invoiced immediately and sync to dashboard and app access.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-text shadow-sm">
+                        {formatCurrency(customPackageMonthlyTotal, {
+                          currency: "GBP",
+                          maximumFractionDigits: 2,
+                          minimumFractionDigits: 2,
+                        })}{" "}
+                        / month
+                      </span>
+                    </div>
+
+                    {customPackageCatalog.length ? (
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        {customPackageCatalog.map((addon) => {
+                          const selected = customPackageDraft.includes(addon.code);
+                          const active = activePackageAddons.has(addon.code);
+                          const included = planIncludedAddonCodes.has(addon.code);
+                          const quantity = addon.code === "extra_active_job_advert"
+                            ? Math.max(0, Number(customPackageQuantities[addon.code] || 0))
+                            : 1;
+                          const disabled = savingCustomPackage || !canUseStripeBilling || !addon.configured || (included && !active);
+
+                          return (
+                            <div
+                              key={addon.code}
+                              className={`rounded-[18px] border p-3 ${
+                                selected
+                                  ? "border-hier-primary bg-white"
+                                  : "border-hier-border bg-white/70"
+                              } ${disabled ? "opacity-60" : ""}`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-hier-text">{addon.name || addon.code}</p>
+                                  <p className="mt-1 text-xs leading-5 text-hier-muted">
+                                    {included
+                                      ? `Already included in the ${billing?.plan_code || "current"} plan.`
+                                      : addon.description}
+                                  </p>
+                                  {!addon.configured ? (
+                                    <p className="mt-1 text-xs font-semibold text-amber-700">
+                                      Stripe price missing.
+                                    </p>
+                                  ) : null}
+                                </div>
+
+                                {addon.quantity_enabled ? (
+                                  <div className="flex shrink-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateCustomPackageQuantity(addon.code, quantity - 1)}
+                                      disabled={disabled || quantity <= 0}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-[12px] border border-hier-border bg-white text-hier-text disabled:opacity-40"
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </button>
+                                    <span className="min-w-8 text-center text-sm font-semibold text-hier-text">
+                                      {quantity}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateCustomPackageQuantity(addon.code, quantity + 1)}
+                                      disabled={disabled}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-[12px] border border-hier-border bg-white text-hier-text disabled:opacity-40"
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleCustomPackageAddon(addon.code)}
+                                    disabled={disabled}
+                                    className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+                                      selected
+                                        ? "border-hier-primary bg-hier-primary text-white"
+                                        : "border-hier-border bg-white text-transparent"
+                                    } disabled:opacity-40`}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                                <span className="font-semibold text-hier-muted">
+                                  {active ? "Currently billed" : included ? "Plan included" : "Optional add-on"}
+                                </span>
+                                <span className="font-semibold text-hier-text">
+                                  {formatCurrency(Number(addon.price_monthly || 0), {
+                                    currency: addon.currency || "GBP",
+                                    maximumFractionDigits: 2,
+                                    minimumFractionDigits: 2,
+                                  })}
+                                  {addon.quantity_enabled ? " each" : ""}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="mt-4 rounded-[18px] border border-hier-border bg-white p-4 text-sm text-hier-muted">
+                        Custom package catalogue is not available yet.
+                      </p>
+                    )}
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+                      <input
+                        value={customPackageReason}
+                        onChange={(event) => setCustomPackageReason(event.target.value)}
+                        placeholder="Reason for changing custom package billing"
+                        disabled={savingCustomPackage || !canUseStripeBilling}
+                        className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm outline-none focus:border-hier-primary disabled:opacity-50"
+                      />
+                      <button
+                        type="submit"
+                        disabled={
+                          savingCustomPackage ||
+                          !canUseStripeBilling ||
+                          customPackageReason.trim().length < 10
+                        }
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {savingCustomPackage ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        Save package
+                      </button>
+                    </div>
+                  </form>
 
                   {billingPreview ? (
                     <div className="rounded-[22px] border border-hier-border bg-hier-panel p-4">

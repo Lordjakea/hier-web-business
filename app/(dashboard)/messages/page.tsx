@@ -15,6 +15,7 @@ import {
 import clsx from "clsx";
 import { PageHeader } from "@/components/ui/page-header";
 import { fetchBillingStatus } from "@/lib/business-billing";
+import { hasMessagingAccess } from "@/lib/billing-entitlements";
 import {
   fetchBusinessConversationMessages,
   fetchBusinessConversations,
@@ -64,16 +65,7 @@ export default function MessagesPage() {
   const listEndRef = useRef<HTMLDivElement | null>(null);
 
   const canUseMessaging = useMemo(() => {
-    const planCode = String(billingStatus?.account?.plan_code || "")
-      .trim()
-      .toLowerCase();
-
-    return (
-      Boolean(billingStatus?.plan?.has_messaging) ||
-      planCode === "pro" ||
-      planCode === "hier" ||
-      planCode === "hier_pro"
-    );
+    return hasMessagingAccess(billingStatus);
   }, [billingStatus]);
 
   const selectedConversation = useMemo(
@@ -306,17 +298,17 @@ export default function MessagesPage() {
               <Lock className="h-6 w-6" />
             </div>
             <h2 className="mt-5 text-2xl font-semibold text-hier-text">
-              Upgrade to Pro for messaging
+              Add messaging to your package
             </h2>
             <p className="mt-3 text-sm leading-6 text-hier-muted">
-              Direct business-to-candidate messaging is available on Pro and
-              Hier. Upgrade to unlock the inbox and conversation flow.
+              Direct business-to-candidate messaging can be added from Billing
+              or included through a plan that already has messaging.
             </p>
             <Link
               href="/billing"
               className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-hier-primary px-5 text-sm font-semibold text-white transition hover:opacity-90"
             >
-              View plans
+              View billing
             </Link>
           </div>
         </section>

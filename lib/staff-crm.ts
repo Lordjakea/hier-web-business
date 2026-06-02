@@ -130,6 +130,28 @@ export type StaffBilling = {
   paid_boost_credits_used?: number | null;
   paid_boost_credits_remaining?: number | null;
   boost_credits_reset_at?: string | null;
+  package_addons?: Array<{
+    code: string;
+    name?: string | null;
+    description?: string | null;
+    price_monthly?: number | null;
+    currency?: string | null;
+    enabled?: boolean;
+    is_active?: boolean;
+    quantity?: number | null;
+    metadata?: Record<string, any>;
+  }>;
+  active_package_addons?: string[];
+  custom_package_catalog?: Array<{
+    code: string;
+    name?: string | null;
+    description?: string | null;
+    price_monthly?: number | null;
+    currency?: string | null;
+    features?: string[];
+    quantity_enabled?: boolean;
+    configured?: boolean;
+  }>;
   coupons?: Array<{
     code?: string | null;
     promotion_code_id?: string | null;
@@ -865,6 +887,24 @@ export async function updateStaffAccountBilling(
     changes: Array<{ field: string; old_value: any; new_value: any }>;
   }>(`/api/staff/accounts/${userId}/billing`, {
     method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateStaffCustomPackage(
+  userId: number | string,
+  payload: {
+    addon_codes: string[];
+    addon_quantities?: Record<string, number>;
+    reason: string;
+  }
+) {
+  return apiFetch<{
+    ok: boolean;
+    message?: string;
+    billing: StaffBilling;
+  }>(`/api/staff/accounts/${userId}/billing-custom-package`, {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }
