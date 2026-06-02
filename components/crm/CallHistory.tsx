@@ -202,6 +202,109 @@ export function CallHistory(props: CallHistoryProps) {
   const actionableItems = items.filter(
     (call) => !(call.outcome || "").trim() && !(call.notes || "").trim()
   );
+  const historyItems = items.filter(
+    (call) => (call.outcome || "").trim() || (call.notes || "").trim()
+  );
+
+  function renderCall(call: CallActivity, isOpen: boolean) {
+    const edit = edits[call.id] || { outcome: call.outcome || "", notes: call.notes || "" };
+    const saveError = saveErrorByCallId[call.id];
+
+    return (
+      <article key={call.id} className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold capitalize text-hier-text">
+              {callLabel(call.direction)}
+            </p>
+            <p className="mt-1 text-sm text-hier-muted">
+              {fmtDateTime(call.started_at || call.created_at)}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {call.duration_seconds != null ? (
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-ink">
+                {fmtDuration(call.duration_seconds)}
+              </span>
+            ) : null}
+            {isOpen ? (
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                Needs notes
+              </span>
+            ) : (
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Saved
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 text-sm text-hier-muted sm:grid-cols-2">
+          <span>{call.phone_number || "No phone number"}</span>
+          <span className="capitalize">{callLabel(call.circleloop_event_type)}</span>
+        </div>
+
+        {call.recording_url ? (
+          <a
+            href={call.recording_url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-hier-primary"
+          >
+            Recording
+            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+          </a>
+        ) : null}
+
+        <div className="mt-4 grid gap-3">
+          <select
+            value={edit.outcome}
+            onChange={(event) => updateEdit(call.id, { outcome: event.target.value })}
+            className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary"
+          >
+            <option value="">Select call outcome</option>
+            {CALL_OUTCOME_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <textarea
+            value={edit.notes}
+            onChange={(event) => updateEdit(call.id, { notes: event.target.value })}
+            rows={3}
+            placeholder="Call notes"
+            className="resize-none rounded-[16px] border border-hier-border bg-white p-3 text-sm outline-none focus:border-hier-primary"
+          />
+          <button
+            type="button"
+            disabled={savingCallId === call.id}
+            onClick={() => saveCall(call)}
+            className={`inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] px-4 text-sm font-semibold text-white disabled:opacity-50 ${
+              savedCallId === call.id ? "bg-emerald-700" : "bg-hier-primary"
+            }`}
+          >
+            {savingCallId === call.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {savingCallId === call.id
+              ? "Saving..."
+              : savedCallId === call.id
+                ? "Saved"
+                : isOpen
+                  ? "Save call"
+                  : "Update call"}
+          </button>
+          {savedCallId === call.id ? (
+            <p className="text-xs font-semibold text-emerald-700">Saved to account history.</p>
+          ) : null}
+          {saveError ? (
+            <p className="rounded-[14px] border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              {saveError}
+            </p>
+          ) : null}
+        </div>
+      </article>
+    );
+  }
 
   return (
     <section className={props.embedded ? "" : "rounded-[28px] border border-hier-border bg-white p-5 shadow-card"}>
@@ -238,95 +341,32 @@ export function CallHistory(props: CallHistoryProps) {
       ) : null}
 
       {items.length ? (
-        <div className="mt-4 space-y-4">
-          {items.map((call) => {
-            const edit = edits[call.id] || { outcome: call.outcome || "", notes: call.notes || "" };
-            const saveError = saveErrorByCallId[call.id];
-            const isOpen = !(call.outcome || "").trim() && !(call.notes || "").trim();
+        <div className="mt-4 space-y-5">
+          <div>
+            <h3 className="text-sm font-semibold text-hier-text">Open call actions</h3>
+            {actionableItems.length ? (
+              <div className="mt-3 space-y-4">
+                {actionableItems.map((call) => renderCall(call, true))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                No open call actions.
+              </p>
+            )}
+          </div>
 
-            return (
-              <article key={call.id} className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold capitalize text-hier-text">
-                      {callLabel(call.direction)}
-                    </p>
-                    <p className="mt-1 text-sm text-hier-muted">
-                      {fmtDateTime(call.started_at || call.created_at)}
-                    </p>
-                  </div>
-                  {call.duration_seconds != null ? (
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-ink">
-                      {fmtDuration(call.duration_seconds)}
-                    </span>
-                  ) : null}
-                  {isOpen ? (
-                    <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                      Needs notes
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="mt-3 grid gap-2 text-sm text-hier-muted sm:grid-cols-2">
-                  <span>{call.phone_number || "No phone number"}</span>
-                  <span className="capitalize">{callLabel(call.circleloop_event_type)}</span>
-                </div>
-
-                {call.recording_url ? (
-                  <a
-                    href={call.recording_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-hier-primary"
-                  >
-                    Recording
-                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                  </a>
-                ) : null}
-
-                <div className="mt-4 grid gap-3">
-                  <select
-                    value={edit.outcome}
-                    onChange={(event) => updateEdit(call.id, { outcome: event.target.value })}
-                    className="h-10 rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary"
-                  >
-                    <option value="">Select call outcome</option>
-                    {CALL_OUTCOME_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                  <textarea
-                    value={edit.notes}
-                    onChange={(event) => updateEdit(call.id, { notes: event.target.value })}
-                    rows={3}
-                    placeholder="Call notes"
-                    className="resize-none rounded-[16px] border border-hier-border bg-white p-3 text-sm outline-none focus:border-hier-primary"
-                  />
-                  <button
-                    type="button"
-                    disabled={savingCallId === call.id}
-                    onClick={() => saveCall(call)}
-                    className={`inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] px-4 text-sm font-semibold text-white disabled:opacity-50 ${
-                      savedCallId === call.id ? "bg-emerald-700" : "bg-hier-primary"
-                    }`}
-                  >
-                    {savingCallId === call.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {savingCallId === call.id ? "Saving..." : savedCallId === call.id ? "Saved" : "Save call"}
-                  </button>
-                  {savedCallId === call.id ? (
-                    <p className="text-xs font-semibold text-emerald-700">Saved to account history.</p>
-                  ) : null}
-                  {saveError ? (
-                    <p className="rounded-[14px] border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                      {saveError}
-                    </p>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
+          <div>
+            <h3 className="text-sm font-semibold text-hier-text">Previous calls</h3>
+            {historyItems.length ? (
+              <div className="mt-3 space-y-4">
+                {historyItems.map((call) => renderCall(call, false))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                No previous calls saved yet.
+              </p>
+            )}
+          </div>
         </div>
       ) : null}
     </section>
