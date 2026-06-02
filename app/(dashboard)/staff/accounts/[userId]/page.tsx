@@ -50,6 +50,7 @@ import {
   updateStaffFollowUp,
   updateStaffAccountBilling,
   updateStaffAccountIdentity,
+  updateStaffAccountNote,
   updateStaffBusinessProfile,
   updateStaffCustomPackage,
   verifyStaffAccountEmailCode,
@@ -311,6 +312,9 @@ export default function StaffAccountDetailPage() {
   const [savingNote, setSavingNote] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
   const [note, setNote] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNote, setEditingNote] = useState("");
+  const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
   const [mentionedStaffUserIds, setMentionedStaffUserIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -596,6 +600,47 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setResendingVerification(false);
+    }
+  }
+
+  function startEditNote(noteId: number, value: string) {
+    setEditingNoteId(noteId);
+    setEditingNote(value);
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null);
+    setEditingNote("");
+  }
+
+  async function handleSaveNoteEdit(noteId: number) {
+    const trimmed = editingNote.trim();
+    if (!trimmed || !userId) return;
+
+    setSavingNoteId(noteId);
+    setError(null);
+
+    try {
+      const response = await updateStaffAccountNote(userId, noteId, trimmed);
+      setAccount((current) =>
+        current
+          ? {
+              ...current,
+              notes: (current.notes || []).map((item) =>
+                item.id === noteId ? response.note : item,
+              ),
+            }
+          : current
+      );
+      cancelEditNote();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update internal note."
+      );
+    } finally {
+      setSavingNoteId(null);
     }
   }
 
@@ -1960,15 +2005,58 @@ export default function StaffAccountDetailPage() {
                           key={item.id}
                           className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm"
                         >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="font-semibold text-hier-text">
-                              {item.author_name || item.author_email || "Hier staff"}
-                            </p>
-                            <p className="text-xs font-semibold text-hier-muted">
-                              {formatDate(item.created_at)}
-                            </p>
-                          </div>
-                          <p className="mt-2 whitespace-pre-wrap text-hier-muted">{item.note}</p>
+                          {editingNoteId === item.id ? (
+                            <div className="space-y-3">
+                              <textarea
+                                value={editingNote}
+                                onChange={(event) => setEditingNote(event.target.value)}
+                                rows={4}
+                                className="w-full resize-none rounded-[16px] border border-hier-border bg-white p-3 text-sm outline-none focus:border-hier-primary"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  disabled={savingNoteId === item.id || !editingNote.trim()}
+                                  onClick={() => void handleSaveNoteEdit(item.id)}
+                                  className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-[14px] bg-hier-primary px-3 text-xs font-semibold text-white disabled:opacity-50"
+                                >
+                                  {savingNoteId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={savingNoteId === item.id}
+                                  onClick={cancelEditNote}
+                                  className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="font-semibold text-hier-text">
+                                  {item.author_name || item.author_email || "Hier staff"}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs font-semibold text-hier-muted">
+                                    {formatDate(item.created_at)}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditNote(item.id, item.note)}
+                                    className="rounded-xl border border-hier-border bg-white p-1.5 text-hier-muted transition hover:bg-hier-soft hover:text-hier-text"
+                                    aria-label="Edit internal note"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                              <p className="mt-2 whitespace-pre-wrap text-hier-muted">{item.note}</p>
+                            </>
+                          )}
                         </article>
                       ))
                     ) : (

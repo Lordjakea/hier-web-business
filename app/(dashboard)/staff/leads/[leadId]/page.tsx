@@ -36,6 +36,7 @@ import {
   type StaffLeadContactPayload,
   updateStaffFollowUp,
   updateStaffLead,
+  updateStaffLeadNote,
   type StaffLead,
 } from "@/lib/staff-crm";
 
@@ -176,6 +177,9 @@ export default function StaffLeadDetailPage() {
   const [decisionMakerForm, setDecisionMakerForm] = useState(blankDecisionMakerForm);
   const [convertRole, setConvertRole] = useState<"business_user" | "user">("business_user");
   const [note, setNote] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNote, setEditingNote] = useState("");
+  const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
   const [followUp, setFollowUp] = useState({ title: "Call back", due_at: "", note: "" });
 
   const loadDecisionMakers = useCallback(async () => {
@@ -400,6 +404,42 @@ export default function StaffLeadDetailPage() {
       setError(caughtError instanceof Error ? caughtError.message : "Could not add note.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startEditNote(noteId: number, value: string) {
+    setEditingNoteId(noteId);
+    setEditingNote(value);
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null);
+    setEditingNote("");
+  }
+
+  async function handleSaveNoteEdit(noteId: number) {
+    if (!lead || !editingNote.trim()) return;
+
+    setSavingNoteId(noteId);
+    setError(null);
+
+    try {
+      const response = await updateStaffLeadNote(lead.id, noteId, editingNote.trim());
+      setLead((current) =>
+        current
+          ? {
+              ...current,
+              notes: (current.notes || []).map((item) =>
+                item.id === noteId ? response.note : item,
+              ),
+            }
+          : current,
+      );
+      cancelEditNote();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not update note.");
+    } finally {
+      setSavingNoteId(null);
     }
   }
 
@@ -1000,8 +1040,50 @@ export default function StaffLeadDetailPage() {
               <div className="mt-4 space-y-2">
                 {(lead.notes || []).map((item) => (
                   <div key={item.id} className="rounded-[18px] border border-hier-border bg-hier-panel p-3 text-sm text-hier-text">
-                    <p>{item.note}</p>
-                    <p className="mt-2 text-xs text-hier-text">{formatDateTime(item.created_at)}</p>
+                    {editingNoteId === item.id ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={editingNote}
+                          onChange={(event) => setEditingNote(event.target.value)}
+                          rows={4}
+                          className="w-full resize-none rounded-[16px] border border-hier-border bg-white p-3 text-sm outline-none focus:border-hier-primary"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={savingNoteId === item.id || !editingNote.trim()}
+                            onClick={() => void handleSaveNoteEdit(item.id)}
+                            className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-[14px] bg-hier-primary px-3 text-xs font-semibold text-white disabled:opacity-50"
+                          >
+                            {savingNoteId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingNoteId === item.id}
+                            onClick={cancelEditNote}
+                            className="inline-flex h-9 flex-1 items-center justify-center rounded-[14px] border border-hier-border bg-white px-3 text-xs font-semibold text-hier-text disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="whitespace-pre-wrap">{item.note}</p>
+                          <button
+                            type="button"
+                            onClick={() => startEditNote(item.id, item.note)}
+                            className="rounded-xl border border-hier-border bg-white p-1.5 text-hier-muted transition hover:bg-hier-soft hover:text-hier-text"
+                            aria-label="Edit note"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs text-hier-text">{formatDateTime(item.created_at)}</p>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>

@@ -1293,6 +1293,20 @@ export async function createStaffLeadNote(leadId: number | string, note: string)
   });
 }
 
+export async function updateStaffLeadNote(
+  leadId: number | string,
+  noteId: number | string,
+  note: string
+) {
+  return apiFetch<{ ok: boolean; note: StaffNote }>(
+    `/api/staff/leads/${leadId}/notes/${noteId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ note }),
+    }
+  );
+}
+
 export async function fetchStaffFollowUps(params?: {
   entity_type?: "lead" | "account" | string;
   entity_id?: number | string;
@@ -1346,6 +1360,21 @@ export async function createStaffAccountNote(
     `/api/staff/accounts/${userId}/notes`,
     {
       method: "POST",
+      body: JSON.stringify({ note, mentioned_staff_user_ids: mentionedStaffUserIds }),
+    }
+  );
+}
+
+export async function updateStaffAccountNote(
+  userId: number | string,
+  noteId: number | string,
+  note: string,
+  mentionedStaffUserIds: Array<number | string> = []
+) {
+  return apiFetch<{ ok: boolean; note: StaffNote }>(
+    `/api/staff/accounts/${userId}/notes/${noteId}`,
+    {
+      method: "PATCH",
       body: JSON.stringify({ note, mentioned_staff_user_ids: mentionedStaffUserIds }),
     }
   );

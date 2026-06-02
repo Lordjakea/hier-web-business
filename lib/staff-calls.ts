@@ -2,6 +2,7 @@ import { apiFetch } from "@/lib/api";
 
 export type CallActivity = {
   id: number;
+  account_user_id?: number | null;
   business_user_id?: number | null;
   recruiter_user_id?: number | null;
   candidate_user_id?: number | null;

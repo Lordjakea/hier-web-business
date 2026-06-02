@@ -57,6 +57,11 @@ function callLabel(value?: string | null) {
   return text ? text.replaceAll("_", " ") : "Call";
 }
 
+function sameId(left?: number | string | null, right?: number | string | null) {
+  if (left === null || left === undefined || right === null || right === undefined) return false;
+  return Number(left) === Number(right);
+}
+
 export function CallHistory(props: CallHistoryProps) {
   const [items, setItems] = useState<CallActivity[]>([]);
   const [edits, setEdits] = useState<Record<number, { outcome: string; notes: string }>>({});
@@ -80,7 +85,19 @@ export function CallHistory(props: CallHistoryProps) {
       const response = leadId
         ? await fetchStaffLeadCallActivities(leadId)
         : await fetchStaffAccountCallActivities(accountUserId as number);
-      const nextItems = Array.isArray(response.items) ? response.items : [];
+      const responseItems = Array.isArray(response.items) ? response.items : [];
+      const nextItems = responseItems.filter((call) => {
+        if (leadId) return sameId(call.staff_lead_id, leadId);
+        if (accountUserId) {
+          return (
+            sameId(call.account_user_id, accountUserId) ||
+            sameId(call.business_user_id, accountUserId) ||
+            sameId(call.recruiter_user_id, accountUserId) ||
+            sameId(call.candidate_user_id, accountUserId)
+          );
+        }
+        return false;
+      });
       setItems(nextItems);
       setEdits(
         nextItems.reduce<Record<number, { outcome: string; notes: string }>>((acc, item) => {
@@ -216,15 +233,16 @@ export function CallHistory(props: CallHistoryProps) {
         </p>
       ) : null}
 
-      {!loading && !error && !actionableItems.length ? (
-        <p className="mt-3 text-sm text-hier-muted">No open call actions.</p>
+      {!loading && !error && !items.length ? (
+        <p className="mt-3 text-sm text-hier-muted">No call history yet.</p>
       ) : null}
 
-      {actionableItems.length ? (
+      {items.length ? (
         <div className="mt-4 space-y-4">
-          {actionableItems.map((call) => {
+          {items.map((call) => {
             const edit = edits[call.id] || { outcome: call.outcome || "", notes: call.notes || "" };
             const saveError = saveErrorByCallId[call.id];
+            const isOpen = !(call.outcome || "").trim() && !(call.notes || "").trim();
 
             return (
               <article key={call.id} className="rounded-[20px] border border-hier-border bg-hier-panel p-4">
@@ -240,6 +258,11 @@ export function CallHistory(props: CallHistoryProps) {
                   {call.duration_seconds != null ? (
                     <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-ink">
                       {fmtDuration(call.duration_seconds)}
+                    </span>
+                  ) : null}
+                  {isOpen ? (
+                    <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      Needs notes
                     </span>
                   ) : null}
                 </div>
