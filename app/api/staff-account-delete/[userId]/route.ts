@@ -35,6 +35,10 @@ function isMissingStripeSubscriptionError(error: string) {
   );
 }
 
+function isStripeCancellationRequiredError(error: string) {
+  return error.toLowerCase().includes("stripe_subscription_cancellation_required");
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const { userId } = await context.params;
   const body = await request.json().catch(() => ({}));
@@ -94,6 +98,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (isMissingStripeSubscriptionError(lastError)) {
         lastError =
           "Stripe could not cancel the stored subscription because that subscription ID does not exist. Check the customer in Stripe for the active subscription, cancel it there, then retry account deletion.";
+      } else if (isStripeCancellationRequiredError(lastError)) {
+        lastError =
+          "Account deletion is still blocked by the backend because it requires Stripe cancellation during deletion. The dashboard already allows deletion without cancelling Stripe, but the backend delete endpoint needs the same policy update.";
       }
     } catch (caughtError) {
       lastError =

@@ -1364,9 +1364,10 @@ export default function StaffHiringIntelligencePage() {
             <div className="p-8 text-sm text-hier-muted">Loading hiring intelligence...</div>
           ) : records.length ? (
             <div className="overflow-x-auto">
-              <table className="min-w-[1120px] w-full text-left text-sm">
+              <table className="min-w-[1160px] w-full text-left text-sm">
                 <thead className="bg-hier-panel text-xs uppercase tracking-[0.12em] text-hier-muted">
                   <tr>
+                    <th className="w-16 px-4 py-3">#</th>
                     <th className="px-4 py-3">Resolved employer</th>
                     <th className="px-4 py-3">Job title</th>
                     <th className="px-4 py-3">Location</th>
@@ -1379,7 +1380,7 @@ export default function StaffHiringIntelligencePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-hier-border">
-                  {records.map((record) => {
+                  {records.map((record, index) => {
                     const isSelected = selectedRecord?.id === record.id;
                     const primaryTextClass = isSelected ? "text-white" : "text-hier-text";
                     const secondaryTextClass = isSelected ? "text-white/80" : "text-hier-muted";
@@ -1398,6 +1399,9 @@ export default function StaffHiringIntelligencePage() {
                           isSelected ? "bg-hier-primary" : "hover:bg-hier-panel"
                         }`}
                       >
+                        <td className={`px-4 py-4 text-sm font-semibold tabular-nums ${secondaryTextClass}`}>
+                          {index + 1}
+                        </td>
                         <td className="px-4 py-4">
                           <p className={`font-semibold ${primaryTextClass}`}>{displayEmployer(record)}</p>
                           <p className={`mt-1 text-xs ${secondaryTextClass}`}>
