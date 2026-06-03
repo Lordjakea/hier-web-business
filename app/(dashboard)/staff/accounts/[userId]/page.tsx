@@ -334,7 +334,7 @@ export default function StaffAccountDetailPage() {
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteConfirmed, setDeleteConfirmed] = useState(false);
-  const [cancelStripeOnDelete, setCancelStripeOnDelete] = useState(true);
+  const [cancelStripeOnDelete, setCancelStripeOnDelete] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
 
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -1191,6 +1191,9 @@ export default function StaffAccountDetailPage() {
     ["canceled", "cancelled", "incomplete_expired"].includes(
       String(billing?.subscription_status || "").toLowerCase()
     );
+  const isStripeCancellationAlreadyHandled =
+    isEndedStripeSubscription ||
+    Boolean(billing?.subscription_cancel_at_period_end);
   const customPackageCatalog = billing?.custom_package_catalog || [];
   const planCode = String(billing?.plan_code || "starter").toLowerCase();
   const planIncludedAddonCodes = new Set<string>(
@@ -1246,10 +1249,6 @@ export default function StaffAccountDetailPage() {
   const Icon =
     account.account_type === "business" ? BriefcaseBusiness : UserRound;
 
-  const requiresStripeCancellationOnDelete =
-    account.account_type === "business" &&
-    !isAppleManagedBilling &&
-    !isEndedStripeSubscription;
   const recentApplications = account.recent_applications || [];
 
   const businessProfileRows: Array<[string, string, unknown]> = [
@@ -2294,7 +2293,7 @@ export default function StaffAccountDetailPage() {
                   setShowDeleteAccount(true);
                   setDeleteReason("");
                   setDeleteConfirmed(false);
-                  setCancelStripeOnDelete(requiresStripeCancellationOnDelete);
+                  setCancelStripeOnDelete(false);
                 }}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[20px] border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-800 transition hover:bg-red-100"
               >
@@ -2610,7 +2609,7 @@ export default function StaffAccountDetailPage() {
                   setShowDeleteAccount(false);
                   setDeleteReason("");
                   setDeleteConfirmed(false);
-                  setCancelStripeOnDelete(requiresStripeCancellationOnDelete);
+                  setCancelStripeOnDelete(false);
                 }}
                 className="rounded-2xl border border-hier-border bg-white p-2 text-hier-muted hover:text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -2652,13 +2651,13 @@ export default function StaffAccountDetailPage() {
                     disabled={
                       deletingAccount ||
                       isAppleManagedBilling ||
-                      isEndedStripeSubscription
+                      isStripeCancellationAlreadyHandled
                     }
                     className="mt-1"
                   />
-                  {isEndedStripeSubscription
-                    ? "Stripe subscription is already ended; delete without cancelling Stripe again."
-                    : "Cancel the Stripe subscription as part of this deletion."}
+                  {isStripeCancellationAlreadyHandled
+                    ? "Stripe subscription is already cancelled or scheduled to cancel; delete without cancelling Stripe again."
+                    : "Also cancel the Stripe subscription as part of this deletion."}
                 </label>
               ) : null}
 
@@ -2678,7 +2677,7 @@ export default function StaffAccountDetailPage() {
                   setShowDeleteAccount(false);
                   setDeleteReason("");
                   setDeleteConfirmed(false);
-                  setCancelStripeOnDelete(requiresStripeCancellationOnDelete);
+                  setCancelStripeOnDelete(false);
                 }}
                 className="inline-flex h-11 items-center justify-center rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -2690,7 +2689,6 @@ export default function StaffAccountDetailPage() {
                 disabled={
                   deleteReason.trim().length < 10 ||
                   !deleteConfirmed ||
-                  (requiresStripeCancellationOnDelete && !cancelStripeOnDelete) ||
                   isAppleManagedBilling ||
                   deletingAccount
                 }
