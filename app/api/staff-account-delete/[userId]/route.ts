@@ -26,6 +26,32 @@ async function readError(response: Response) {
   }
 }
 
+function isMissingStripeSubscriptionError(error: string) {
+  const normalizedError = error.toLowerCase();
+
+  return (
+    normalizedError.includes("unable_to_cancel_stripe_subscription") &&
+    normalizedError.includes("no such subscription")
+  );
+}
+
+async function requestAccountDeletion(
+  path: string,
+  headers: Headers,
+  body: {
+    reason: string;
+    confirm_delete: boolean;
+    cancel_stripe_subscription: boolean;
+  }
+) {
+  return fetch(resolveApiUrl(path), {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const { userId } = await context.params;
   const body = await request.json().catch(() => ({}));
@@ -60,16 +86,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   for (const path of paths) {
     try {
-      const response = await fetch(resolveApiUrl(path), {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          reason,
-          confirm_delete: confirmDelete,
-          cancel_stripe_subscription: cancelStripeSubscription,
-        }),
-        cache: "no-store",
-      });
+      const deleteBody = {
+        reason,
+        confirm_delete: confirmDelete,
+        cancel_stripe_subscription: cancelStripeSubscription,
+      };
+      const response = await requestAccountDeletion(path, headers, deleteBody);
 
       if (response.ok) {
         const contentType = response.headers.get("content-type") || "";
@@ -81,6 +103,34 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       lastError = await readError(response);
+
+      if (
+        cancelStripeSubscription &&
+        isMissingStripeSubscriptionError(lastError)
+      ) {
+        const retryResponse = await requestAccountDeletion(path, headers, {
+          ...deleteBody,
+          cancel_stripe_subscription: false,
+        });
+
+        if (retryResponse.ok) {
+          const contentType = retryResponse.headers.get("content-type") || "";
+          const payload = contentType.includes("application/json")
+            ? await retryResponse.json()
+            : { ok: true };
+
+          return NextResponse.json({
+            ...(typeof payload === "object" && payload !== null
+              ? payload
+              : { ok: true }),
+            warning:
+              "The account was deleted, but Stripe reported that the stored subscription ID does not exist. Check Stripe manually for any active subscription on this customer.",
+            stripe_cancellation_skipped: true,
+          });
+        }
+
+        lastError = await readError(retryResponse);
+      }
     } catch (caughtError) {
       lastError =
         caughtError instanceof Error ? caughtError.message : "Request failed";
