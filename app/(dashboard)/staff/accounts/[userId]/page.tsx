@@ -1188,7 +1188,9 @@ export default function StaffAccountDetailPage() {
     Boolean(billing?.subscription_cancel_at_period_end);
   const isEndedStripeSubscription =
     canUseStripeBilling &&
-    String(billing?.subscription_status || "").toLowerCase() === "canceled";
+    ["canceled", "cancelled", "incomplete_expired"].includes(
+      String(billing?.subscription_status || "").toLowerCase()
+    );
   const customPackageCatalog = billing?.custom_package_catalog || [];
   const planCode = String(billing?.plan_code || "starter").toLowerCase();
   const planIncludedAddonCodes = new Set<string>(
@@ -1245,7 +1247,9 @@ export default function StaffAccountDetailPage() {
     account.account_type === "business" ? BriefcaseBusiness : UserRound;
 
   const requiresStripeCancellationOnDelete =
-    account.account_type === "business" && !isAppleManagedBilling;
+    account.account_type === "business" &&
+    !isAppleManagedBilling &&
+    !isEndedStripeSubscription;
   const recentApplications = account.recent_applications || [];
 
   const businessProfileRows: Array<[string, string, unknown]> = [
@@ -2645,10 +2649,16 @@ export default function StaffAccountDetailPage() {
                     type="checkbox"
                     checked={cancelStripeOnDelete}
                     onChange={(event) => setCancelStripeOnDelete(event.target.checked)}
-                    disabled={deletingAccount || isAppleManagedBilling}
+                    disabled={
+                      deletingAccount ||
+                      isAppleManagedBilling ||
+                      isEndedStripeSubscription
+                    }
                     className="mt-1"
                   />
-                  Cancel the Stripe subscription as part of this deletion.
+                  {isEndedStripeSubscription
+                    ? "Stripe subscription is already ended; delete without cancelling Stripe again."
+                    : "Cancel the Stripe subscription as part of this deletion."}
                 </label>
               ) : null}
 
