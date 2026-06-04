@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   Lock,
@@ -11,12 +12,15 @@ import {
   RefreshCw,
   Search,
   Send,
+  UserPlus,
 } from "lucide-react";
 import clsx from "clsx";
 import { PageHeader } from "@/components/ui/page-header";
+import { fetchBusinessApplications } from "@/lib/business-applications";
 import { fetchBillingStatus } from "@/lib/business-billing";
 import { hasMessagingAccess } from "@/lib/billing-entitlements";
 import {
+  createBusinessConversation,
   fetchBusinessConversationMessages,
   fetchBusinessConversations,
   markBusinessConversationRead,
@@ -26,6 +30,7 @@ import {
   type BusinessConversation,
   type BusinessMessage,
 } from "@/lib/business-messages";
+import type { BusinessApplication } from "@/lib/types";
 
 function formatListTime(value?: string | null) {
   if (!value) return "";
@@ -49,10 +54,20 @@ function conversationName(conversation?: BusinessConversation | null) {
 }
 
 export default function MessagesPage() {
+  const searchParams = useSearchParams();
+  const initialConversationId = Number(searchParams.get("conversationId") || "") || null;
+  const initialApplicationId = Number(searchParams.get("applicationId") || "") || null;
+  const initialJobPostId = Number(searchParams.get("jobPostId") || "") || null;
+
   const [conversations, setConversations] = useState<BusinessConversation[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [messages, setMessages] = useState<BusinessMessage[]>([]);
   const [query, setQuery] = useState("");
+  const [candidateQuery, setCandidateQuery] = useState("");
+  const [candidatePickerOpen, setCandidatePickerOpen] = useState(false);
+  const [candidateOptions, setCandidateOptions] = useState<BusinessApplication[]>([]);
+  const [candidateOptionsLoading, setCandidateOptionsLoading] = useState(false);
+  const [startingApplicationId, setStartingApplicationId] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
@@ -63,6 +78,8 @@ export default function MessagesPage() {
   const [chatHeight, setChatHeight] = useState(720);
   const [error, setError] = useState<string | null>(null);
   const listEndRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToBottomRef = useRef(false);
+  const hasHandledInitialStartRef = useRef(false);
 
   const canUseMessaging = useMemo(() => {
     return hasMessagingAccess(billingStatus);
@@ -84,6 +101,24 @@ export default function MessagesPage() {
     });
   }, [conversations, query]);
 
+  const filteredCandidateOptions = useMemo(() => {
+    const needle = candidateQuery.trim().toLowerCase();
+
+    return candidateOptions.filter((application) => {
+      const candidateName = [
+        application.user?.display_name,
+        application.user?.full_name,
+        application.user?.email,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const role = String(application.job_post?.title || "").toLowerCase();
+
+      return !needle || candidateName.includes(needle) || role.includes(needle);
+    });
+  }, [candidateOptions, candidateQuery]);
+
   const loadConversations = useCallback(
     async (silent = false) => {
       if (billingLoading || !canUseMessaging) {
@@ -99,7 +134,13 @@ export default function MessagesPage() {
       try {
         const items = await fetchBusinessConversations();
         setConversations(items);
-        setSelectedId((current) => current || items[0]?.id || null);
+        setSelectedId((current) => {
+          if (current && items.some((item) => item.id === current)) return current;
+          if (initialConversationId && items.some((item) => item.id === initialConversationId)) {
+            return initialConversationId;
+          }
+          return current || items[0]?.id || null;
+        });
       } catch (caughtError) {
         if (!silent) {
           setError(
@@ -112,7 +153,7 @@ export default function MessagesPage() {
         if (!silent) setLoading(false);
       }
     },
-    [billingLoading, canUseMessaging],
+    [billingLoading, canUseMessaging, initialConversationId],
   );
 
   const loadThread = useCallback(
@@ -120,6 +161,7 @@ export default function MessagesPage() {
       if (!silent) setThreadLoading(true);
 
       try {
+        if (!silent) shouldScrollToBottomRef.current = true;
         const items = await fetchBusinessConversationMessages(conversationId);
         setMessages(items);
         await markBusinessConversationRead(conversationId);
@@ -187,8 +229,60 @@ export default function MessagesPage() {
   }, [loadThread, selectedId]);
 
   useEffect(() => {
+    if (!shouldScrollToBottomRef.current) return;
+    shouldScrollToBottomRef.current = false;
     listEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!candidatePickerOpen || candidateOptions.length) return;
+
+    let cancelled = false;
+
+    async function loadCandidates() {
+      setCandidateOptionsLoading(true);
+      try {
+        const response = await fetchBusinessApplications({
+          include_archived: true,
+          per_page: 100,
+        });
+        if (!cancelled) setCandidateOptions(response.items || []);
+      } catch (caughtError) {
+        if (!cancelled) {
+          setError(
+            caughtError instanceof Error
+              ? caughtError.message
+              : "Could not load candidates.",
+          );
+        }
+      } finally {
+        if (!cancelled) setCandidateOptionsLoading(false);
+      }
+    }
+
+    void loadCandidates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateOptions.length, candidatePickerOpen]);
+
+  useEffect(() => {
+    if (
+      hasHandledInitialStartRef.current ||
+      !canUseMessaging ||
+      !initialApplicationId ||
+      !initialJobPostId
+    ) {
+      return;
+    }
+
+    hasHandledInitialStartRef.current = true;
+    void handleStartConversation({
+      id: initialApplicationId,
+      job_post: { id: initialJobPostId },
+    } as BusinessApplication);
+  }, [canUseMessaging, initialApplicationId, initialJobPostId]);
 
   async function handleSend() {
     const body = draft.trim();
@@ -196,6 +290,7 @@ export default function MessagesPage() {
 
     try {
       setSending(true);
+      shouldScrollToBottomRef.current = true;
       const response = await sendBusinessConversationMessage(selectedId, body);
       if (response.message) {
         setMessages((current) => [...current, response.message as BusinessMessage]);
@@ -219,7 +314,7 @@ export default function MessagesPage() {
     if (!selectedConversation) return;
 
     const contact = selectedConversation.contact_status;
-    const paused = contact?.can_send === false && contact.reason !== "role_closed";
+    const paused = contact?.can_send === false;
 
     try {
       setContactBusy(true);
@@ -247,9 +342,51 @@ export default function MessagesPage() {
     }
   }
 
+  async function handleStartConversation(application: BusinessApplication) {
+    const applicationId = application.id;
+    const jobPostId = application.job_post?.id || application.job_post_id;
+
+    if (!applicationId || !jobPostId) {
+      setError("Could not start a conversation for that candidate.");
+      return;
+    }
+
+    setStartingApplicationId(applicationId);
+    setError(null);
+
+    try {
+      const response = await createBusinessConversation({
+        application_id: applicationId,
+        job_post_id: jobPostId,
+      });
+
+      const conversation = response.conversation;
+      if (conversation) {
+        setConversations((current) => {
+          const withoutExisting = current.filter((item) => item.id !== conversation.id);
+          return [conversation, ...withoutExisting];
+        });
+        setSelectedId(conversation.id);
+        setCandidatePickerOpen(false);
+        setCandidateQuery("");
+        shouldScrollToBottomRef.current = true;
+        await loadThread(conversation.id, false);
+      } else {
+        await loadConversations(false);
+      }
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not start this conversation.",
+      );
+    } finally {
+      setStartingApplicationId(null);
+    }
+  }
+
   const roleClosed = selectedConversation?.contact_status?.reason === "role_closed";
-  const contactPaused =
-    selectedConversation?.contact_status?.can_send === false && !roleClosed;
+  const contactPaused = selectedConversation?.contact_status?.can_send === false;
 
   return (
     <div className="mx-auto flex max-w-[1800px] flex-col gap-6">
@@ -259,6 +396,14 @@ export default function MessagesPage() {
         description="Send and receive candidate messages from the dashboard. Conversations stay in sync with the mobile app."
         action={
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={() => setCandidatePickerOpen((current) => !current)}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-hier-primary px-4 text-sm font-semibold text-white transition hover:opacity-95"
+            >
+              <UserPlus className="h-4 w-4" />
+              New message
+            </button>
             <label className="flex h-10 items-center gap-3 rounded-lg border border-hier-border bg-white px-4 text-sm font-semibold text-hier-ink">
               <span className="whitespace-nowrap">Chat size</span>
               <input
@@ -321,6 +466,76 @@ export default function MessagesPage() {
       >
         <aside className="flex min-h-0 flex-col border-b border-hier-border lg:border-b-0 lg:border-r">
           <div className="border-b border-hier-border p-4">
+            {candidatePickerOpen ? (
+              <div className="mb-4 rounded-lg border border-hier-border bg-white p-3 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-hier-text">
+                    Start a message
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setCandidatePickerOpen(false)}
+                    className="text-xs font-semibold text-hier-muted hover:text-hier-text"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-hier-border bg-hier-panel px-3">
+                  <Search className="h-4 w-4 text-hier-muted" />
+                  <input
+                    value={candidateQuery}
+                    onChange={(event) => setCandidateQuery(event.target.value)}
+                    placeholder="Search candidates"
+                    className="h-full min-w-0 flex-1 bg-transparent text-sm text-hier-text outline-none placeholder:text-hier-muted"
+                  />
+                </div>
+
+                <div className="mt-3 max-h-64 overflow-y-auto overscroll-contain">
+                  {candidateOptionsLoading ? (
+                    <div className="px-2 py-3 text-sm text-hier-muted">
+                      Loading candidates...
+                    </div>
+                  ) : filteredCandidateOptions.length ? (
+                    filteredCandidateOptions.map((application) => {
+                      const name =
+                        application.user?.display_name ||
+                        application.user?.full_name ||
+                        application.user?.email ||
+                        "Candidate";
+                      const busy = startingApplicationId === application.id;
+
+                      return (
+                        <button
+                          key={application.id}
+                          type="button"
+                          onClick={() => void handleStartConversation(application)}
+                          disabled={busy}
+                          className="flex w-full items-start justify-between gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-hier-panel disabled:opacity-60"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold text-hier-text">
+                              {name}
+                            </span>
+                            <span className="mt-1 block truncate text-xs text-hier-muted">
+                              {application.job_post?.title || "Application"}
+                            </span>
+                          </span>
+                          {busy ? (
+                            <RefreshCw className="mt-1 h-4 w-4 shrink-0 animate-spin text-hier-primary" />
+                          ) : null}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-2 py-3 text-sm text-hier-muted">
+                      No candidates match that search.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex h-11 items-center gap-2 rounded-lg border border-hier-border bg-hier-panel px-3">
               <Search className="h-4 w-4 text-hier-muted" />
               <input
@@ -364,10 +579,10 @@ export default function MessagesPage() {
                         </span>
                       </div>
                       <p className="mt-1 truncate text-xs text-hier-muted">
-                        {blocked
-                          ? conversation.contact_status?.reason === "role_closed"
-                            ? "Role closed"
-                            : "Contact paused"
+                        {blocked && conversation.contact_status?.reason !== "role_closed"
+                          ? "Contact paused"
+                          : conversation.contact_status?.reason === "role_closed"
+                            ? "Role filled"
                           : conversation.other_party?.headline || "Candidate conversation"}
                       </p>
                     </div>
@@ -400,39 +615,36 @@ export default function MessagesPage() {
                   </p>
                 </div>
 
-                {roleClosed ? (
-                  <span className="inline-flex h-10 items-center gap-2 rounded-lg border border-hier-border bg-hier-panel px-4 text-sm font-semibold text-hier-muted">
-                    <Lock className="h-4 w-4" />
-                    Role closed
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void handleContactToggle()}
-                    disabled={contactBusy}
-                    className={clsx(
-                      "inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition disabled:opacity-60",
-                      contactPaused
-                        ? "bg-hier-primary text-white hover:opacity-90"
-                        : "border border-hier-border bg-white text-hier-ink hover:bg-hier-panel",
-                    )}
-                  >
-                    {contactPaused ? (
-                      <Play className="h-4 w-4" />
-                    ) : (
-                      <Pause className="h-4 w-4" />
-                    )}
-                    {contactPaused ? "Resume contact" : "Pause contact"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => void handleContactToggle()}
+                  disabled={contactBusy}
+                  className={clsx(
+                    "inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition disabled:opacity-60",
+                    contactPaused
+                      ? "bg-hier-primary text-white hover:opacity-90"
+                      : "border border-hier-border bg-white text-hier-ink hover:bg-hier-panel",
+                  )}
+                >
+                  {contactPaused ? (
+                    <Play className="h-4 w-4" />
+                  ) : (
+                    <Pause className="h-4 w-4" />
+                  )}
+                  {contactPaused ? "Resume contact" : "Pause contact"}
+                </button>
               </div>
 
-              {selectedConversation.contact_status?.can_send === false ? (
+              {roleClosed && selectedConversation.contact_status?.can_send !== false ? (
+                <div className="flex items-center gap-2 border-b border-hier-border bg-hier-panel px-5 py-3 text-sm font-medium text-hier-muted">
+                  <MessageSquare className="h-4 w-4" />
+                  This role is filled, but this conversation can continue.
+                </div>
+              ) : selectedConversation.contact_status?.can_send === false ? (
                 <div className="flex items-center gap-2 border-b border-hier-border bg-hier-panel px-5 py-3 text-sm font-medium text-hier-muted">
                   {roleClosed ? <Lock className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
                   {roleClosed
-                    ? selectedConversation.contact_status.message ||
-                      "This role is closed and candidate replies have stopped."
+                    ? "This conversation was paused when the role was filled. Resume contact to continue."
                     : "Candidate replies are paused for this role."}
                 </div>
               ) : null}

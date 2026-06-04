@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Loader2,
   Mail,
+  MessageSquare,
   MapPin,
   Phone,
   Star,
@@ -276,6 +277,7 @@ export function ApplicationDetailDrawer({
   onClose,
   onSave,
   onOpenCv,
+  onStartMessage,
 }: {
   open: boolean;
   application: BusinessApplication | null;
@@ -293,6 +295,7 @@ export function ApplicationDetailDrawer({
     internal_note: string | null;
   }) => Promise<void> | void;
   onOpenCv: () => void;
+  onStartMessage?: () => void;
 }) {
   const [stage, setStage] = useState<ApplicationStage>("applied");
   const [rating, setRating] = useState<number>(0);
@@ -675,20 +678,41 @@ export function ApplicationDetailDrawer({
               ) : null}
 
               {application?.first_cv_download_url ? (
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCvModal(true);
+                      onOpenCv();
+                    }}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-[20px] border border-hier-border px-5 text-sm font-medium text-hier-ink transition hover:bg-hier-panel"
+                  >
+                    {cvPreviewLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ExternalLink className="h-4 w-4" />
+                    )}
+                    Open CV
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onStartMessage}
+                    disabled={!onStartMessage}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Message
+                  </button>
+                </div>
+              ) : onStartMessage ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowCvModal(true);
-                    onOpenCv();
-                  }}
-                  className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-[20px] border border-hier-border px-5 text-sm font-medium text-hier-ink transition hover:bg-hier-panel"
+                  onClick={onStartMessage}
+                  className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-[20px] bg-hier-primary px-5 text-sm font-semibold text-white transition hover:opacity-95"
                 >
-                  {cvPreviewLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ExternalLink className="h-4 w-4" />
-                  )}
-                  Open CV
+                  <MessageSquare className="h-4 w-4" />
+                  Message
                 </button>
               ) : null}
             </section>

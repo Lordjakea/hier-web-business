@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CandidateBoard } from "@/components/board/board-board";
 import { ApplicationDetailDrawer } from "@/components/board/application-detail-drawer";
 import { BoardToolbar } from "@/components/board/board-toolbar";
@@ -20,6 +20,7 @@ import {
   completeStartedCandidate,
 } from "@/lib/business-applications";
 import { startOnboarding } from "@/lib/business-onboarding";
+import { createBusinessConversation } from "@/lib/business-messages";
 import { resolveHIScore } from "@/lib/hi-score";
 import { boardColumns } from "@/lib/theme";
 import type {
@@ -38,6 +39,7 @@ function isClosedApplication(application: BusinessApplication) {
 }
 
 export default function CandidatesPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const initialJobId = Number(searchParams.get("jobId") || "") || null;
@@ -482,6 +484,35 @@ export default function CandidatesPage() {
 
   async function rejectSingleCandidate(applicationId: number) {
     await moveApplication(applicationId, "rejected" as ApplicationStage);
+  }
+
+  async function startMessageForApplication(application: BusinessApplication | null) {
+    if (!application?.id || !application.job_post?.id) {
+      setError("Could not start a message for this candidate.");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await createBusinessConversation({
+        application_id: application.id,
+        job_post_id: application.job_post.id,
+      });
+
+      const conversationId = response.conversation?.id;
+      router.push(
+        conversationId
+          ? `/messages?conversationId=${conversationId}`
+          : `/messages?applicationId=${application.id}&jobPostId=${application.job_post.id}`,
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not start this conversation.",
+      );
+    }
   }
 
   async function openCvPreviewForCard(application: BusinessApplication) {
@@ -1099,6 +1130,7 @@ export default function CandidatesPage() {
         }}
         onSave={saveDrawer}
         onOpenCv={openCvPreview}
+        onStartMessage={() => void startMessageForApplication(selectedApplication)}
       />
 
       {completionApplication ? (

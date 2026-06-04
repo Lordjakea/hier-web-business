@@ -199,13 +199,18 @@ function isEmployeeLike(item: BusinessOnboarding) {
 function isActiveItem(item: BusinessOnboarding) {
   if (isRemovedOrArchived(item.status)) return false;
   if (isEmployeeLike(item)) return false;
-  return applicationAllowsOnboarding(item.application?.stage || null);
+  return [
+    "in_progress",
+    "awaiting_candidate",
+    "awaiting_employer",
+    "compliant_pending_start",
+  ].includes(item.status || "");
 }
 
 function isInactiveItem(item: BusinessOnboarding) {
   if (isRemovedOrArchived(item.status)) return true;
   if (isEmployeeLike(item)) return false;
-  return !applicationAllowsOnboarding(item.application?.stage || null);
+  return !isActiveItem(item);
 }
 
 function tabButtonClass(active: boolean) {

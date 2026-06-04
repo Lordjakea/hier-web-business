@@ -62,6 +62,16 @@ export async function fetchBusinessConversations() {
   return response.items || [];
 }
 
+export async function createBusinessConversation(params: {
+  job_post_id: number;
+  application_id: number;
+}) {
+  return apiFetch<{ conversation?: BusinessConversation }>("/api/conversations", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
 export async function fetchBusinessConversationMessages(conversationId: number) {
   const response = await apiFetch<MessagesResponse>(
     `/api/conversations/${conversationId}/messages`,
