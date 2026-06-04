@@ -1593,6 +1593,7 @@ export async function updateStaffBusinessProfile(
     address_text?: string | null;
     contact_email?: string | null;
     contact_phone?: string | null;
+    additional_contacts?: Array<Record<string, any>>;
     bio?: string | null;
     verified?: boolean;
     reason: string;

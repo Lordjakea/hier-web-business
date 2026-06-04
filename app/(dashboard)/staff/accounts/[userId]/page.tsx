@@ -87,6 +87,58 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
+type AuthorisedContactForm = {
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  authorised: boolean;
+  notes: string;
+};
+
+function blankAuthorisedContact(): AuthorisedContactForm {
+  return {
+    name: "",
+    role: "",
+    email: "",
+    phone: "",
+    authorised: true,
+    notes: "",
+  };
+}
+
+function toAuthorisedContactForm(contact: Record<string, any>): AuthorisedContactForm {
+  return {
+    name: contact?.name || "",
+    role: contact?.role || "",
+    email: contact?.email || "",
+    phone: contact?.phone || "",
+    authorised: contact?.authorised !== false,
+    notes: contact?.notes || "",
+  };
+}
+
+function normaliseAuthorisedContacts(contacts: AuthorisedContactForm[]) {
+  return contacts
+    .map((contact) => ({
+      name: contact.name.trim() || null,
+      role: contact.role.trim() || null,
+      email: contact.email.trim().toLowerCase() || null,
+      phone: contact.phone.trim() || null,
+      authorised: contact.authorised,
+      notes: contact.notes.trim() || null,
+    }))
+    .filter((contact) =>
+      Boolean(
+        contact.name ||
+          contact.role ||
+          contact.email ||
+          contact.phone ||
+          contact.notes
+      )
+    );
+}
+
 function formatMoneyFromMinor(value?: number | null, currency?: string | null) {
   if (value === null || value === undefined) return "-";
   return formatCurrency(value, { currency, minorUnits: true });
@@ -342,6 +394,9 @@ export default function StaffAccountDetailPage() {
   const [editingBooleanValue, setEditingBooleanValue] = useState(false);
   const [editingReason, setEditingReason] = useState("");
   const [savingInlineEdit, setSavingInlineEdit] = useState(false);
+  const [authorisedContacts, setAuthorisedContacts] = useState<AuthorisedContactForm[]>([]);
+  const [authorisedContactsReason, setAuthorisedContactsReason] = useState("");
+  const [savingAuthorisedContacts, setSavingAuthorisedContacts] = useState(false);
 
   const loadAccount = useCallback(async () => {
     if (!userId) return;
@@ -357,6 +412,12 @@ export default function StaffAccountDetailPage() {
       setIdentityFullName(response.account.basic?.full_name || "");
       setIdentityMarketingOptIn(Boolean(response.account.basic?.marketing_opt_in));
       setIdentityReason("");
+      setAuthorisedContacts(
+        (response.account.business_profile?.additional_contacts || []).map(
+          toAuthorisedContactForm
+        )
+      );
+      setAuthorisedContactsReason("");
       const assigneesResponse = await fetchStaffAssignees();
       setStaffUsers(assigneesResponse.staff || []);
 
@@ -794,6 +855,81 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setSavingInlineEdit(false);
+    }
+  }
+
+  function addAuthorisedContact() {
+    setAuthorisedContacts((current) => [...current, blankAuthorisedContact()]);
+    setActionMessage(null);
+    setError(null);
+  }
+
+  function updateAuthorisedContact<K extends keyof AuthorisedContactForm>(
+    index: number,
+    field: K,
+    value: AuthorisedContactForm[K]
+  ) {
+    setAuthorisedContacts((current) =>
+      current.map((contact, contactIndex) =>
+        contactIndex === index ? { ...contact, [field]: value } : contact
+      )
+    );
+    setActionMessage(null);
+    setError(null);
+  }
+
+  function removeAuthorisedContact(index: number) {
+    setAuthorisedContacts((current) =>
+      current.filter((_, contactIndex) => contactIndex !== index)
+    );
+    setActionMessage(null);
+    setError(null);
+  }
+
+  async function handleSaveAuthorisedContacts() {
+    if (!userId) return;
+
+    const reason = authorisedContactsReason.trim();
+
+    if (reason.length < 5) {
+      setError("Please enter a reason of at least 5 characters.");
+      return;
+    }
+
+    setSavingAuthorisedContacts(true);
+    setError(null);
+    setActionMessage(null);
+
+    try {
+      const response = await updateStaffBusinessProfile(userId, {
+        additional_contacts: normaliseAuthorisedContacts(authorisedContacts),
+        reason,
+      } as any);
+
+      setAccount((current) =>
+        current
+          ? {
+              ...current,
+              business_profile: response.business_profile,
+            }
+          : current
+      );
+      setAuthorisedContacts(
+        (response.business_profile?.additional_contacts || []).map(
+          toAuthorisedContactForm
+        )
+      );
+      setAuthorisedContactsReason("");
+      setActionMessage("Authorised contacts updated.");
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update authorised contacts."
+      );
+    } finally {
+      setSavingAuthorisedContacts(false);
     }
   }
 
@@ -1421,6 +1557,146 @@ export default function StaffAccountDetailPage() {
               )}
             </div>
           </InfoCard>
+
+          {account.account_type === "business" ? (
+            <InfoCard title="Additional authorised contacts">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <p className="text-sm leading-6 text-hier-muted">
+                  Record extra people the customer has authorised to discuss this
+                  account with Hier.
+                </p>
+                <button
+                  type="button"
+                  onClick={addAuthorisedContact}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-background"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add contact
+                </button>
+              </div>
+
+              {authorisedContacts.length ? (
+                <div className="space-y-4">
+                  {authorisedContacts.map((contact, index) => (
+                    <div
+                      key={`authorised-contact-${index}`}
+                      className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-hier-text">
+                          Contact {index + 1}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => removeAuthorisedContact(index)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-[14px] border border-hier-border bg-white text-hier-muted transition hover:text-rose-600"
+                          aria-label={`Remove contact ${index + 1}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <input
+                          value={contact.name}
+                          onChange={(event) =>
+                            updateAuthorisedContact(index, "name", event.target.value)
+                          }
+                          placeholder="Contact name"
+                          className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
+                        />
+                        <input
+                          value={contact.role}
+                          onChange={(event) =>
+                            updateAuthorisedContact(index, "role", event.target.value)
+                          }
+                          placeholder="Role or title"
+                          className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
+                        />
+                        <input
+                          type="email"
+                          value={contact.email}
+                          onChange={(event) =>
+                            updateAuthorisedContact(index, "email", event.target.value)
+                          }
+                          placeholder="Email"
+                          className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
+                        />
+                        <input
+                          value={contact.phone}
+                          onChange={(event) =>
+                            updateAuthorisedContact(index, "phone", event.target.value)
+                          }
+                          placeholder="Phone"
+                          className="h-11 rounded-[18px] border border-hier-border bg-white px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
+                        />
+                        <textarea
+                          value={contact.notes}
+                          onChange={(event) =>
+                            updateAuthorisedContact(index, "notes", event.target.value)
+                          }
+                          placeholder="Authorisation notes"
+                          rows={3}
+                          className="rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm text-hier-text outline-none focus:border-hier-primary md:col-span-2"
+                        />
+                        <label className="flex items-center gap-3 md:col-span-2">
+                          <input
+                            type="checkbox"
+                            checked={contact.authorised}
+                            onChange={(event) =>
+                              updateAuthorisedContact(
+                                index,
+                                "authorised",
+                                event.target.checked
+                              )
+                            }
+                            className="h-4 w-4 rounded border-hier-border text-hier-primary focus:ring-hier-primary"
+                          />
+                          <span className="text-sm font-semibold text-hier-text">
+                            Authorised account contact
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[22px] border border-dashed border-hier-border bg-hier-panel px-4 py-6 text-sm text-hier-muted">
+                  No additional authorised contacts recorded.
+                </div>
+              )}
+
+              <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold text-hier-muted">
+                    Reason required
+                  </span>
+                  <textarea
+                    value={authorisedContactsReason}
+                    onChange={(event) => setAuthorisedContactsReason(event.target.value)}
+                    placeholder="Why is this staff change being made?"
+                    rows={3}
+                    className="w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 py-3 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => void handleSaveAuthorisedContacts()}
+                  disabled={
+                    savingAuthorisedContacts ||
+                    authorisedContactsReason.trim().length < 5
+                  }
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingAuthorisedContacts ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Save contacts
+                </button>
+              </div>
+            </InfoCard>
+          ) : null}
 
           {account.account_type === "business" ? (
             <details className="group rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
