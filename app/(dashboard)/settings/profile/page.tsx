@@ -2,15 +2,25 @@
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import Cropper from "react-easy-crop";
-import { X } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   confirmBusinessAvatarUpload,
   fetchBusinessProfile,
   presignBusinessAvatarUpload,
   updateBusinessProfile,
+  type BusinessAdditionalContact,
   type BusinessProfile,
 } from "@/lib/business-profile";
+
+type AdditionalContactForm = {
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  authorised: boolean;
+  notes: string;
+};
 
 type FormState = {
   company_name: string;
@@ -19,7 +29,55 @@ type FormState = {
   contact_email: string;
   contact_phone: string;
   address_text: string;
+  additional_contacts: AdditionalContactForm[];
 };
+
+function blankAdditionalContact(): AdditionalContactForm {
+  return {
+    name: "",
+    role: "",
+    email: "",
+    phone: "",
+    authorised: true,
+    notes: "",
+  };
+}
+
+function toAdditionalContactForm(
+  contact: BusinessAdditionalContact
+): AdditionalContactForm {
+  return {
+    name: contact.name || "",
+    role: contact.role || "",
+    email: contact.email || "",
+    phone: contact.phone || "",
+    authorised: contact.authorised !== false,
+    notes: contact.notes || "",
+  };
+}
+
+function normaliseAdditionalContacts(
+  contacts: AdditionalContactForm[]
+): BusinessAdditionalContact[] {
+  return contacts
+    .map((contact) => ({
+      name: contact.name.trim() || null,
+      role: contact.role.trim() || null,
+      email: contact.email.trim().toLowerCase() || null,
+      phone: contact.phone.trim() || null,
+      authorised: contact.authorised,
+      notes: contact.notes.trim() || null,
+    }))
+    .filter((contact) =>
+      Boolean(
+        contact.name ||
+          contact.role ||
+          contact.email ||
+          contact.phone ||
+          contact.notes
+      )
+    );
+}
 
 function toFormState(profile: BusinessProfile | null): FormState {
   return {
@@ -29,6 +87,9 @@ function toFormState(profile: BusinessProfile | null): FormState {
     contact_email: profile?.contact_email || "",
     contact_phone: profile?.contact_phone || "",
     address_text: profile?.address_text || "",
+    additional_contacts: (profile?.additional_contacts || []).map(
+      toAdditionalContactForm
+    ),
   };
 }
 
@@ -151,6 +212,11 @@ export default function ProfileSettingsPage() {
   }, [pendingAvatarSrc]);
 
   const hasChanges = useMemo(() => {
+    const normalisedContacts = JSON.stringify(
+      normaliseAdditionalContacts(form.additional_contacts)
+    );
+    const profileContacts = JSON.stringify(profile?.additional_contacts || []);
+
     if (!profile) {
       return Boolean(
         form.company_name ||
@@ -158,7 +224,8 @@ export default function ProfileSettingsPage() {
           form.bio ||
           form.contact_email ||
           form.contact_phone ||
-          form.address_text
+          form.address_text ||
+          normaliseAdditionalContacts(form.additional_contacts).length
       );
     }
 
@@ -168,7 +235,8 @@ export default function ProfileSettingsPage() {
       form.bio !== (profile.bio || "") ||
       form.contact_email !== (profile.contact_email || "") ||
       form.contact_phone !== (profile.contact_phone || "") ||
-      form.address_text !== (profile.address_text || "")
+      form.address_text !== (profile.address_text || "") ||
+      normalisedContacts !== profileContacts
     );
   }, [form, profile]);
 
@@ -176,6 +244,44 @@ export default function ProfileSettingsPage() {
     setSuccess(null);
     setError(null);
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function addAdditionalContact() {
+    setSuccess(null);
+    setError(null);
+    setForm((current) => ({
+      ...current,
+      additional_contacts: [
+        ...current.additional_contacts,
+        blankAdditionalContact(),
+      ],
+    }));
+  }
+
+  function updateAdditionalContact<K extends keyof AdditionalContactForm>(
+    index: number,
+    key: K,
+    value: AdditionalContactForm[K]
+  ) {
+    setSuccess(null);
+    setError(null);
+    setForm((current) => ({
+      ...current,
+      additional_contacts: current.additional_contacts.map((contact, contactIndex) =>
+        contactIndex === index ? { ...contact, [key]: value } : contact
+      ),
+    }));
+  }
+
+  function removeAdditionalContact(index: number) {
+    setSuccess(null);
+    setError(null);
+    setForm((current) => ({
+      ...current,
+      additional_contacts: current.additional_contacts.filter(
+        (_, contactIndex) => contactIndex !== index
+      ),
+    }));
   }
 
   async function handleSave() {
@@ -190,6 +296,9 @@ export default function ProfileSettingsPage() {
         bio: form.bio.trim() || null,
         contact_email: form.contact_email.trim() || null,
         contact_phone: form.contact_phone.trim() || null,
+        additional_contacts: normaliseAdditionalContacts(
+          form.additional_contacts
+        ),
         address_text: form.address_text.trim() || null,
       });
 
@@ -510,6 +619,170 @@ export default function ProfileSettingsPage() {
                 </label>
               </div>
             </section>
+
+            <section className="rounded-[28px] border border-hier-border bg-white p-6 shadow-card">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-tight text-hier-text">
+                    Additional contacts
+                  </h2>
+                  <p className="mt-1 text-sm text-hier-muted">
+                    Add people who are allowed to speak to Hier about this
+                    account.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addAdditionalContact}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-background"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add contact
+                </button>
+              </div>
+
+              {form.additional_contacts.length ? (
+                <div className="space-y-4">
+                  {form.additional_contacts.map((contact, index) => (
+                    <div
+                      key={`additional-contact-${index}`}
+                      className="rounded-[20px] border border-hier-border bg-hier-background p-4"
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-hier-text">
+                          Contact {index + 1}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => removeAdditionalContact(index)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-[14px] border border-hier-border bg-white text-hier-muted transition hover:text-rose-600"
+                          aria-label={`Remove contact ${index + 1}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="space-y-2">
+                          <span className="text-sm font-medium text-hier-text">
+                            Name
+                          </span>
+                          <input
+                            value={contact.name}
+                            onChange={(event) =>
+                              updateAdditionalContact(
+                                index,
+                                "name",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Contact name"
+                            className="w-full rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm text-hier-text outline-none transition focus:border-hier-primary"
+                          />
+                        </label>
+
+                        <label className="space-y-2">
+                          <span className="text-sm font-medium text-hier-text">
+                            Role
+                          </span>
+                          <input
+                            value={contact.role}
+                            onChange={(event) =>
+                              updateAdditionalContact(
+                                index,
+                                "role",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Finance, HR, director"
+                            className="w-full rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm text-hier-text outline-none transition focus:border-hier-primary"
+                          />
+                        </label>
+
+                        <label className="space-y-2">
+                          <span className="text-sm font-medium text-hier-text">
+                            Email
+                          </span>
+                          <input
+                            type="email"
+                            value={contact.email}
+                            onChange={(event) =>
+                              updateAdditionalContact(
+                                index,
+                                "email",
+                                event.target.value
+                              )
+                            }
+                            placeholder="name@company.com"
+                            className="w-full rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm text-hier-text outline-none transition focus:border-hier-primary"
+                          />
+                        </label>
+
+                        <label className="space-y-2">
+                          <span className="text-sm font-medium text-hier-text">
+                            Phone
+                          </span>
+                          <input
+                            value={contact.phone}
+                            onChange={(event) =>
+                              updateAdditionalContact(
+                                index,
+                                "phone",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Contact phone"
+                            className="w-full rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm text-hier-text outline-none transition focus:border-hier-primary"
+                          />
+                        </label>
+
+                        <label className="space-y-2 md:col-span-2">
+                          <span className="text-sm font-medium text-hier-text">
+                            Notes
+                          </span>
+                          <textarea
+                            value={contact.notes}
+                            onChange={(event) =>
+                              updateAdditionalContact(
+                                index,
+                                "notes",
+                                event.target.value
+                              )
+                            }
+                            placeholder="What this person is authorised for"
+                            rows={3}
+                            className="w-full rounded-[18px] border border-hier-border bg-white px-4 py-3 text-sm text-hier-text outline-none transition focus:border-hier-primary"
+                          />
+                        </label>
+
+                        <label className="flex items-center gap-3 md:col-span-2">
+                          <input
+                            type="checkbox"
+                            checked={contact.authorised}
+                            onChange={(event) =>
+                              updateAdditionalContact(
+                                index,
+                                "authorised",
+                                event.target.checked
+                              )
+                            }
+                            className="h-4 w-4 rounded border-hier-border text-hier-primary focus:ring-hier-primary"
+                          />
+                          <span className="text-sm font-medium text-hier-text">
+                            Authorised account contact
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[20px] border border-dashed border-hier-border bg-hier-background px-4 py-6 text-sm text-hier-muted">
+                  No additional contacts added.
+                </div>
+              )}
+            </section>
           </div>
 
           <div className="space-y-6">
@@ -597,6 +870,15 @@ export default function ProfileSettingsPage() {
                   </dt>
                   <dd className="mt-1 text-sm text-hier-text">
                     {form.contact_phone || "Not set"}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-[0.12em] text-hier-muted">
+                    Additional contacts
+                  </dt>
+                  <dd className="mt-1 text-sm text-hier-text">
+                    {normaliseAdditionalContacts(form.additional_contacts).length}
                   </dd>
                 </div>
 

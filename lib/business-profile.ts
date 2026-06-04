@@ -8,9 +8,19 @@ export type BusinessProfile = {
   address_lng?: number | null;
   contact_email: string | null;
   contact_phone: string | null;
+  additional_contacts?: BusinessAdditionalContact[];
   verified: boolean;
   bio: string | null;
   avatar_url: string | null;
+};
+
+export type BusinessAdditionalContact = {
+  name: string | null;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  authorised: boolean;
+  notes?: string | null;
 };
 
 export type UpdateBusinessProfilePayload = Partial<{
@@ -19,6 +29,7 @@ export type UpdateBusinessProfilePayload = Partial<{
   address_text: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  additional_contacts: BusinessAdditionalContact[];
   bio: string | null;
   avatar_url: string | null;
 }>;
