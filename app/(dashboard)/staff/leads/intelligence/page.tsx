@@ -35,6 +35,7 @@ import {
   fetchStaffHiringIntelligenceDiscoveryQueries,
   fetchStaffHiringIntelligenceContacts,
   fetchStaffHiringIntelligenceLeads,
+  fetchStaffHiringIntelligenceNotes,
   fetchStaffHiringIntelligenceSources,
   enrichStaffHiringIntelligenceDecisionMakers,
   ignoreStaffHiringIntelligenceLead,
@@ -206,6 +207,16 @@ function mergeRecordDetails(
   };
 }
 
+function withRecordNotes(
+  record: StaffHiringIntelligenceLead,
+  notes: StaffNote[],
+) {
+  return {
+    ...record,
+    notes: notes.length ? notes : [],
+  };
+}
+
 function blankSourceForm() {
   return {
     company_name: "",
@@ -348,6 +359,21 @@ export default function StaffHiringIntelligencePage() {
     }
   }, []);
 
+  const loadRecordNotes = useCallback(async (record: StaffHiringIntelligenceLead | null) => {
+    if (!record) return;
+
+    try {
+      const response = await fetchStaffHiringIntelligenceNotes(record.id);
+      setRecords((current) =>
+        current.map((item) =>
+          item.id === record.id ? withRecordNotes(item, response.items || []) : item,
+        ),
+      );
+    } catch {
+      // Keep any notes already shown if the dedicated notes endpoint is unavailable.
+    }
+  }, []);
+
   const loadRecords = useCallback(
     async (showLoading = true) => {
       if (showLoading) {
@@ -432,12 +458,23 @@ export default function StaffHiringIntelligencePage() {
 
   useEffect(() => {
     void loadDecisionMakers(selectedRecord);
+    void loadRecordNotes(selectedRecord);
     setShowDecisionMakerForm(false);
     setDecisionMakerForm(blankDecisionMakerForm());
     setNote("");
     setEditingNoteId(null);
     setEditingNote("");
-  }, [loadDecisionMakers, selectedRecord?.id]);
+  }, [loadDecisionMakers, loadRecordNotes, selectedRecord?.id]);
+
+  useEffect(() => {
+    if (!selectedRecord) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadRecordNotes(selectedRecord);
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadRecordNotes, selectedRecord?.id]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {

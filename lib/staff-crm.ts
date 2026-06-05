@@ -1217,6 +1217,13 @@ export async function createStaffHiringIntelligenceNote(id: number | string, not
   });
 }
 
+export async function fetchStaffHiringIntelligenceNotes(id: number | string) {
+  return apiFetch<{
+    ok: boolean;
+    items: StaffNote[];
+  }>(`/api/staff/leads/intelligence/${id}/notes`);
+}
+
 export async function updateStaffHiringIntelligenceNote(
   id: number | string,
   noteId: number | string,
