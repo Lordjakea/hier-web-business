@@ -244,6 +244,16 @@ function blankEmployerForm() {
   };
 }
 
+const SELECTED_HIRING_INTEL_RECORD_STORAGE_KEY = "hier.staff.hiringIntel.selectedRecordId";
+
+function storedSelectedRecordId() {
+  if (typeof window === "undefined") return null;
+
+  const value = window.localStorage.getItem(SELECTED_HIRING_INTEL_RECORD_STORAGE_KEY);
+  const id = value ? Number(value) : NaN;
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 export default function StaffHiringIntelligencePage() {
   const storedUser = getStoredUser();
   const canManageScanner = ["admin", "owner"].includes(
@@ -287,6 +297,18 @@ export default function StaffHiringIntelligencePage() {
     () => records.find((record) => record.id === selectedRecordId) || records[0] || null,
     [records, selectedRecordId],
   );
+
+  useEffect(() => {
+    setSelectedRecordId((current) => current || storedSelectedRecordId());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !selectedRecordId) return;
+    window.localStorage.setItem(
+      SELECTED_HIRING_INTEL_RECORD_STORAGE_KEY,
+      String(selectedRecordId),
+    );
+  }, [selectedRecordId]);
 
   useEffect(() => {
     if (!selectedRecord) {
@@ -859,6 +881,10 @@ export default function StaffHiringIntelligencePage() {
   function cancelEditNote() {
     setEditingNoteId(null);
     setEditingNote("");
+  }
+
+  function selectRecord(recordId: number) {
+    setSelectedRecordId(recordId);
   }
 
   async function handleSaveNoteEdit(noteId: number) {
@@ -1455,7 +1481,7 @@ export default function StaffHiringIntelligencePage() {
                     return (
                       <tr
                         key={record.id}
-                        onClick={() => setSelectedRecordId(record.id)}
+                        onClick={() => selectRecord(record.id)}
                         className={`cursor-pointer transition ${
                           isSelected ? "bg-hier-primary" : "hover:bg-hier-panel"
                         }`}
