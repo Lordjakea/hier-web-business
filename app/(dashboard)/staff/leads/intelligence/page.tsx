@@ -50,6 +50,7 @@ import {
   type StaffHiringIntelligenceLead,
   type StaffHiringIntelligenceSearchUsage,
   type StaffHiringIntelligenceSource,
+  type StaffNote,
   updateStaffHiringIntelligenceNote,
 } from "@/lib/staff-crm";
 
@@ -171,6 +172,37 @@ function updateRecordFromResponse(
   return response.item || response.intelligence_lead || responseLead || {
     ...current,
     intelligence_status: fallbackStatus,
+  };
+}
+
+function mergeNotes(primary?: StaffNote[], fallback?: StaffNote[]) {
+  const merged: StaffNote[] = [];
+  const seen = new Set<number>();
+
+  for (const note of [...(primary || []), ...(fallback || [])]) {
+    if (seen.has(note.id)) continue;
+    seen.add(note.id);
+    merged.push(note);
+  }
+
+  return merged.length ? merged : undefined;
+}
+
+function mergeRecordDetails(
+  incoming: StaffHiringIntelligenceLead,
+  existing?: StaffHiringIntelligenceLead,
+) {
+  if (!existing) return incoming;
+
+  return {
+    ...incoming,
+    notes: mergeNotes(incoming.notes, existing.notes),
+    lead_contacts: incoming.lead_contacts?.length
+      ? incoming.lead_contacts
+      : existing.lead_contacts,
+    decision_maker_contacts: incoming.decision_maker_contacts?.length
+      ? incoming.decision_maker_contacts
+      : existing.decision_maker_contacts,
   };
 }
 
@@ -313,7 +345,10 @@ export default function StaffHiringIntelligencePage() {
         });
 
         const items = response.items || [];
-        setRecords(items);
+        setRecords((current) => {
+          const currentById = new Map(current.map((record) => [record.id, record]));
+          return items.map((item) => mergeRecordDetails(item, currentById.get(item.id)));
+        });
         setSelectedRecordId((current) => {
           if (current && items.some((record) => record.id === current)) return current;
           return items[0]?.id || null;
@@ -380,7 +415,7 @@ export default function StaffHiringIntelligencePage() {
     setNote("");
     setEditingNoteId(null);
     setEditingNote("");
-  }, [loadDecisionMakers, selectedRecord]);
+  }, [loadDecisionMakers, selectedRecord?.id]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -602,7 +637,11 @@ export default function StaffHiringIntelligencePage() {
       const updatedRecord = updateRecordFromResponse(selectedRecord, response, fallbackStatus);
 
       setRecords((current) =>
-        current.map((record) => (record.id === selectedRecord.id ? updatedRecord : record)),
+        current.map((record) =>
+          record.id === selectedRecord.id
+            ? mergeRecordDetails(updatedRecord, record)
+            : record,
+        ),
       );
       setSelectedRecordId(updatedRecord.id);
       setNotice(
@@ -633,7 +672,11 @@ export default function StaffHiringIntelligencePage() {
       const response = await resolveStaffHiringIntelligenceEmployer(selectedRecord.id);
       if (response.item) {
         setRecords((current) =>
-          current.map((record) => (record.id === selectedRecord.id ? response.item! : record)),
+          current.map((record) =>
+            record.id === selectedRecord.id
+              ? mergeRecordDetails(response.item!, record)
+              : record,
+          ),
         );
       }
       setNotice("Employer resolution updated.");
@@ -660,7 +703,11 @@ export default function StaffHiringIntelligencePage() {
       });
       if (response.item) {
         setRecords((current) =>
-          current.map((record) => (record.id === selectedRecord.id ? response.item! : record)),
+          current.map((record) =>
+            record.id === selectedRecord.id
+              ? mergeRecordDetails(response.item!, record)
+              : record,
+          ),
         );
       }
       setShowEmployerForm(false);
@@ -681,7 +728,11 @@ export default function StaffHiringIntelligencePage() {
       const response = await enrichStaffHiringIntelligenceDecisionMakers(selectedRecord.id);
       if (response.item) {
         setRecords((current) =>
-          current.map((record) => (record.id === selectedRecord.id ? response.item! : record)),
+          current.map((record) =>
+            record.id === selectedRecord.id
+              ? mergeRecordDetails(response.item!, record)
+              : record,
+          ),
         );
       }
       setDecisionMakers(response.items || response.contacts || response.item?.lead_contacts || []);
@@ -732,7 +783,11 @@ export default function StaffHiringIntelligencePage() {
       });
       if (response.item) {
         setRecords((current) =>
-          current.map((record) => (record.id === selectedRecord.id ? response.item! : record)),
+          current.map((record) =>
+            record.id === selectedRecord.id
+              ? mergeRecordDetails(response.item!, record)
+              : record,
+          ),
         );
       }
       setDecisionMakerForm(blankDecisionMakerForm());
@@ -777,10 +832,13 @@ export default function StaffHiringIntelligencePage() {
       setRecords((current) =>
         current.map((record) =>
           record.id === selectedRecord.id
-            ? response.item || {
-                ...record,
-                notes: [response.note, ...(record.notes || [])],
-              }
+            ? mergeRecordDetails(
+                response.item || record,
+                {
+                  ...record,
+                  notes: [response.note, ...(record.notes || [])],
+                },
+              )
             : record,
         ),
       );
@@ -819,12 +877,15 @@ export default function StaffHiringIntelligencePage() {
       setRecords((current) =>
         current.map((record) =>
           record.id === selectedRecord.id
-            ? response.item || {
-                ...record,
-                notes: (record.notes || []).map((item) =>
-                  item.id === noteId ? response.note : item,
-                ),
-              }
+            ? mergeRecordDetails(
+                response.item || record,
+                {
+                  ...record,
+                  notes: (record.notes || []).map((item) =>
+                    item.id === noteId ? response.note : item,
+                  ),
+                },
+              )
             : record,
         ),
       );
