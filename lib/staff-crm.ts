@@ -24,6 +24,7 @@ export type StaffAccountSearchItem = {
   marketing_opt_in?: boolean | null;
   company_name?: string | null;
   company_number?: string | null;
+  sector?: string | null;
   business_verified?: boolean | null;
   plan_code?: string | null;
   billing_status?: string | null;
@@ -402,6 +403,7 @@ export type StaffLead = {
   email: string;
   business_name?: string | null;
   job_title?: string | null;
+  sector?: string | null;
   contacts?: Array<{
     name?: string | null;
     job_title?: string | null;
@@ -1249,6 +1251,7 @@ export async function createStaffLead(payload: {
   email: string;
   business_name?: string | null;
   job_title?: string | null;
+  sector?: string | null;
   contacts?: Array<{
     name?: string | null;
     job_title?: string | null;
@@ -1282,6 +1285,7 @@ export async function updateStaffLead(
       | "email"
       | "business_name"
       | "job_title"
+      | "sector"
       | "contacts"
       | "lead_type"
       | "website_url"
@@ -1312,7 +1316,13 @@ export async function deleteStaffLead(leadId: number | string) {
 
 export async function convertStaffLead(
   leadId: number | string,
-  payload: { role?: "user" | "business_user"; company_number?: string | null; plan_code?: string | null } = {}
+  payload: {
+    role?: "user" | "business_user";
+    company_number?: string | null;
+    plan_code?: string | null;
+    sector?: string | null;
+    confirmation?: string;
+  } = {}
 ) {
   return apiFetch<{
     ok: boolean;

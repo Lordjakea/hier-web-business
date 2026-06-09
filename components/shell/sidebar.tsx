@@ -30,16 +30,31 @@ import { HierBrand } from "@/components/ui/brand";
 import { createStaffSupportSession } from "@/lib/staff-crm";
 import { useEffect, useState } from "react";
 
-const primaryLinks = [
-  { label: "Candidates", href: "/candidates", icon: LayoutGrid },
-  { label: "Candidate Library", href: "/candidate-library", icon: Library },
-  { label: "Analytics Pro", href: "/analytics", icon: BarChart3 },
-  { label: "Posts", href: "/jobs", icon: BriefcaseBusiness },
-  { label: "Messages", href: "/messages", icon: MessageSquare },
-  { label: "Promote", href: "/promote", icon: Megaphone },
-  { label: "Billing", href: "/billing", icon: CreditCard },
-  { label: "Onboarding", href: "/onboarding", icon: ClipboardCheck },
-  { label: "Employee Records", href: "/employee-records", icon: Users },
+const primaryGroups = [
+  {
+    heading: "Hiring",
+    links: [
+      { label: "Candidates", href: "/candidates", icon: LayoutGrid },
+      { label: "Candidate Library", href: "/candidate-library", icon: Library },
+      { label: "Posts", href: "/jobs", icon: BriefcaseBusiness },
+      { label: "Messages", href: "/messages", icon: MessageSquare },
+    ],
+  },
+  {
+    heading: "Grow",
+    links: [
+      { label: "Promote", href: "/promote", icon: Megaphone },
+      { label: "Analytics Pro", href: "/analytics", icon: BarChart3 },
+    ],
+  },
+  {
+    heading: "Manage",
+    links: [
+      { label: "Onboarding", href: "/onboarding", icon: ClipboardCheck },
+      { label: "Employee Records", href: "/employee-records", icon: Users },
+      { label: "Billing", href: "/billing", icon: CreditCard },
+    ],
+  },
 ];
 
 const secondaryLinks = [
@@ -128,34 +143,36 @@ export function Sidebar({
         </button>
       </div>
 
-      {!isStaff ? (
-        <nav className="space-y-2">
-          <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
-            Main
-          </p>
+      {!isStaff
+        ? primaryGroups.map((group) => (
+            <nav key={group.heading} className="space-y-2">
+              <p className="px-3 text-xs font-semibold uppercase tracking-[0.2em] text-hier-muted">
+                {group.heading}
+              </p>
 
-          {primaryLinks.map(({ label, href, icon: Icon }) => {
-            const active = pathname.startsWith(href);
+              {group.links.map(({ label, href, icon: Icon }) => {
+                const active = pathname.startsWith(href);
 
-            return (
-              <Link
-                key={label}
-                href={href}
-                onClick={(event) => void openSupportLink(event, href)}
-                className={clsx(
-                  "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
-                  active
-                    ? "bg-hier-primary text-white shadow-card"
-                    : "text-hier-ink hover:bg-hier-panel"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
-      ) : null}
+                return (
+                  <Link
+                    key={label}
+                    href={href}
+                    onClick={(event) => void openSupportLink(event, href)}
+                    className={clsx(
+                      "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition",
+                      active
+                        ? "bg-hier-primary text-white shadow-card"
+                        : "text-hier-ink hover:bg-hier-panel"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </Link>
+                );
+              })}
+            </nav>
+          ))
+        : null}
 
       {/* STAFF SECTION */}
       {isStaff ? (

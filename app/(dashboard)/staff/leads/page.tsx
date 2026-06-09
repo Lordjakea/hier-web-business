@@ -9,6 +9,7 @@ import {
   fetchStaffLeads,
   type StaffLead,
 } from "@/lib/staff-crm";
+import { SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 type LeadContactForm = {
   name: string;
@@ -33,6 +34,7 @@ function blankLeadForm() {
     email: "",
     business_name: "",
     job_title: "",
+    sector: "",
     contacts: [] as LeadContactForm[],
     lead_type: "business",
     website_url: "",
@@ -63,6 +65,7 @@ const leadImportFields = [
   { key: "phone", label: "Number" },
   { key: "business_name", label: "Business name" },
   { key: "job_title", label: "Job title" },
+  { key: "sector", label: "Sector" },
   { key: "lead_type", label: "Lead type" },
   { key: "website_url", label: "Website" },
   { key: "address_line_1", label: "Address line 1" },
@@ -129,6 +132,7 @@ function guessLeadField(header: string) {
   if (["phone", "number", "mobile", "telephone", "contact_number"].includes(normalized)) return "phone";
   if (["business", "business_name", "company", "company_name"].includes(normalized)) return "business_name";
   if (["job_title", "job", "role", "position"].includes(normalized)) return "job_title";
+  if (["sector", "industry", "category"].includes(normalized)) return "sector";
   if (["lead_type", "type", "account_type"].includes(normalized)) return "lead_type";
   if (["website", "website_url", "url", "site"].includes(normalized)) return "website_url";
   if (["address", "address_line_1", "line_1", "first_line", "full_address"].includes(normalized)) return "address_line_1";
@@ -226,6 +230,7 @@ export default function StaffLeadsPage() {
       "phone",
       "business_name",
       "job_title",
+      "sector",
       "lead_type",
       "website_url",
       "source",
@@ -312,6 +317,7 @@ export default function StaffLeadsPage() {
       phone: (mapped.phone || "").trim() || null,
       business_name: (mapped.business_name || "").trim() || null,
       job_title: (mapped.job_title || "").trim() || null,
+      sector: (mapped.sector || "").trim() || null,
       contacts: [],
       lead_type: normalizeLeadType(mapped.lead_type),
       website_url: (mapped.website_url || "").trim() || null,
@@ -454,7 +460,7 @@ export default function StaffLeadsPage() {
                   <p className="truncate font-semibold text-hier-text">{lead.name}</p>
                   <p className="mt-0.5 truncate text-sm text-hier-muted">{lead.email}</p>
                   <p className="mt-0.5 truncate text-sm text-hier-muted">
-                    {lead.job_title || lead.phone || lead.business_name || lead.city || "-"}
+                    {lead.job_title || lead.sector || lead.phone || lead.business_name || lead.city || "-"}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -552,6 +558,7 @@ export default function StaffLeadsPage() {
                           <th className="px-3 py-2">Number</th>
                           <th className="px-3 py-2">Business</th>
                           <th className="px-3 py-2">Job title</th>
+                          <th className="px-3 py-2">Sector</th>
                           <th className="px-3 py-2">Type</th>
                           <th className="px-3 py-2">City</th>
                           <th className="px-3 py-2">Marketing</th>
@@ -565,6 +572,7 @@ export default function StaffLeadsPage() {
                             <td className="px-3 py-2">{lead.phone || "-"}</td>
                             <td className="px-3 py-2">{lead.business_name || "-"}</td>
                             <td className="px-3 py-2">{lead.job_title || "-"}</td>
+                            <td className="px-3 py-2">{lead.sector || "-"}</td>
                             <td className="px-3 py-2">{formatLeadType(lead.lead_type)}</td>
                             <td className="px-3 py-2">{lead.city || "-"}</td>
                             <td className="px-3 py-2">{lead.marketing_opt_in ? "Yes" : "No"}</td>
@@ -625,6 +633,12 @@ export default function StaffLeadsPage() {
               <input value={leadForm.phone} onChange={(event) => setLeadForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Number" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.business_name} onChange={(event) => setLeadForm((current) => ({ ...current, business_name: event.target.value }))} placeholder="Business name (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
               <input value={leadForm.job_title} onChange={(event) => setLeadForm((current) => ({ ...current, job_title: event.target.value }))} placeholder="Job title (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+              <select value={leadForm.sector} onChange={(event) => setLeadForm((current) => ({ ...current, sector: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
+                <option value="">Select sector</option>
+                {SECTOR_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
               <select value={leadForm.lead_type} onChange={(event) => setLeadForm((current) => ({ ...current, lead_type: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
                 <option value="business">Business lead</option>
                 <option value="candidate">Candidate lead</option>

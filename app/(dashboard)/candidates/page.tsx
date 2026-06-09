@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CandidateBoard } from "@/components/board/board-board";
+import { BoardSkeleton } from "@/components/board/board-skeleton";
 import { ApplicationDetailDrawer } from "@/components/board/application-detail-drawer";
 import { BoardToolbar } from "@/components/board/board-toolbar";
 import { PageHeader } from "@/components/ui/page-header";
@@ -1093,9 +1094,7 @@ export default function CandidatesPage() {
       ) : null}
 
       {loading ? (
-        <div className="rounded-[28px] border border-hier-border bg-white p-10 text-sm text-hier-muted shadow-card">
-          Loading applications…
-        </div>
+        <BoardSkeleton columns={6} />
       ) : visibleApplications.length === 0 ? (
         <div className="rounded-[28px] border border-hier-border bg-white p-10 text-sm text-hier-muted shadow-card">
           No candidates match this filter yet.

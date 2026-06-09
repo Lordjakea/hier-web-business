@@ -70,6 +70,7 @@ import {
 } from "@/lib/staff-crm";
 import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
 import { formatCurrency } from "@/lib/currency";
+import { SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -255,6 +256,19 @@ function EditableBusinessRow({
           />
           Verified
         </label>
+      ) : field === "sector" ? (
+        <select
+          value={editingValue}
+          onChange={(event) => onChangeValue(event.target.value)}
+          className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+        >
+          <option value="">Select sector</option>
+          {SECTOR_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
       ) : field === "bio" || field === "address_text" ? (
         <textarea
           value={editingValue}
@@ -1551,6 +1565,7 @@ export default function StaffAccountDetailPage() {
   const businessProfileRows: Array<[string, string, unknown]> = [
     ["Company", "company_name", account.business_profile?.company_name],
     ["Company number", "company_number", account.business_profile?.company_number],
+    ["Sector", "sector", account.business_profile?.sector],
     ["Contact email", "contact_email", account.business_profile?.contact_email],
     ["Contact phone", "contact_phone", account.business_profile?.contact_phone],
     ["Address", "address_text", account.business_profile?.address_text],
@@ -1881,6 +1896,8 @@ export default function StaffAccountDetailPage() {
                       post.caption ||
                       post.description ||
                       `Post #${post.id}`;
+                    const staffReference =
+                      post.staff_reference || `HIER-JOB-${String(post.id).padStart(6, "0")}`;
                     const postStatus =
                       post.post_status ||
                       (post.is_active === false ? "inactive" : "live");
@@ -1894,6 +1911,9 @@ export default function StaffAccountDetailPage() {
                           <div>
                             <p className="text-sm font-semibold text-hier-text">
                               {postTitle}
+                            </p>
+                            <p className="mt-1 font-mono text-xs font-semibold text-hier-primary">
+                              {staffReference}
                             </p>
                             <p className="mt-1 text-sm text-hier-muted">
                               {postStatus} / {applicantCount} applicants

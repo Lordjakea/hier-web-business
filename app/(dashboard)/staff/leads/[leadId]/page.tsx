@@ -29,6 +29,7 @@ import {
   createStaffLeadNote,
   deleteStaffLead,
   enrichStaffLeadDecisionMakers,
+  fetchStaffAssignees,
   fetchStaffLead,
   fetchStaffLeadContacts,
   updateStaffLeadContact,
@@ -38,7 +39,9 @@ import {
   updateStaffLead,
   updateStaffLeadNote,
   type StaffLead,
+  type StaffTeamUser,
 } from "@/lib/staff-crm";
+import { SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 type LeadContactForm = {
   name: string;
@@ -145,6 +148,7 @@ function blankEditForm() {
     email: "",
     business_name: "",
     job_title: "",
+    sector: "",
     contacts: [] as LeadContactForm[],
     lead_type: "business",
     website_url: "",
@@ -171,16 +175,23 @@ export default function StaffLeadDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState(blankEditForm);
   const [decisionMakers, setDecisionMakers] = useState<StaffLeadContact[]>([]);
+  const [staffUsers, setStaffUsers] = useState<StaffTeamUser[]>([]);
   const [loadingDecisionMakers, setLoadingDecisionMakers] = useState(false);
   const [decisionMakerSaving, setDecisionMakerSaving] = useState(false);
   const [showDecisionMakerForm, setShowDecisionMakerForm] = useState(false);
   const [decisionMakerForm, setDecisionMakerForm] = useState(blankDecisionMakerForm);
   const [convertRole, setConvertRole] = useState<"business_user" | "user">("business_user");
+  const [convertConfirmation, setConvertConfirmation] = useState("");
   const [note, setNote] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editingNote, setEditingNote] = useState("");
   const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
-  const [followUp, setFollowUp] = useState({ title: "Call back", due_at: "", note: "" });
+  const [followUp, setFollowUp] = useState({
+    title: "Call back",
+    due_at: "",
+    note: "",
+    assigned_staff_user_id: "",
+  });
 
   const loadDecisionMakers = useCallback(async () => {
     if (!leadId) return;
@@ -220,6 +231,25 @@ export default function StaffLeadDetailPage() {
   }, [loadDecisionMakers]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadStaffUsers() {
+      try {
+        const response = await fetchStaffAssignees();
+        if (!cancelled) setStaffUsers(response.staff || []);
+      } catch {
+        if (!cancelled) setStaffUsers([]);
+      }
+    }
+
+    void loadStaffUsers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!lead) return;
     setEditing(false);
     setEditForm({
@@ -228,6 +258,7 @@ export default function StaffLeadDetailPage() {
       email: lead.email || "",
       business_name: lead.business_name || "",
       job_title: lead.job_title || "",
+      sector: lead.sector || "",
       contacts: normaliseContacts(lead.contacts),
       lead_type: normalizeLeadType(lead.lead_type),
       website_url: lead.website_url || "",
@@ -455,13 +486,14 @@ export default function StaffLeadDetailPage() {
         title: followUp.title.trim(),
         due_at: new Date(followUp.due_at).toISOString(),
         note: followUp.note.trim() || null,
+        assigned_staff_user_id: followUp.assigned_staff_user_id || null,
       });
       setLead((current) =>
         current
           ? { ...current, follow_ups: [response.follow_up, ...(current.follow_ups || [])] }
           : current,
       );
-      setFollowUp({ title: "Call back", due_at: "", note: "" });
+      setFollowUp({ title: "Call back", due_at: "", note: "", assigned_staff_user_id: "" });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Could not schedule follow-up.");
     } finally {
@@ -491,6 +523,30 @@ export default function StaffLeadDetailPage() {
     }
   }
 
+  async function transferFollowUp(followUpId: number, assignedStaffUserId: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await updateStaffFollowUp(followUpId, {
+        assigned_staff_user_id: Number(assignedStaffUserId),
+      });
+      setLead((current) =>
+        current
+          ? {
+              ...current,
+              follow_ups: (current.follow_ups || []).map((item) =>
+                item.id === followUpId ? response.follow_up : item,
+              ),
+            }
+          : current,
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not transfer follow-up.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleDeleteLead() {
     if (!lead) return;
     if (!window.confirm(`Delete lead ${lead.name}?`)) return;
@@ -508,10 +564,19 @@ export default function StaffLeadDetailPage() {
 
   async function handleConvertLead() {
     if (!lead) return;
+    const expectedConfirmation = `CONVERT ${lead.id}`;
+    if (convertConfirmation.trim().toUpperCase() !== expectedConfirmation) {
+      setError(`Type ${expectedConfirmation} to confirm this conversion.`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const response = await convertStaffLead(lead.id, { role: convertRole });
+      const response = await convertStaffLead(lead.id, {
+        role: convertRole,
+        sector: lead.sector || null,
+        confirmation: expectedConfirmation,
+      });
       setLead(response.lead);
       if (response.account.basic?.id) {
         router.push(`/staff/accounts/${response.account.basic.id}`);
@@ -597,6 +662,12 @@ export default function StaffLeadDetailPage() {
                   <input value={editForm.phone} onChange={(event) => setEditForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Number" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
                   <input value={editForm.business_name} onChange={(event) => setEditForm((current) => ({ ...current, business_name: event.target.value }))} placeholder="Business name" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
                   <input value={editForm.job_title} onChange={(event) => setEditForm((current) => ({ ...current, job_title: event.target.value }))} placeholder="Job title (optional)" className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white" />
+                  <select value={editForm.sector} onChange={(event) => setEditForm((current) => ({ ...current, sector: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
+                    <option value="">Select sector</option>
+                    {SECTOR_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
                   <select value={editForm.lead_type} onChange={(event) => setEditForm((current) => ({ ...current, lead_type: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
                     <option value="business">Business lead</option>
                     <option value="candidate">Candidate lead</option>
@@ -648,6 +719,7 @@ export default function StaffLeadDetailPage() {
                     <p><span className="block font-semibold text-hier-text">Phone</span>{lead.phone || "-"}</p>
                     <p><span className="block font-semibold text-hier-text">Business</span>{lead.business_name || "-"}</p>
                     <p><span className="block font-semibold text-hier-text">Job title</span>{lead.job_title || "-"}</p>
+                    <p><span className="block font-semibold text-hier-text">Sector</span>{lead.sector || "-"}</p>
                     <p><span className="block font-semibold text-hier-text">Lead type</span>{formatLeadType(lead.lead_type)}</p>
                     <p className="md:col-span-2">
                       <span className="block font-semibold text-hier-text">Website</span>
@@ -690,9 +762,20 @@ export default function StaffLeadDetailPage() {
                   <option value="business_user">Convert to business account</option>
                   <option value="user">Convert to candidate account</option>
                 </select>
+                <input
+                  value={convertConfirmation}
+                  onChange={(event) => setConvertConfirmation(event.target.value)}
+                  placeholder={`Type CONVERT ${lead.id} to confirm`}
+                  disabled={saving || Boolean(lead.converted_user_id)}
+                  className="h-10 rounded-[16px] border border-hier-border bg-hier-panel px-3 text-sm outline-none focus:border-hier-primary focus:bg-white disabled:opacity-50"
+                />
                 <button
                   type="button"
-                  disabled={saving || Boolean(lead.converted_user_id)}
+                  disabled={
+                    saving ||
+                    Boolean(lead.converted_user_id) ||
+                    convertConfirmation.trim().toUpperCase() !== `CONVERT ${lead.id}`
+                  }
                   onClick={() => void handleConvertLead()}
                   className="inline-flex h-10 items-center justify-center rounded-[16px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:opacity-50"
                 >
@@ -975,6 +1058,23 @@ export default function StaffLeadDetailPage() {
                   onChange={(event) => setFollowUp((current) => ({ ...current, due_at: event.target.value }))}
                   className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
                 />
+                <select
+                  value={followUp.assigned_staff_user_id}
+                  onChange={(event) =>
+                    setFollowUp((current) => ({
+                      ...current,
+                      assigned_staff_user_id: event.target.value,
+                    }))
+                  }
+                  className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+                >
+                  <option value="">Assign to me</option>
+                  {staffUsers.map((staff) => (
+                    <option key={staff.id} value={staff.id}>
+                      {staff.full_name || staff.email}
+                    </option>
+                  ))}
+                </select>
                 <textarea
                   value={followUp.note}
                   onChange={(event) => setFollowUp((current) => ({ ...current, note: event.target.value }))}
@@ -998,6 +1098,9 @@ export default function StaffLeadDetailPage() {
                       <div>
                         <p className="font-semibold text-hier-text">{item.title}</p>
                         <p className="text-hier-muted">{formatDateTime(item.due_at)}</p>
+                        <p className="text-hier-muted">
+                          {item.assigned_staff_name || "Unassigned"}
+                        </p>
                       </div>
                       {item.status !== "completed" ? (
                         <button
@@ -1011,6 +1114,19 @@ export default function StaffLeadDetailPage() {
                       ) : null}
                     </div>
                     {item.note ? <p className="mt-2 text-hier-text">{item.note}</p> : null}
+                    <select
+                      value={item.assigned_staff_user_id || ""}
+                      onChange={(event) => void transferFollowUp(item.id, event.target.value)}
+                      disabled={saving}
+                      className="mt-3 h-10 w-full rounded-[16px] border border-hier-border bg-white px-3 text-sm outline-none focus:border-hier-primary disabled:opacity-50"
+                    >
+                      <option value="" disabled>Transfer to...</option>
+                      {staffUsers.map((staff) => (
+                        <option key={staff.id} value={staff.id}>
+                          {staff.full_name || staff.email}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 ))}
               </div>
