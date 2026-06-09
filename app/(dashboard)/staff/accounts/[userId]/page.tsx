@@ -1524,6 +1524,29 @@ export default function StaffAccountDetailPage() {
     account.account_type === "business" ? BriefcaseBusiness : UserRound;
 
   const recentApplications = account.recent_applications || [];
+  const activeJobPosts = businessPosts.filter((post) => {
+    const contentType = String(post.content_type || post.kind || "").toLowerCase();
+    const postStatus = String(post.post_status || "").toLowerCase();
+    const isContentPost =
+      contentType === "post" ||
+      contentType === "content" ||
+      post.content_post_id ||
+      post.caption;
+    const isJobPost =
+      contentType === "job" ||
+      post.job_post_id ||
+      post.is_gig !== undefined ||
+      !isContentPost;
+    const isActive =
+      post.is_active !== false &&
+      postStatus !== "archived" &&
+      postStatus !== "inactive" &&
+      postStatus !== "draft" &&
+      !post.archived_at &&
+      !post.shadow_hidden;
+
+    return isJobPost && !isContentPost && isActive;
+  });
 
   const businessProfileRows: Array<[string, string, unknown]> = [
     ["Company", "company_name", account.business_profile?.company_name],
@@ -1837,15 +1860,15 @@ export default function StaffAccountDetailPage() {
           ) : null}
 
           {account.account_type === "business" ? (
-            <InfoCard title="Business posts">
+            <InfoCard title="Active job adverts">
               {loadingBusinessPosts ? (
                 <div className="flex items-center gap-2 rounded-[22px] border border-hier-border bg-hier-panel p-4 text-sm font-semibold text-hier-muted">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading posts
+                  Loading active jobs
                 </div>
-              ) : businessPosts.length ? (
+              ) : activeJobPosts.length ? (
                 <div className="space-y-3">
-                  {businessPosts.map((post) => {
+                  {activeJobPosts.map((post) => {
                     const postId = Number(post.id);
                     const isTransferringThisPost = transferPostId === postId;
                     const applicantCount =
@@ -2017,7 +2040,7 @@ export default function StaffAccountDetailPage() {
                 </div>
               ) : (
                 <p className="rounded-[22px] border border-dashed border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
-                  No posts found for this business.
+                  No active job adverts found for this business.
                 </p>
               )}
             </InfoCard>
