@@ -9,7 +9,7 @@ import {
   fetchStaffLeads,
   type StaffLead,
 } from "@/lib/staff-crm";
-import { SECTOR_OPTIONS } from "@/lib/job-preferences";
+import { EMPLOYEE_RANGE_OPTIONS, SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 type LeadContactForm = {
   name: string;
@@ -35,6 +35,7 @@ function blankLeadForm() {
     business_name: "",
     job_title: "",
     sector: "",
+    employee_range: "",
     contacts: [] as LeadContactForm[],
     lead_type: "business",
     website_url: "",
@@ -66,6 +67,7 @@ const leadImportFields = [
   { key: "business_name", label: "Business name" },
   { key: "job_title", label: "Job title" },
   { key: "sector", label: "Sector" },
+  { key: "employee_range", label: "Employee range" },
   { key: "lead_type", label: "Lead type" },
   { key: "website_url", label: "Website" },
   { key: "address_line_1", label: "Address line 1" },
@@ -133,6 +135,7 @@ function guessLeadField(header: string) {
   if (["business", "business_name", "company", "company_name"].includes(normalized)) return "business_name";
   if (["job_title", "job", "role", "position"].includes(normalized)) return "job_title";
   if (["sector", "industry", "category"].includes(normalized)) return "sector";
+  if (["employee_range", "employees", "employee_count", "headcount", "team_size", "company_size", "staff"].includes(normalized)) return "employee_range";
   if (["lead_type", "type", "account_type"].includes(normalized)) return "lead_type";
   if (["website", "website_url", "url", "site"].includes(normalized)) return "website_url";
   if (["address", "address_line_1", "line_1", "first_line", "full_address"].includes(normalized)) return "address_line_1";
@@ -231,6 +234,7 @@ export default function StaffLeadsPage() {
       "business_name",
       "job_title",
       "sector",
+      "employee_range",
       "lead_type",
       "website_url",
       "source",
@@ -318,6 +322,7 @@ export default function StaffLeadsPage() {
       business_name: (mapped.business_name || "").trim() || null,
       job_title: (mapped.job_title || "").trim() || null,
       sector: (mapped.sector || "").trim() || null,
+      employee_range: (mapped.employee_range || "").trim() || null,
       contacts: [],
       lead_type: normalizeLeadType(mapped.lead_type),
       website_url: (mapped.website_url || "").trim() || null,
@@ -460,7 +465,7 @@ export default function StaffLeadsPage() {
                   <p className="truncate font-semibold text-hier-text">{lead.name}</p>
                   <p className="mt-0.5 truncate text-sm text-hier-muted">{lead.email}</p>
                   <p className="mt-0.5 truncate text-sm text-hier-muted">
-                    {lead.job_title || lead.sector || lead.phone || lead.business_name || lead.city || "-"}
+                    {lead.job_title || lead.sector || lead.employee_range || lead.phone || lead.business_name || lead.city || "-"}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -559,6 +564,7 @@ export default function StaffLeadsPage() {
                           <th className="px-3 py-2">Business</th>
                           <th className="px-3 py-2">Job title</th>
                           <th className="px-3 py-2">Sector</th>
+                          <th className="px-3 py-2">Employees</th>
                           <th className="px-3 py-2">Type</th>
                           <th className="px-3 py-2">City</th>
                           <th className="px-3 py-2">Marketing</th>
@@ -573,6 +579,7 @@ export default function StaffLeadsPage() {
                             <td className="px-3 py-2">{lead.business_name || "-"}</td>
                             <td className="px-3 py-2">{lead.job_title || "-"}</td>
                             <td className="px-3 py-2">{lead.sector || "-"}</td>
+                            <td className="px-3 py-2">{lead.employee_range || "-"}</td>
                             <td className="px-3 py-2">{formatLeadType(lead.lead_type)}</td>
                             <td className="px-3 py-2">{lead.city || "-"}</td>
                             <td className="px-3 py-2">{lead.marketing_opt_in ? "Yes" : "No"}</td>
@@ -636,6 +643,12 @@ export default function StaffLeadsPage() {
               <select value={leadForm.sector} onChange={(event) => setLeadForm((current) => ({ ...current, sector: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
                 <option value="">Select sector</option>
                 {SECTOR_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <select value={leadForm.employee_range} onChange={(event) => setLeadForm((current) => ({ ...current, employee_range: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
+                <option value="">Select employee range</option>
+                {EMPLOYEE_RANGE_OPTIONS.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>

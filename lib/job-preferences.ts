@@ -77,6 +77,15 @@ export const SECTOR_OPTIONS = [
   "Writing",
 ] as const;
 
+export const EMPLOYEE_RANGE_OPTIONS = [
+  "1 - 10",
+  "11 - 25",
+  "26 - 50",
+  "50 - 100",
+  "101 - 250",
+  "250+",
+] as const;
+
 export const EMPLOYMENT_TYPE_OPTIONS = [
   "Full-time",
   "Part-time",

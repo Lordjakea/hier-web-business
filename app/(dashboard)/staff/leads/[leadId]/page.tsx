@@ -41,7 +41,7 @@ import {
   type StaffLead,
   type StaffTeamUser,
 } from "@/lib/staff-crm";
-import { SECTOR_OPTIONS } from "@/lib/job-preferences";
+import { EMPLOYEE_RANGE_OPTIONS, SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 type LeadContactForm = {
   name: string;
@@ -149,6 +149,7 @@ function blankEditForm() {
     business_name: "",
     job_title: "",
     sector: "",
+    employee_range: "",
     contacts: [] as LeadContactForm[],
     lead_type: "business",
     website_url: "",
@@ -259,6 +260,7 @@ export default function StaffLeadDetailPage() {
       business_name: lead.business_name || "",
       job_title: lead.job_title || "",
       sector: lead.sector || "",
+      employee_range: lead.employee_range || "",
       contacts: normaliseContacts(lead.contacts),
       lead_type: normalizeLeadType(lead.lead_type),
       website_url: lead.website_url || "",
@@ -575,6 +577,7 @@ export default function StaffLeadDetailPage() {
       const response = await convertStaffLead(lead.id, {
         role: convertRole,
         sector: lead.sector || null,
+        employee_range: lead.employee_range || null,
         confirmation: expectedConfirmation,
       });
       setLead(response.lead);
@@ -668,6 +671,12 @@ export default function StaffLeadDetailPage() {
                       <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
+                  <select value={editForm.employee_range} onChange={(event) => setEditForm((current) => ({ ...current, employee_range: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
+                    <option value="">Select employee range</option>
+                    {EMPLOYEE_RANGE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
                   <select value={editForm.lead_type} onChange={(event) => setEditForm((current) => ({ ...current, lead_type: event.target.value }))} className="h-11 rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white">
                     <option value="business">Business lead</option>
                     <option value="candidate">Candidate lead</option>
@@ -720,6 +729,7 @@ export default function StaffLeadDetailPage() {
                     <p><span className="block font-semibold text-hier-text">Business</span>{lead.business_name || "-"}</p>
                     <p><span className="block font-semibold text-hier-text">Job title</span>{lead.job_title || "-"}</p>
                     <p><span className="block font-semibold text-hier-text">Sector</span>{lead.sector || "-"}</p>
+                    <p><span className="block font-semibold text-hier-text">Employee range</span>{lead.employee_range || "-"}</p>
                     <p><span className="block font-semibold text-hier-text">Lead type</span>{formatLeadType(lead.lead_type)}</p>
                     <p className="md:col-span-2">
                       <span className="block font-semibold text-hier-text">Website</span>

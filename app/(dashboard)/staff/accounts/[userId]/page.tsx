@@ -70,7 +70,7 @@ import {
 } from "@/lib/staff-crm";
 import { getAuthToken, getStoredUser, setAuthToken, setStoredUser } from "@/lib/auth";
 import { formatCurrency } from "@/lib/currency";
-import { SECTOR_OPTIONS } from "@/lib/job-preferences";
+import { EMPLOYEE_RANGE_OPTIONS, SECTOR_OPTIONS } from "@/lib/job-preferences";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -256,14 +256,14 @@ function EditableBusinessRow({
           />
           Verified
         </label>
-      ) : field === "sector" ? (
+      ) : field === "sector" || field === "employee_range" ? (
         <select
           value={editingValue}
           onChange={(event) => onChangeValue(event.target.value)}
           className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
         >
-          <option value="">Select sector</option>
-          {SECTOR_OPTIONS.map((option) => (
+          <option value="">Select {field === "sector" ? "sector" : "employee range"}</option>
+          {(field === "sector" ? SECTOR_OPTIONS : EMPLOYEE_RANGE_OPTIONS).map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
@@ -1566,6 +1566,7 @@ export default function StaffAccountDetailPage() {
     ["Company", "company_name", account.business_profile?.company_name],
     ["Company number", "company_number", account.business_profile?.company_number],
     ["Sector", "sector", account.business_profile?.sector],
+    ["Employee range", "employee_range", account.business_profile?.employee_range],
     ["Contact email", "contact_email", account.business_profile?.contact_email],
     ["Contact phone", "contact_phone", account.business_profile?.contact_phone],
     ["Address", "address_text", account.business_profile?.address_text],
