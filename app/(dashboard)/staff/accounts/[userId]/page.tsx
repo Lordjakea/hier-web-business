@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowRightLeft,
   BriefcaseBusiness,
   CalendarClock,
   Check,
@@ -20,6 +21,7 @@ import {
   PackagePlus,
   Pencil,
   Plus,
+  Search,
   StickyNote,
   Trash2,
   UserRound,
@@ -40,13 +42,16 @@ import {
   fetchStaffAssignees,
   fetchStaffAccountBilling,
   fetchStaffAccountDetail,
+  fetchStaffAccountPosts,
   fetchStaffCases,
   fetchStaffFollowUps,
   markStaffAccountEmailVerified,
   resendStaffAccountVerificationEmail,
   resumeStaffBillingSubscription,
   sendStaffAccountPasswordReset,
+  searchStaffAccounts,
   previewStaffBillingChange,
+  transferStaffPost,
   updateStaffFollowUp,
   updateStaffAccountBilling,
   updateStaffAccountIdentity,
@@ -55,6 +60,7 @@ import {
   updateStaffCustomPackage,
   verifyStaffAccountEmailCode,
   type StaffAccountDetail,
+  type StaffAccountSearchItem,
   type StaffBilling,
   type StaffBillingPreview,
   type StaffBillingPlan,
@@ -318,6 +324,8 @@ export default function StaffAccountDetailPage() {
   const userId = Number(params.userId);
 
   const [account, setAccount] = useState<StaffAccountDetail | null>(null);
+  const [businessPosts, setBusinessPosts] = useState<any[]>([]);
+  const [loadingBusinessPosts, setLoadingBusinessPosts] = useState(false);
   const [billing, setBilling] = useState<StaffBilling | null>(null);
   const [billingPlans, setBillingPlans] = useState<StaffBillingPlan[]>([]);
   const [selectedBillingPlan, setSelectedBillingPlan] = useState("");
@@ -397,6 +405,14 @@ export default function StaffAccountDetailPage() {
   const [authorisedContacts, setAuthorisedContacts] = useState<AuthorisedContactForm[]>([]);
   const [authorisedContactsReason, setAuthorisedContactsReason] = useState("");
   const [savingAuthorisedContacts, setSavingAuthorisedContacts] = useState(false);
+  const [transferPostId, setTransferPostId] = useState<number | null>(null);
+  const [transferTargetQuery, setTransferTargetQuery] = useState("");
+  const [transferTargets, setTransferTargets] = useState<StaffAccountSearchItem[]>([]);
+  const [selectedTransferTarget, setSelectedTransferTarget] =
+    useState<StaffAccountSearchItem | null>(null);
+  const [searchingTransferTargets, setSearchingTransferTargets] = useState(false);
+  const [transferReason, setTransferReason] = useState("");
+  const [transferringPost, setTransferringPost] = useState(false);
 
   const loadAccount = useCallback(async () => {
     if (!userId) return;
@@ -431,6 +447,17 @@ export default function StaffAccountDetailPage() {
       setCases(casesResponse.items || []);
 
       if (response.account.account_type === "business") {
+        setLoadingBusinessPosts(true);
+
+        try {
+          const postsResponse = await fetchStaffAccountPosts(userId);
+          setBusinessPosts(postsResponse.items || []);
+        } catch {
+          setBusinessPosts([]);
+        } finally {
+          setLoadingBusinessPosts(false);
+        }
+
         const billingResponse = await fetchStaffAccountBilling(userId);
 
         setBilling(billingResponse.billing);
@@ -447,6 +474,7 @@ export default function StaffAccountDetailPage() {
         });
 
       } else {
+        setBusinessPosts([]);
         setBilling(null);
         setBillingPlans([]);
         setSelectedBillingPlan("");
@@ -514,6 +542,44 @@ export default function StaffAccountDetailPage() {
         `Account #${account.basic.id}`
     );
   }, [account]);
+
+  useEffect(() => {
+    const query = transferTargetQuery.trim();
+
+    if (!transferPostId || selectedTransferTarget || query.length < 2) {
+      setTransferTargets([]);
+      setSearchingTransferTargets(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchingTransferTargets(true);
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await searchStaffAccounts({
+          q: query,
+          role: "business_user",
+          per_page: 8,
+        });
+
+        if (cancelled) return;
+
+        setTransferTargets(
+          (response.items || []).filter((item) => item.user_id !== userId)
+        );
+      } catch {
+        if (!cancelled) setTransferTargets([]);
+      } finally {
+        if (!cancelled) setSearchingTransferTargets(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [selectedTransferTarget, transferPostId, transferTargetQuery, userId]);
 
   async function handleCreateNote(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -930,6 +996,78 @@ export default function StaffAccountDetailPage() {
       );
     } finally {
       setSavingAuthorisedContacts(false);
+    }
+  }
+
+  function startPostTransfer(post: any) {
+    setTransferPostId(Number(post.id));
+    setTransferTargetQuery("");
+    setTransferTargets([]);
+    setSelectedTransferTarget(null);
+    setTransferReason("");
+    setActionMessage(null);
+    setError(null);
+  }
+
+  function cancelPostTransfer() {
+    setTransferPostId(null);
+    setTransferTargetQuery("");
+    setTransferTargets([]);
+    setSelectedTransferTarget(null);
+    setTransferReason("");
+    setTransferringPost(false);
+  }
+
+  async function handleTransferPost(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!transferPostId || !selectedTransferTarget) {
+      setError("Choose the business that should receive this post.");
+      return;
+    }
+
+    const reason = transferReason.trim();
+
+    if (reason.length < 10) {
+      setError("Please enter a transfer reason of at least 10 characters.");
+      return;
+    }
+
+    setTransferringPost(true);
+    setError(null);
+    setActionMessage(null);
+
+    try {
+      const response = await transferStaffPost(transferPostId, {
+        target_account_user_id: selectedTransferTarget.user_id,
+        reason,
+        transfer_applications: true,
+      });
+
+      const movedCount =
+        typeof response.transferred_applications === "number"
+          ? ` with ${response.transferred_applications} applications`
+          : "";
+
+      setActionMessage(
+        `Post transferred to ${
+          selectedTransferTarget.company_name ||
+          selectedTransferTarget.display_name ||
+          selectedTransferTarget.email ||
+          "the selected business"
+        }${movedCount}.`
+      );
+
+      cancelPostTransfer();
+      await loadAccount();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not transfer this post."
+      );
+    } finally {
+      setTransferringPost(false);
     }
   }
 
@@ -1695,6 +1833,193 @@ export default function StaffAccountDetailPage() {
                   Save contacts
                 </button>
               </div>
+            </InfoCard>
+          ) : null}
+
+          {account.account_type === "business" ? (
+            <InfoCard title="Business posts">
+              {loadingBusinessPosts ? (
+                <div className="flex items-center gap-2 rounded-[22px] border border-hier-border bg-hier-panel p-4 text-sm font-semibold text-hier-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading posts
+                </div>
+              ) : businessPosts.length ? (
+                <div className="space-y-3">
+                  {businessPosts.map((post) => {
+                    const postId = Number(post.id);
+                    const isTransferringThisPost = transferPostId === postId;
+                    const applicantCount =
+                      post.applicant_count ??
+                      post.application_count ??
+                      post.applications_count ??
+                      0;
+                    const postTitle =
+                      post.title ||
+                      post.caption ||
+                      post.description ||
+                      `Post #${post.id}`;
+                    const postStatus =
+                      post.post_status ||
+                      (post.is_active === false ? "inactive" : "live");
+
+                    return (
+                      <article
+                        key={post.id}
+                        className="rounded-[22px] border border-hier-border bg-hier-panel p-4"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-hier-text">
+                              {postTitle}
+                            </p>
+                            <p className="mt-1 text-sm text-hier-muted">
+                              {postStatus} / {applicantCount} applicants
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              isTransferringThisPost
+                                ? cancelPostTransfer()
+                                : startPostTransfer(post)
+                            }
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text transition hover:bg-hier-background"
+                          >
+                            <ArrowRightLeft className="h-4 w-4" />
+                            {isTransferringThisPost ? "Cancel" : "Transfer"}
+                          </button>
+                        </div>
+
+                        {isTransferringThisPost ? (
+                          <form
+                            className="mt-4 space-y-3 rounded-[18px] border border-hier-border bg-white p-4"
+                            onSubmit={handleTransferPost}
+                          >
+                            <div>
+                              <label className="text-xs font-semibold text-hier-muted">
+                                Receiving business
+                              </label>
+                              <div className="relative mt-1">
+                                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-hier-muted" />
+                                <input
+                                  value={transferTargetQuery}
+                                  onChange={(event) => {
+                                    setTransferTargetQuery(event.target.value);
+                                    setSelectedTransferTarget(null);
+                                  }}
+                                  placeholder="Search company, name or email"
+                                  className="h-11 w-full rounded-[18px] border border-hier-border bg-hier-panel pl-10 pr-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                                />
+                              </div>
+
+                              {selectedTransferTarget ? (
+                                <div className="mt-2 flex items-center justify-between gap-3 rounded-[16px] border border-emerald-200 bg-emerald-50 p-3 text-sm">
+                                  <div>
+                                    <p className="font-semibold text-emerald-950">
+                                      {selectedTransferTarget.company_name ||
+                                        selectedTransferTarget.display_name ||
+                                        selectedTransferTarget.email}
+                                    </p>
+                                    <p className="text-xs text-emerald-800">
+                                      {selectedTransferTarget.email || `User #${selectedTransferTarget.user_id}`}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedTransferTarget(null);
+                                      setTransferTargetQuery("");
+                                    }}
+                                    className="rounded-xl border border-emerald-200 bg-white p-1.5 text-emerald-800"
+                                    aria-label="Clear selected receiving business"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : transferTargetQuery.trim().length >= 2 ? (
+                                <div className="mt-2 overflow-hidden rounded-[16px] border border-hier-border bg-white">
+                                  {searchingTransferTargets ? (
+                                    <div className="flex items-center gap-2 p-3 text-sm text-hier-muted">
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                      Searching businesses
+                                    </div>
+                                  ) : transferTargets.length ? (
+                                    transferTargets.map((target) => (
+                                      <button
+                                        key={target.user_id}
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedTransferTarget(target);
+                                          setTransferTargetQuery(
+                                            target.company_name ||
+                                              target.display_name ||
+                                              target.email ||
+                                              `User #${target.user_id}`
+                                          );
+                                          setTransferTargets([]);
+                                        }}
+                                        className="block w-full border-b border-hier-border px-3 py-2 text-left text-sm last:border-b-0 hover:bg-hier-soft"
+                                      >
+                                        <span className="block font-semibold text-hier-text">
+                                          {target.company_name ||
+                                            target.display_name ||
+                                            target.email}
+                                        </span>
+                                        <span className="block text-xs text-hier-muted">
+                                          {target.email || `User #${target.user_id}`}
+                                        </span>
+                                      </button>
+                                    ))
+                                  ) : (
+                                    <p className="p-3 text-sm text-hier-muted">
+                                      No matching businesses found.
+                                    </p>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <label className="block">
+                              <span className="text-xs font-semibold text-hier-muted">
+                                Reason required
+                              </span>
+                              <textarea
+                                value={transferReason}
+                                onChange={(event) => setTransferReason(event.target.value)}
+                                rows={3}
+                                placeholder="Why is this post and its applicants being transferred?"
+                                className="mt-1 w-full resize-none rounded-[18px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-text outline-none focus:border-hier-primary focus:bg-white"
+                              />
+                            </label>
+
+                            <button
+                              type="submit"
+                              disabled={
+                                transferringPost ||
+                                !selectedTransferTarget ||
+                                transferReason.trim().length < 10
+                              }
+                              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {transferringPost ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <ArrowRightLeft className="h-4 w-4" />
+                              )}
+                              Transfer post and applicants
+                            </button>
+                          </form>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="rounded-[22px] border border-dashed border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                  No posts found for this business.
+                </p>
+              )}
             </InfoCard>
           ) : null}
 

@@ -54,6 +54,7 @@ export function AppHeader({
 
   const [appsOpen, setAppsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const appsRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -73,13 +74,26 @@ export function AppHeader({
           <Menu className="h-5 w-5" />
         </button>
 
-        <div className="relative flex min-w-0 flex-1 items-center gap-3 lg:max-w-xl">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const trimmed = search.trim();
+            router.push(
+              trimmed ? `/candidates?q=${encodeURIComponent(trimmed)}` : "/candidates"
+            );
+          }}
+          role="search"
+          className="relative flex min-w-0 flex-1 items-center gap-3 lg:max-w-xl"
+        >
           <Search className="pointer-events-none absolute left-4 h-4 w-4 text-hier-muted" />
           <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Search applicants, jobs, tags, notes"
+            aria-label="Search applicants"
             className="h-12 w-full rounded-2xl border border-hier-border bg-hier-panel pl-11 pr-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
           />
-        </div>
+        </form>
 
         <div className="flex items-center gap-2">
           <div className="relative" ref={appsRef}>

@@ -42,6 +42,7 @@ export default function CandidatesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const initialQuery = searchParams.get("q") || "";
   const initialJobId = Number(searchParams.get("jobId") || "") || null;
   const initialApplicationId =
     Number(searchParams.get("applicationId") || "") || null;
@@ -59,7 +60,7 @@ export default function CandidatesPage() {
   const [applications, setApplications] = useState<BusinessApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(
     initialJobId
   );
@@ -124,6 +125,11 @@ export default function CandidatesPage() {
     },
     [initialIncludeArchived]
   );
+
+  // Keep the board search in sync when a global header search updates the URL.
+  useEffect(() => {
+    setQuery(initialQuery);
+  }, [initialQuery]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {

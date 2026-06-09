@@ -1760,6 +1760,26 @@ export async function fetchStaffAccountPosts(userId: number | string) {
   );
 }
 
+export async function transferStaffPost(
+  postId: number | string,
+  payload: {
+    target_account_user_id: number | string;
+    reason: string;
+    transfer_applications?: boolean;
+  }
+) {
+  return apiFetch<{
+    ok: boolean;
+    post?: any;
+    transferred_applications?: number;
+    note?: StaffNote;
+    warning?: string;
+  }>(`/api/staff/posts/${postId}/transfer`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function removeStaffPost(postId: number | string, reason: string) {
   return apiFetch<{
     ok: boolean;
