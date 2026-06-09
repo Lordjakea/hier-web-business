@@ -154,6 +154,8 @@ export default function StaffLeadsPage() {
   const [status, setStatus] = useState("all");
   const [leadTypeFilter, setLeadTypeFilter] = useState("all");
   const [cityFilter, setCityFilter] = useState("");
+  const [sectorFilter, setSectorFilter] = useState("all");
+  const [employeeRangeFilter, setEmployeeRangeFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +176,8 @@ export default function StaffLeadsPage() {
         status,
         lead_type: leadTypeFilter,
         city: cityFilter,
+        sector: sectorFilter,
+        employee_range: employeeRangeFilter,
       });
       setLeads(response.items || []);
     } catch (caughtError) {
@@ -181,7 +185,7 @@ export default function StaffLeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [cityFilter, leadTypeFilter, query, status]);
+  }, [cityFilter, employeeRangeFilter, leadTypeFilter, query, sectorFilter, status]);
 
   useEffect(() => {
     void loadLeads();
@@ -383,7 +387,7 @@ export default function StaffLeadsPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 rounded-[28px] border border-hier-border bg-white p-4 shadow-card xl:grid-cols-[1fr_180px_180px_180px_auto_auto]">
+      <section className="grid gap-4 rounded-[28px] border border-hier-border bg-white p-4 shadow-card xl:grid-cols-[1fr_170px_170px_200px_160px_160px_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-hier-muted" />
           <input
@@ -412,6 +416,26 @@ export default function StaffLeadsPage() {
           <option value="all">All lead types</option>
           <option value="business">Business</option>
           <option value="candidate">Candidate</option>
+        </select>
+        <select
+          value={sectorFilter}
+          onChange={(event) => setSectorFilter(event.target.value)}
+          className="h-12 rounded-[20px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+        >
+          <option value="all">All sectors</option>
+          {SECTOR_OPTIONS.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+        <select
+          value={employeeRangeFilter}
+          onChange={(event) => setEmployeeRangeFilter(event.target.value)}
+          className="h-12 rounded-[20px] border border-hier-border bg-hier-panel px-4 text-sm outline-none focus:border-hier-primary focus:bg-white"
+        >
+          <option value="all">All sizes</option>
+          {EMPLOYEE_RANGE_OPTIONS.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
         </select>
         <input
           value={cityFilter}

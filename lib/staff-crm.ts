@@ -839,6 +839,8 @@ export async function createStaffSupportSession(userId: number | string) {
 export async function searchStaffAccounts(params?: {
   q?: string;
   role?: string;
+  sector?: string;
+  employee_range?: string;
   per_page?: number;
   include_test?: boolean;
 }) {
@@ -846,6 +848,8 @@ export async function searchStaffAccounts(params?: {
 
   if (params?.q?.trim()) search.set("q", params.q.trim());
   if (params?.role && params.role !== "all") search.set("role", params.role);
+  if (params?.sector && params.sector !== "all") search.set("sector", params.sector);
+  if (params?.employee_range && params.employee_range !== "all") search.set("employee_range", params.employee_range);
   if (params?.per_page) search.set("per_page", String(params.per_page));
   search.set("include_test", params?.include_test === false ? "false" : "true");
 
@@ -919,12 +923,16 @@ export async function fetchStaffLeads(params?: {
   status?: string;
   lead_type?: string;
   city?: string;
+  sector?: string;
+  employee_range?: string;
 }) {
   const search = new URLSearchParams();
   if (params?.q?.trim()) search.set("q", params.q.trim());
   if (params?.status && params.status !== "all") search.set("status", params.status);
   if (params?.lead_type && params.lead_type !== "all") search.set("lead_type", params.lead_type);
   if (params?.city?.trim()) search.set("city", params.city.trim());
+  if (params?.sector && params.sector !== "all") search.set("sector", params.sector);
+  if (params?.employee_range && params.employee_range !== "all") search.set("employee_range", params.employee_range);
   const query = search.toString();
   return apiFetch<{ ok: boolean; items: StaffLead[] }>(
     `/api/staff/leads${query ? `?${query}` : ""}`

@@ -25,6 +25,7 @@ import {
   type StaffBillingPlan,
   type StaffMe,
 } from "@/lib/staff-crm";
+import { EMPLOYEE_RANGE_OPTIONS, SECTOR_OPTIONS } from "@/lib/job-preferences";
 import { searchAddresses, type AddressOption } from "@/lib/address-lookup";
 
 function formatDate(value?: string | null) {
@@ -111,6 +112,8 @@ export default function StaffCrmPage() {
   const [staff, setStaff] = useState<StaffMe | null>(null);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("all");
+  const [sectorFilter, setSectorFilter] = useState("all");
+  const [employeeRangeFilter, setEmployeeRangeFilter] = useState("all");
   const [accounts, setAccounts] = useState<StaffAccountSearchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -148,7 +151,13 @@ export default function StaffCrmPage() {
     try {
       const [staffResponse, accountsResponse] = await Promise.all([
         fetchStaffMe(),
-        searchStaffAccounts({ q: query, role, per_page: 50 }),
+        searchStaffAccounts({
+          q: query,
+          role,
+          sector: sectorFilter,
+          employee_range: employeeRangeFilter,
+          per_page: 50,
+        }),
       ]);
 
       setStaff(staffResponse.staff);
@@ -163,7 +172,7 @@ export default function StaffCrmPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, role]);
+  }, [employeeRangeFilter, query, role, sectorFilter]);
 
   const loadPlans = useCallback(async () => {
     try {
@@ -337,7 +346,7 @@ export default function StaffCrmPage() {
       />
 
       <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card sm:p-6">
-        <div className="grid gap-4 lg:grid-cols-[1fr_220px_auto] lg:items-end">
+        <div className="grid gap-4 lg:grid-cols-[1fr_200px_220px_180px_auto] lg:items-end">
           <label className="block space-y-2">
             <span className="text-sm font-medium text-hier-text">Search accounts</span>
             <div className="relative">
@@ -362,6 +371,34 @@ export default function StaffCrmPage() {
               <option value="business_user">Businesses</option>
               <option value="user">Candidates</option>
               <option value="admin">Admins</option>
+            </select>
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-hier-text">Sector</span>
+            <select
+              value={sectorFilter}
+              onChange={(event) => setSectorFilter(event.target.value)}
+              className="h-14 w-full rounded-[22px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+            >
+              <option value="all">All sectors</option>
+              {SECTOR_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-hier-text">Employees</span>
+            <select
+              value={employeeRangeFilter}
+              onChange={(event) => setEmployeeRangeFilter(event.target.value)}
+              className="h-14 w-full rounded-[22px] border border-hier-border bg-hier-panel px-4 text-sm text-hier-text outline-none transition focus:border-hier-primary focus:bg-white"
+            >
+              <option value="all">All sizes</option>
+              {EMPLOYEE_RANGE_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
             </select>
           </label>
 
