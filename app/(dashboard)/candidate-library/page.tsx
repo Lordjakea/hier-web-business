@@ -22,11 +22,13 @@ import { resolveHIScore } from "@/lib/hi-score";
 import type { ApplicationStage, BusinessApplication, BusinessCandidate } from "@/lib/types";
 
 type LibrarySortMode = "score_desc" | "active_first" | "recent" | "name";
+type LibraryMoveStage = "applied" | "shortlisted";
 
 export default function CandidateLibraryPage() {
   const [items, setItems] = useState<CandidateLibraryEntry[]>([]);
   const [jobs, setJobs] = useState<CandidateLibraryJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [moveStage, setMoveStage] = useState<LibraryMoveStage>("applied");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<LibrarySortMode>("score_desc");
@@ -118,14 +120,16 @@ export default function CandidateLibraryPage() {
       const response = await shortlistCandidateLibrary({
         job_post_id: selectedJobId,
         entry_ids: selectedIds,
+        stage: moveStage,
       });
+      const stageLabel = moveStage === "shortlisted" ? "Shortlisted" : "Applied";
       setNotice(
-        `${response.moved} moved to Applied. ${response.not_actively_looking} not moved because they are not marked actively looking. ${response.already_applied} were already in that role.`,
+        `${response.moved} moved to ${stageLabel}. ${response.not_actively_looking} not moved because they are not marked actively looking. ${response.already_applied} were already in that role.`,
       );
       setSelectedIds([]);
       await load(selectedJobId);
     } catch (e: any) {
-      setError(e?.message || "Could not move candidates to Applied.");
+      setError(e?.message || "Could not move candidates.");
     } finally {
       setBusy(false);
     }
@@ -147,6 +151,9 @@ export default function CandidateLibraryPage() {
     setSelectedApplication({
       id: applicationId,
       stage: (item.last_stage as ApplicationStage) || "applied",
+      rating: item.previous_review?.rating ?? null,
+      recruiter_tags: item.previous_review?.recruiter_tags || [],
+      internal_note: item.previous_review?.internal_note || null,
       user: {
         id: item.candidate.id || item.candidate_user_id,
         display_name: item.candidate.name,
@@ -250,7 +257,7 @@ export default function CandidateLibraryPage() {
       />
 
       <section className="rounded-[32px] border border-hier-border bg-white p-5 shadow-card">
-        <div className="grid gap-4 lg:grid-cols-[1fr_260px_220px_auto]">
+        <div className="grid gap-4 lg:grid-cols-[1fr_220px_190px_190px_auto]">
           <label className="block">
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
               Hiring for
@@ -303,6 +310,20 @@ export default function CandidateLibraryPage() {
             </select>
           </label>
 
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-hier-muted">
+              Move to
+            </span>
+            <select
+              value={moveStage}
+              onChange={(event) => setMoveStage(event.target.value as LibraryMoveStage)}
+              className="mt-2 h-12 w-full rounded-[18px] border border-hier-border bg-white px-4 text-sm font-semibold text-hier-text outline-none"
+            >
+              <option value="applied">Applied</option>
+              <option value="shortlisted">Shortlisted</option>
+            </select>
+          </label>
+
           <button
             type="button"
             onClick={() => void handleShortlist()}
@@ -310,7 +331,7 @@ export default function CandidateLibraryPage() {
             className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-5 text-sm font-semibold text-white shadow-sm disabled:opacity-50 lg:mt-auto"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRoundCheck className="h-4 w-4" />}
-            Move {selectedCount || ""} to Applied
+            Move {selectedCount || ""} to {moveStage === "shortlisted" ? "Shortlisted" : "Applied"}
           </button>
         </div>
 
@@ -357,6 +378,12 @@ export default function CandidateLibraryPage() {
                 : null,
             );
             const activeLooking = !!item.candidate.active_looking_for_work;
+            const previousReview = item.previous_review;
+            const previousTags = previousReview?.recruiter_tags || [];
+            const hasPreviousReview =
+              previousReview?.rating != null ||
+              previousTags.length > 0 ||
+              Boolean(previousReview?.internal_note);
             return (
               <article
                 key={item.id}
@@ -408,6 +435,29 @@ export default function CandidateLibraryPage() {
                   From {item.source_job?.title || "an application"}
                   {item.source_job?.location ? ` · ${item.source_job.location}` : ""}
                 </p>
+
+                {hasPreviousReview ? (
+                  <div className="mt-4 rounded-[20px] border border-hier-border bg-hier-panel p-4 text-sm text-hier-muted">
+                    <p className="font-semibold text-hier-text">
+                      Previous record{previousReview?.job_title ? ` from ${previousReview.job_title}` : ""}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {previousReview?.rating != null ? (
+                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                          Rating {previousReview.rating}/5
+                        </span>
+                      ) : null}
+                      {previousTags.map((tag) => (
+                        <span key={tag} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-hier-muted">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    {previousReview?.internal_note ? (
+                      <p className="mt-2 line-clamp-2 leading-6">{previousReview.internal_note}</p>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {item.hi_score?.reasons?.length ? (
                   <p className="mt-3 text-sm leading-6 text-hier-muted">

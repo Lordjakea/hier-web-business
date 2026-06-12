@@ -30,6 +30,28 @@ export type CandidateLibraryEntry = {
     score_color?: string | null;
     reasons?: string[];
   } | null;
+  previous_review?: {
+    application_id?: number | null;
+    job_post_id?: number | null;
+    job_title?: string | null;
+    stage?: string | null;
+    rating?: number | null;
+    recruiter_tags?: string[];
+    internal_note?: string | null;
+    updated_at?: string | null;
+    created_at?: string | null;
+  } | null;
+  review_history?: Array<{
+    application_id?: number | null;
+    job_post_id?: number | null;
+    job_title?: string | null;
+    stage?: string | null;
+    rating?: number | null;
+    recruiter_tags?: string[];
+    internal_note?: string | null;
+    updated_at?: string | null;
+    created_at?: string | null;
+  }>;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -53,12 +75,14 @@ export async function fetchCandidateLibrary(params?: {
 export async function shortlistCandidateLibrary(payload: {
   job_post_id: number;
   entry_ids: number[];
+  stage?: "applied" | "shortlisted";
 }) {
   return apiFetch<{
     ok: boolean;
     moved: number;
     not_actively_looking: number;
     already_applied: number;
+    stage?: "applied" | "shortlisted";
   }>("/api/business/candidate-library/shortlist", {
     method: "POST",
     body: JSON.stringify(payload),

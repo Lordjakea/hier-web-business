@@ -18,7 +18,12 @@ export type BusinessTeamMember = {
   joined_at?: string | null;
   removed_at?: string | null;
   user?: BusinessTeamUser | null;
+  permissions?: BusinessTeamPermissions;
   created_at?: string | null;
+};
+
+export type BusinessTeamPermissions = {
+  sections?: string[];
 };
 
 export type BusinessTeamInvite = {
@@ -27,6 +32,7 @@ export type BusinessTeamInvite = {
   email?: string | null;
   role?: string | null;
   status?: string | null;
+  permissions?: BusinessTeamPermissions;
   expires_at?: string | null;
   created_at?: string | null;
 };
@@ -65,10 +71,14 @@ export function fetchTeam() {
   return apiFetch<BusinessTeamResponse>("/api/business/team");
 }
 
-export function inviteTeamMember(email: string, role = "recruiter") {
+export function inviteTeamMember(
+  email: string,
+  role = "recruiter",
+  permissions: BusinessTeamPermissions = { sections: [] },
+) {
   return apiFetch<BusinessInviteResponse>("/api/business/team/invite", {
     method: "POST",
-    body: JSON.stringify({ email, role }),
+    body: JSON.stringify({ email, role, permissions }),
   });
 }
 

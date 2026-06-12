@@ -188,6 +188,11 @@ function isContractSignatureTask(task: BusinessOnboardingTask) {
   return key.includes("contract") && key.includes("sign");
 }
 
+function isHandbookTask(task: BusinessOnboardingTask) {
+  const key = normalizeTaskKey(task.task_key || task.title);
+  return key.includes("handbook");
+}
+
 function isRemovedOrArchived(status?: string | null) {
   return status === "removed" || status === "archived";
 }
@@ -755,12 +760,22 @@ export default function OnboardingPage() {
   ) {
     if (!selectedId || !canManageSelected) return;
 
+    let note: string | undefined;
+    if (status === "rejected") {
+      const reason = window.prompt("Tell the candidate why this onboarding submission is being rejected.");
+      if (!reason?.trim()) {
+        setActionError("A rejection reason is required so the candidate knows what to update.");
+        return;
+      }
+      note = reason.trim();
+    }
+
     setBusyKey(`task-review-${taskId}`);
     setActionError(null);
     setSuccessMessage(null);
 
     try {
-      await reviewOnboardingTask(selectedId, taskId, { status });
+      await reviewOnboardingTask(selectedId, taskId, { status, note });
       await refreshSelected();
       setSuccessMessage("Task review updated.");
     } catch (caughtError) {
@@ -920,6 +935,13 @@ export default function OnboardingPage() {
     } finally {
       setBusyKey(null);
     }
+  }
+
+  function presetCompanyHandbook() {
+    const handbookTask = (selected?.tasks || []).find(isHandbookTask);
+    setDocumentTitle("Company handbook");
+    setDocumentType("handbook");
+    setDocumentTaskId(handbookTask?.id || "");
   }
 
   async function handleDocumentSend(documentId: number) {
@@ -1745,6 +1767,15 @@ export default function OnboardingPage() {
                           </div>
 
                           <div className="mt-5 space-y-3">
+                            <button
+                              type="button"
+                              onClick={presetCompanyHandbook}
+                              disabled={!canManageSelected}
+                              className="inline-flex h-10 items-center justify-center rounded-2xl border border-hier-border bg-hier-panel px-4 text-sm font-semibold text-hier-ink disabled:opacity-60"
+                            >
+                              Company handbook
+                            </button>
+
                             <input
                               value={documentTitle}
                               onChange={(event) => setDocumentTitle(event.target.value)}

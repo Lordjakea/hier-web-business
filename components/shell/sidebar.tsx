@@ -61,6 +61,7 @@ const secondaryLinks = [
   { label: "Team", href: "/team", icon: Users },
   { label: "Profile management", href: "/settings/profile", icon: UserCog },
   { label: "Policies", href: "/settings/policies", icon: Shield },
+  { label: "Support", href: "/support", icon: LifeBuoy },
 ];
 
 const staffLinks = [

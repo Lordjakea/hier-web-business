@@ -46,12 +46,37 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
+const DASHBOARD_SECTIONS = [
+  { key: "posts", label: "Posts" },
+  { key: "candidates", label: "Candidates" },
+  { key: "candidate_library", label: "Candidate Library" },
+  { key: "onboarding", label: "Onboarding" },
+  { key: "employee_records", label: "Employee Records" },
+  { key: "billing", label: "Billing" },
+  { key: "team", label: "Team" },
+];
+
+const DEFAULT_INVITE_SECTIONS = [
+  "posts",
+  "candidates",
+  "candidate_library",
+  "onboarding",
+];
+
+function formatSections(sections?: string[] | null) {
+  if (!sections?.length) return "No sections selected";
+  return sections
+    .map((section) => DASHBOARD_SECTIONS.find((item) => item.key === section)?.label || section)
+    .join(", ");
+}
+
 export default function TeamPage() {
   const [members, setMembers] = useState<BusinessTeamMember[]>([]);
   const [invites, setInvites] = useState<BusinessTeamInvite[]>([]);
   const [seatUsage, setSeatUsage] = useState<BusinessSeatUsage | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [email, setEmail] = useState("");
+  const [selectedSections, setSelectedSections] = useState<string[]>(DEFAULT_INVITE_SECTIONS);
   const [latestInviteUrl, setLatestInviteUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [workingKey, setWorkingKey] = useState<string | null>(null);
@@ -111,12 +136,23 @@ export default function TeamPage() {
     event.preventDefault();
 
     await withAction("invite", async () => {
-      const res = await inviteTeamMember(email, "recruiter");
+      const res = await inviteTeamMember(email, "recruiter", {
+        sections: selectedSections,
+      });
       setLatestInviteUrl(res.invite_url || null);
       setEmail("");
+      setSelectedSections(DEFAULT_INVITE_SECTIONS);
       setSuccess(res.already_exists ? "Invite already exists." : "Recruiter invite created.");
       await loadTeam();
     });
+  }
+
+  function toggleSection(section: string) {
+    setSelectedSections((current) =>
+      current.includes(section)
+        ? current.filter((item) => item !== section)
+        : [...current, section],
+    );
   }
 
   async function handleRemove(memberId: number) {
@@ -227,12 +263,45 @@ export default function TeamPage() {
 
               <button
                 type="submit"
-                disabled={!isOwner || workingKey !== null || !email.trim()}
+                disabled={!isOwner || workingKey !== null || !email.trim() || selectedSections.length === 0}
                 className="inline-flex h-13 items-center justify-center gap-2 rounded-[18px] bg-hier-primary px-5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-60"
               >
                 {workingKey === "invite" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailPlus className="h-4 w-4" />}
                 Send recruiter invite
               </button>
+            </div>
+
+            <div className="mt-5">
+              <p className="text-sm font-semibold text-hier-text">Dashboard access</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {DASHBOARD_SECTIONS.map((section) => {
+                  const checked = selectedSections.includes(section.key);
+                  return (
+                    <label
+                      key={section.key}
+                      className={`flex cursor-pointer items-center gap-3 rounded-[18px] border px-4 py-3 text-sm font-semibold transition ${
+                        checked
+                          ? "border-hier-primary bg-hier-primary/10 text-hier-text"
+                          : "border-hier-border bg-hier-panel text-hier-muted"
+                      } ${!isOwner || workingKey !== null ? "opacity-60" : ""}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!isOwner || workingKey !== null}
+                        onChange={() => toggleSection(section.key)}
+                        className="h-4 w-4 accent-hier-primary"
+                      />
+                      {section.label}
+                    </label>
+                  );
+                })}
+              </div>
+              {selectedSections.length === 0 ? (
+                <p className="mt-2 text-xs font-semibold text-rose-600">
+                  Select at least one section before sending the invite.
+                </p>
+              ) : null}
             </div>
 
             {latestInviteUrl ? (
@@ -271,6 +340,9 @@ export default function TeamPage() {
                         </p>
                         <p className="mt-1 text-sm text-hier-muted">{member.user?.email || "—"}</p>
                         <p className="mt-2 text-xs text-hier-muted">Joined {formatDate(member.joined_at || member.created_at)}</p>
+                        <p className="mt-2 text-xs text-hier-muted">
+                          Access: {formatSections(member.permissions?.sections)}
+                        </p>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -308,6 +380,9 @@ export default function TeamPage() {
                       <div>
                         <p className="font-semibold text-hier-text">{invite.email}</p>
                         <p className="mt-1 text-sm text-hier-muted">Recruiter invite</p>
+                        <p className="mt-2 text-xs text-hier-muted">
+                          Access: {formatSections(invite.permissions?.sections)}
+                        </p>
                         <p className="mt-2 text-xs text-hier-muted">Expires {formatDate(invite.expires_at)}</p>
                       </div>
 
