@@ -21,7 +21,8 @@ export type BusinessManagedJobPost = {
   budget?: number | null;
   is_remote?: boolean;
   is_active?: boolean;
-  post_status?: "draft" | "live" | "archived" | string | null;
+  post_status?: "draft" | "live" | "archived" | "scheduled" | string | null;
+  scheduled_at?: string | null;
   assigned_recruiter_id?: number | null;
   created_by_user_id?: number | null;
   business_account_id?: number | null;
@@ -51,6 +52,7 @@ export type BusinessContentPost = {
   hero_image_url?: string | null;
   hero_video_url?: string | null;
   is_active?: boolean;
+  scheduled_at?: string | null;
   created_at?: string | null;
   like_count?: number;
   comment_count?: number;
@@ -94,6 +96,7 @@ export type CreateJobPayload = {
   hero_image_url: string | null;
   hero_video_url: string | null;
   is_active: boolean;
+  scheduled_at?: string | null;
 };
 
 export type UpdateJobPayload = Partial<CreateJobPayload>;
@@ -105,6 +108,8 @@ export type CreateContentPayload = {
   hero_image_url?: string | null;
   hero_video_url?: string | null;
   public_url?: string | null;
+  is_active?: boolean;
+  scheduled_at?: string | null;
 };
 
 export type UpdateContentPayload = {
@@ -185,7 +190,7 @@ type PresignResponse = {
 
 export async function fetchBusinessJobs(options?: {
   includeArchived?: boolean;
-  postStatus?: "draft" | "live" | "archived";
+  postStatus?: "draft" | "live" | "archived" | "scheduled";
   recruiterId?: number | null;
   createdByUserId?: number | null;
 }) {

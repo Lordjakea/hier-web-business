@@ -34,7 +34,7 @@ import {
 import { formatCurrency, formatCurrencyRange } from "@/lib/currency";
 
 type KindTab = "all" | "job" | "content";
-type StatusTab = "live" | "draft" | "archived";
+type StatusTab = "live" | "draft" | "scheduled" | "archived";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -83,16 +83,24 @@ function getPostStatus(item: ManagedPostItem): StatusTab {
   if (item.kind === "job") {
     const status = String(item.post_status || "").toLowerCase();
 
-    if (status === "draft" || status === "archived" || status === "live") {
+    if (
+      status === "draft" ||
+      status === "archived" ||
+      status === "live" ||
+      status === "scheduled"
+    ) {
       return status;
     }
   }
 
-  return item.is_active === false ? "archived" : "live";
+  // Content posts have no status column: infer from scheduled_at / is_active.
+  if (item.scheduled_at) return "scheduled";
+  return item.is_active === false ? "draft" : "live";
 }
 
 function statusLabel(status: StatusTab) {
   if (status === "draft") return "Draft";
+  if (status === "scheduled") return "Scheduled";
   if (status === "archived") return "Archived";
   return "Live";
 }
@@ -100,7 +108,21 @@ function statusLabel(status: StatusTab) {
 function statusClass(status: StatusTab) {
   if (status === "live") return "bg-emerald-50 text-emerald-700";
   if (status === "draft") return "bg-amber-50 text-amber-700";
+  if (status === "scheduled") return "bg-sky-50 text-sky-700";
   return "bg-zinc-100 text-zinc-600";
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function JobsPage() {
@@ -118,6 +140,11 @@ export default function JobsPage() {
       setError(null);
 
       const includeArchived = activeStatusTab === "archived";
+      // Drafts and scheduled content posts are inactive, so fetch inactive too.
+      const includeInactive =
+        includeArchived ||
+        activeStatusTab === "draft" ||
+        activeStatusTab === "scheduled";
 
       const [jobs, content] = await Promise.all([
         fetchBusinessJobs({
@@ -125,7 +152,7 @@ export default function JobsPage() {
           includeArchived,
         }),
         fetchBusinessContent({
-          includeInactive: includeArchived,
+          includeInactive,
         }),
       ]);
 
@@ -134,9 +161,12 @@ export default function JobsPage() {
         ...(content.items || [])
           .map((item) => ({ ...item, kind: "content" as const }))
           .filter((item) => {
-            if (activeStatusTab === "draft") return false;
-            if (activeStatusTab === "archived") return item.is_active === false;
-            return item.is_active !== false;
+            // Content posts have no archived state distinct from drafts.
+            if (activeStatusTab === "archived") return false;
+            if (activeStatusTab === "scheduled") return Boolean(item.scheduled_at);
+            if (activeStatusTab === "draft")
+              return item.is_active === false && !item.scheduled_at;
+            return item.is_active !== false && !item.scheduled_at;
           }),
       ].sort((a, b) =>
         String(b.created_at || "").localeCompare(String(a.created_at || "")),
@@ -287,7 +317,7 @@ export default function JobsPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        {(["live", "draft", "archived"] as StatusTab[]).map((tab) => {
+        {(["live", "draft", "scheduled", "archived"] as StatusTab[]).map((tab) => {
           const active = activeStatusTab === tab;
 
           return (
@@ -408,7 +438,9 @@ export default function JobsPage() {
                               postStatus,
                             )}`}
                           >
-                            {statusLabel(postStatus)}
+                            {postStatus === "scheduled" && item.scheduled_at
+                              ? `Scheduled for ${formatDateTime(item.scheduled_at)}`
+                              : statusLabel(postStatus)}
                           </span>
 
                           {item.kind === "job" && item.promoted_active ? (

@@ -7,7 +7,9 @@ import Cropper from "react-easy-crop";
 import {
   ArrowLeft,
   BriefcaseBusiness,
+  CalendarClock,
   FileText,
+  Send,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -128,6 +130,26 @@ function isVideoFile(file: File) {
   return type.startsWith("video/") || /\.(mp4|mov|m4v|webm)$/i.test(name);
 }
 
+function successMessage(
+  mode: "draft" | "now" | "schedule",
+  scheduledIso: string | null,
+  noun: string
+) {
+  if (mode === "draft") return `${noun} saved as a draft.`;
+  if (mode === "schedule" && scheduledIso) {
+    const when = new Date(scheduledIso);
+    const formatted = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(when);
+    return `${noun} scheduled for ${formatted}.`;
+  }
+  return `${noun} published successfully.`;
+}
+
 function formatSeconds(value: number) {
   if (!Number.isFinite(value)) return "0:00";
   const safe = Math.max(0, Math.round(value));
@@ -215,6 +237,8 @@ export default function JobsCreatePage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -454,8 +478,25 @@ export default function JobsCreatePage() {
     }
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(mode: "draft" | "now" | "schedule" = "now") {
     try {
+      let scheduledIso: string | null = null;
+      if (mode === "schedule") {
+        if (!scheduledAt) {
+          throw new Error("Choose a date and time to schedule this post.");
+        }
+        const when = new Date(scheduledAt);
+        if (Number.isNaN(when.getTime())) {
+          throw new Error("That schedule date and time is not valid.");
+        }
+        if (when.getTime() <= Date.now()) {
+          throw new Error("Scheduled time must be in the future.");
+        }
+        scheduledIso = when.toISOString();
+      }
+
+      const isActive = mode === "now";
+
       setLoading(true);
       setError(null);
       setSuccess(null);
@@ -474,6 +515,8 @@ export default function JobsCreatePage() {
         const created = await createBusinessContentPost({
           caption: values.description.trim() || null,
           description: values.description.trim() || null,
+          is_active: isActive,
+          scheduled_at: scheduledIso,
         });
 
         if (selectedFile) {
@@ -485,7 +528,7 @@ export default function JobsCreatePage() {
           });
         }
 
-        setSuccess("Content post published successfully.");
+        setSuccess(successMessage(mode, scheduledIso, "Content post"));
       } else {
         if (!values.title.trim()) throw new Error("Title is required.");
         if (!values.description.trim()) throw new Error("Description is required.");
@@ -577,7 +620,8 @@ export default function JobsCreatePage() {
           media_type: null,
           hero_image_url: null,
           hero_video_url: null,
-          is_active: true,
+          is_active: isActive,
+          scheduled_at: scheduledIso,
         });
 
         if (selectedFile) {
@@ -589,12 +633,11 @@ export default function JobsCreatePage() {
           });
         }
 
-        setSuccess(
-          values.isGig ? "Gig published successfully." : "Job published successfully."
-        );
+        setSuccess(successMessage(mode, scheduledIso, values.isGig ? "Gig" : "Job"));
       }
 
-      setTimeout(() => router.push("/jobs"), 700);
+      setPublishOpen(false);
+      setTimeout(() => router.push("/jobs"), 900);
     } catch (e) {
       setError(
         e instanceof ApiError
@@ -856,6 +899,87 @@ export default function JobsCreatePage() {
                 className="inline-flex h-11 items-center rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white"
               >
                 Use video
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {publishOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-hier-text">
+                  {isPost ? "Publish post" : isGig ? "Publish gig" : "Publish job"}
+                </h3>
+                <p className="mt-1 text-sm text-hier-muted">
+                  Post it now, or schedule it to go live automatically later.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPublishOpen(false)}
+                disabled={loading}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hier-border bg-white text-hier-muted transition hover:bg-hier-panel hover:text-hier-text disabled:opacity-60"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {error ? (
+              <div className="mb-4 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {error}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => void handleSubmit("now")}
+              disabled={loading || processingMedia}
+              className="flex w-full items-center gap-3 rounded-[22px] border border-hier-primary bg-hier-soft px-4 py-4 text-left transition hover:opacity-95 disabled:opacity-60"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-card">
+                <Send className="h-5 w-5 text-hier-primary" />
+              </span>
+              <span>
+                <span className="block text-sm font-semibold text-hier-text">
+                  {loading ? "Working..." : "Post now"}
+                </span>
+                <span className="block text-sm text-hier-muted">
+                  Make it live immediately.
+                </span>
+              </span>
+            </button>
+
+            <div className="mt-4 rounded-[22px] border border-hier-border bg-hier-panel p-4">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-card">
+                  <CalendarClock className="h-5 w-5 text-hier-primary" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-hier-text">Schedule post</p>
+                  <p className="text-sm text-hier-muted">
+                    Choose when it should go live.
+                  </p>
+                </div>
+              </div>
+
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                className="mt-4 h-12 w-full rounded-2xl border border-hier-border bg-white px-4 text-sm text-hier-text outline-none focus:border-hier-primary"
+              />
+
+              <button
+                type="button"
+                onClick={() => void handleSubmit("schedule")}
+                disabled={loading || processingMedia || !scheduledAt}
+                className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white shadow-card transition hover:opacity-95 disabled:opacity-60"
+              >
+                <CalendarClock className="h-4 w-4" />
+                {loading ? "Scheduling..." : "Schedule post"}
               </button>
             </div>
           </div>
@@ -1419,17 +1543,24 @@ export default function JobsCreatePage() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => void handleSubmit()}
+              onClick={() => void handleSubmit("draft")}
               disabled={loading || processingMedia}
-              className="inline-flex h-12 items-center gap-2 rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white shadow-card disabled:opacity-60"
+              className="inline-flex h-12 items-center gap-2 rounded-2xl border border-hier-border bg-white px-5 text-sm font-semibold text-hier-text shadow-card transition hover:bg-hier-panel disabled:opacity-60"
             >
-              {loading
-                ? "Publishing..."
-                : isPost
-                ? "Publish post"
-                : isGig
-                ? "Publish gig"
-                : "Publish job"}
+              <FileText className="h-4 w-4" />
+              Save as draft
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setPublishOpen(true);
+              }}
+              disabled={loading || processingMedia}
+              className="inline-flex h-12 items-center gap-2 rounded-2xl bg-hier-primary px-5 text-sm font-semibold text-white shadow-card transition hover:opacity-95 disabled:opacity-60"
+            >
+              {loading ? "Working..." : "Publish"}
             </button>
 
             <Link
